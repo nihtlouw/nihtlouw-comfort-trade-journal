@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ElementType } from "react";
-import { BarChart3, BookOpenCheck, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, CircleAlert, ClipboardList, CloudDownload, Eye, EyeOff, Heart, Hourglass, LayoutDashboard, Menu, NotebookPen, Plus, Settings2, Smartphone, Sprout, Target, Wind, X } from "lucide-react";
+import { BarChart3, BookOpenCheck, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, CircleAlert, ClipboardList, CloudDownload, Eye, EyeOff, Heart, Hourglass, ImageDown, LayoutDashboard, Menu, NotebookPen, Plus, Search, Settings2, Smartphone, Sparkles, Sprout, Target, Wind, X } from "lucide-react";
 import type { AppLocale, DayJournalEntry, Intention, JournalData, JournalSettings, PlaybookRule, SetupBlueprint, Trade, TradeAttachment, WeeklyReflection } from "@/lib/types";
 import { DEFAULT_ACCOUNT, MAX_JOURNAL_IMAGE_BYTES } from "@/lib/types";
 import { upsertDayJournal } from "@/lib/analytics";
@@ -22,8 +22,10 @@ import { AnalyticsView, CalendarView, GoalsView, JournalView, MindsetView, Overv
 import { BreathingModal, ImportModal, SettingsModal, TradeModal, type PendingAttachmentFile, type SettingsTab, type TradeDraft } from "@/components/journal-dialogs";
 import { CassetteDeckModal, CassetteSidebarMini, CassetteTopbarButton, useCassetteDeck } from "@/components/cassette-player";
 import { ChartLightbox, type ChartLightboxSlide } from "@/components/chart-lightbox";
+import { RecapCardModal } from "@/components/recap-card-modal";
+import { CommandPaletteModal } from "@/components/command-palette";
 
-type Modal = "trade" | "settings" | "breathing" | "import" | "cassette" | null;
+type Modal = "trade" | "settings" | "breathing" | "import" | "cassette" | "recap" | "command" | null;
 // Keep this in sync with --bloom-dialog-exit in globals.css.
 const MODAL_EXIT_MS = 420;
 const workspaceNav: { label: View; icon: ElementType }[] = [
@@ -46,6 +48,8 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
   const [online, setOnline] = useState(true); const [reminderClock, setReminderClock] = useState(0);
   const [damaged, setDamaged] = useState(initialDamaged); const [toast, setToast] = useState<{ message: string; error: boolean; breath: boolean } | null>(null);
   const [lightbox, setLightbox] = useState<{ slides: ChartLightboxSlide[]; index: number } | null>(null);
+  const [zenMode, setZenMode] = useState(false);
+  const [recapWeekStart, setRecapWeekStart] = useState<string | undefined>(undefined);
   const toastTimer = useRef<number | null>(null); const modalCloseTimer = useRef<number | null>(null); const modalLayer = useRef<HTMLDivElement>(null); const mobileClose = useRef<HTMLButtonElement>(null);
 
   const locale: AppLocale = data.settings.locale ?? "en";
@@ -75,6 +79,10 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
     modalCloseTimer.current = null; setModalClosing(false); setModal(next);
   }, []);
   const openSettings = useCallback((tab: SettingsTab = "General") => { setSettingsTab(tab); openModal("settings"); }, [openModal]);
+  const openRecap = useCallback((weekStart?: string) => {
+    setRecapWeekStart(weekStart);
+    openModal("recap");
+  }, [openModal]);
   const closeModal = useCallback(() => {
     if (modalCloseTimer.current !== null) return;
     if (prefersReducedMotion()) { setModal(null); setModalClosing(false); return; }
@@ -118,6 +126,18 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
     window.addEventListener("focus", refresh); window.addEventListener("online", refresh); window.addEventListener("offline", refresh); window.addEventListener("storage", refresh);
     return () => { window.clearTimeout(first); window.clearInterval(interval); window.removeEventListener("focus", refresh); window.removeEventListener("online", refresh); window.removeEventListener("offline", refresh); window.removeEventListener("storage", refresh); };
   }, [backupScope]);
+  useEffect(() => {
+    const onGlobalKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setMobileMenu(false);
+        if (modal === "command") closeModal();
+        else openModal("command");
+      }
+    };
+    window.addEventListener("keydown", onGlobalKey);
+    return () => window.removeEventListener("keydown", onGlobalKey);
+  }, [closeModal, modal, openModal]);
 
   const accounts = data.settings.accounts ?? [DEFAULT_ACCOUNT];
   const sampleCount = data.trades.filter((trade) => trade.isDemo).length;
@@ -300,12 +320,21 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
   const title = view === "Overview" ? `${greetingText(locale)}, ${displayPersonName}` : copy.views[view].title;
   const showTradeControls = view !== "Playbook" && view !== "Goals";
   const showAmountsControl = view !== "Goals" && view !== "Mindset";
+  const activeAccountLabel =
+    accountFilter === "all"
+      ? copy.allAccounts
+      : translateAccountName(accounts.find((a) => a.id === accountFilter)?.name ?? DEFAULT_ACCOUNT.name, locale);
 
-  return <div className="app-shell" data-theme={data.settings.theme ?? "light"} data-motion={data.settings.reduceMotion ? "reduced" : "system"}>
+  return <div className="app-shell" data-theme={data.settings.theme ?? "light"} data-motion={data.settings.reduceMotion ? "reduced" : "system"} data-zen={zenMode ? "true" : undefined}>
     {cassetteDeck.audioElement}
     <aside id="primary-sidebar" className={`sidebar ${mobileMenu ? "mobile-open" : ""}`}><button type="button" className="brand" onClick={() => navigate("Overview")} aria-label={copy.bloomHome}><span className="brand-mark"><Sprout size={25} strokeWidth={1.6}/></span><span className="brand-word"><strong>bloom<span>.</span></strong><small>{copy.brandSub}</small></span></button><button type="button" ref={mobileClose} className="mobile-close icon-button" onClick={() => setMobileMenu(false)} aria-label={copy.closeNav}><X size={20}/></button>
       <div className="sidebar-scroll"><div className="nav-label">{copy.navWorkspace} <span>✳</span></div><nav className="sidebar-nav" aria-label={copy.navLabelWorkspace}>{workspaceNav.map(({ label, icon: Icon }) => <button type="button" key={label} className={view === label ? "active" : ""} aria-current={view === label ? "page" : undefined} onClick={() => navigate(label)}><Icon size={18} strokeWidth={1.7}/><span>{copy.views[label].nav}</span>{view === label && <span className="nav-active-dot"/>}</button>)}</nav><div className="nav-label personal-label">{copy.navWellbeing} <span>✳</span></div><nav className="sidebar-nav" aria-label={copy.navLabelWellbeing}>{personalNav.map(({ label, icon: Icon }) => <button type="button" key={label} className={view === label ? "active" : ""} aria-current={view === label ? "page" : undefined} onClick={() => navigate(label)}><Icon size={18} strokeWidth={1.7}/><span>{copy.views[label].nav}</span>{view === label && <span className="nav-active-dot"/>}</button>)}</nav>
       <button type="button" className="sidebar-settings" onClick={() => { setMobileMenu(false); openSettings(); }}><Settings2 size={18}/> {copy.settings}</button>
+      <div className="sidebar-mobile-tools">
+        <button type="button" className="sidebar-tool-btn" onClick={() => { setMobileMenu(false); openModal("command"); }}><Search size={15}/> <span>{copy.cmdTriggerLabel}</span></button>
+        <button type="button" className="sidebar-tool-btn" onClick={() => { setMobileMenu(false); openRecap(); }}><ImageDown size={15}/> <span>{copy.recapOpenBtn}</span></button>
+        <button type="button" className={`sidebar-tool-btn ${zenMode ? "active" : ""}`} aria-pressed={zenMode} onClick={() => { setMobileMenu(false); setZenMode((z) => !z); }}><Sparkles size={15}/> <span>{zenMode ? copy.zenExitBtn : copy.zenModeBtn}</span></button>
+      </div>
       <div className="sidebar-mobile-lang"><div className="segment-control" role="group" aria-label={copy.languageToggleAria}><button type="button" className={locale === "en" ? "selected" : ""} aria-pressed={locale === "en"} onClick={() => void updateSettings({ locale: "en", patienceLocale: "en" })}>English</button><button type="button" className={locale === "id" ? "selected" : ""} aria-pressed={locale === "id"} onClick={() => void updateSettings({ locale: "id", patienceLocale: "id" })}>Indonesia</button></div></div></div>
       <div className="sidebar-bottom">
         <CassetteSidebarMini deck={cassetteDeck} locale={locale} onOpen={() => { setMobileMenu(false); openModal("cassette"); }}/>
@@ -313,7 +342,7 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
         <button type="button" className="profile-button" onClick={() => openSettings()}><span className="avatar">{data.settings.name.charAt(0).toUpperCase()}</span><span><strong>{data.settings.name === "friend" ? copy.mySpace : data.settings.name}</strong><small>{storage === "browser" ? copy.personalJournal : copy.syncedJournal}</small></span><Settings2 size={16}/></button>
       </div>
     </aside><button type="button" className={`mobile-scrim ${mobileMenu ? "is-visible" : ""}`} onClick={() => setMobileMenu(false)} aria-label={copy.closeNav} aria-hidden={!mobileMenu} tabIndex={-1}/>
-    <main className="main-shell"><header className="topbar"><div className="topbar-left"><button type="button" className="mobile-menu-button icon-button" onClick={() => setMobileMenu(true)} aria-label={copy.openNav} aria-expanded={mobileMenu} aria-controls="primary-sidebar"><Menu size={21}/></button><div className="breadcrumbs"><span>{copy.myWorkspace}</span><ChevronRight size={14}/><strong>{copy.views[view].nav}</strong></div><span className="mobile-top-brand" aria-hidden="true">bloom<span>.</span></span></div><div className="topbar-actions"><span className="top-date"><CalendarDays size={15}/> {longToday(locale)}</span><span className="top-divider"/><div className="segment-control topbar-lang-switch" role="group" aria-label={copy.languageToggleAria}><button type="button" className={locale === "en" ? "selected" : ""} aria-pressed={locale === "en"} onClick={() => void updateSettings({ locale: "en", patienceLocale: "en" })}>EN</button><button type="button" className={locale === "id" ? "selected" : ""} aria-pressed={locale === "id"} onClick={() => void updateSettings({ locale: "id", patienceLocale: "id" })}>ID</button></div><CassetteTopbarButton deck={cassetteDeck} locale={locale} onOpen={() => openModal("cassette")}/><button type="button" className="breath-link" onClick={() => openModal("breathing")} aria-label={copy.takeABreath}><Wind size={17}/><span> {copy.takeABreath}</span></button><button type="button" className="top-avatar" onClick={() => openSettings()} aria-label={copy.openSettings}>{data.settings.name.charAt(0).toUpperCase()}</button></div></header>
+    <main className="main-shell"><header className="topbar"><div className="topbar-left"><button type="button" className="mobile-menu-button icon-button" onClick={() => setMobileMenu(true)} aria-label={copy.openNav} aria-expanded={mobileMenu} aria-controls="primary-sidebar"><Menu size={21}/></button><div className="breadcrumbs"><span>{copy.myWorkspace}</span><ChevronRight size={14}/><strong>{copy.views[view].nav}</strong></div><span className="mobile-top-brand" aria-hidden="true">bloom<span>.</span></span></div><div className="topbar-actions"><button type="button" className="cmd-trigger-btn" onClick={() => openModal("command")} aria-label={copy.cmdTriggerAria}><Search size={14}/><span>{copy.cmdTriggerLabel}</span><kbd>⌘K</kbd></button><button type="button" className={`zen-top-btn ${zenMode ? "active" : ""}`} onClick={() => setZenMode((z) => !z)} aria-pressed={zenMode}><Sparkles size={14}/><span>{copy.zenModeBtn}</span></button><span className="top-date"><CalendarDays size={15}/> {longToday(locale)}</span><span className="top-divider"/><div className="segment-control topbar-lang-switch" role="group" aria-label={copy.languageToggleAria}><button type="button" className={locale === "en" ? "selected" : ""} aria-pressed={locale === "en"} onClick={() => void updateSettings({ locale: "en", patienceLocale: "en" })}>EN</button><button type="button" className={locale === "id" ? "selected" : ""} aria-pressed={locale === "id"} onClick={() => void updateSettings({ locale: "id", patienceLocale: "id" })}>ID</button></div><CassetteTopbarButton deck={cassetteDeck} locale={locale} onOpen={() => openModal("cassette")}/><button type="button" className="breath-link" onClick={() => openModal("breathing")} aria-label={copy.takeABreath}><Wind size={17}/><span> {copy.takeABreath}</span></button><button type="button" className="top-avatar" onClick={() => openSettings()} aria-label={copy.openSettings}>{data.settings.name.charAt(0).toUpperCase()}</button></div></header>
       <div className="page-content"><div className="page-heading"><div className="page-heading-copy" key={view}><h1>{title}{view === "Overview" && <span className="greeting-sun"> ☀</span>}</h1><p>{copy.views[view].subtitle}</p></div><div className="heading-actions">{showAmountsControl && <button type="button" className="privacy-button" onClick={() => setHidden(!hidden)} aria-label={hidden ? copy.showAmounts : copy.hideAmounts} title={hidden ? copy.showAmounts : copy.hideAmounts}>{hidden ? <EyeOff size={17}/> : <Eye size={17}/>}</button>}<button type="button" className="button-primary new-trade-button" onClick={newTrade}><Plus size={18}/> {copy.logATrade}</button></div></div>
         {damaged !== null && <div className="recovery-banner" role="alert"><CircleAlert size={20}/><div><strong>{copy.recoveryTitle}</strong><p>{copy.recoveryBody}</p><div><button type="button" onClick={() => downloadFile("bloom-damaged-journal.txt", damaged, "text/plain")}>{copy.downloadOriginal}</button><button type="button" onClick={() => openSettings()}>{copy.restoreInSettings}</button><button type="button" onClick={() => { if (window.confirm(copy.confirmStartFresh)) void commit(createDemoData(), locale === "id" ? "Jurnal baru telah siap." : "A fresh journal is ready.", true).then((ok) => { if (ok) resetBackupTracking(); }); }}>{copy.startFresh}</button></div></div></div>}
         {storage === "browser" && view === "Overview" && <LocalPwaStatus locale={locale}/>}
@@ -325,7 +354,7 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
         {view === "Overview" && <Overview {...common}/>}
         {view === "Trade journal" && <JournalView trades={visibleTrades} dayJournals={data.settings.dayJournals} hidden={hidden} mode={storage} onEditTrade={editTrade} onNewTrade={newTrade} onImport={() => openModal("import")} onExport={exportCsv} onPreviewCharts={openTradeCharts} onOpenSlides={(slides, index) => setLightbox({ slides, index })} selectedDay={selectedDay} clearDay={() => setSelectedDay("")} locale={locale}/>}
         {view === "Analytics" && <AnalyticsView trades={visibleTrades} allTrades={data.trades} accountFilter={accountFilter} settings={data.settings} hidden={hidden} period={period} onPeriod={setPeriod} onAccountsSettings={() => openSettings("Accounts")}/>}
-        {view === "Weekly review" && <WeeklyReview trades={visibleTrades} settings={data.settings} hidden={hidden} onMindset={() => navigate("Mindset")} onSettings={() => openSettings("Risk")} onEditTrade={editTrade} onNewTrade={newTrade} onJournal={() => navigate("Trade journal")} onPreviewCharts={openTradeCharts}/>}
+        {view === "Weekly review" && <WeeklyReview trades={visibleTrades} settings={data.settings} hidden={hidden} onMindset={() => navigate("Mindset")} onSettings={() => openSettings("Risk")} onEditTrade={editTrade} onNewTrade={newTrade} onJournal={() => navigate("Trade journal")} onPreviewCharts={openTradeCharts} onOpenRecap={(ws) => openRecap(ws)}/>}
         {view === "Calendar" && <CalendarView trades={visibleTrades} allTrades={data.trades} accountFilter={accountFilter} settings={data.settings} hidden={hidden} onDay={day} onAccountsSettings={() => openSettings("Accounts")} onSaveDayJournal={saveDayJournal}/>}
         {view === "Playbook" && <PlaybookView settings={data.settings} trades={visibleTrades} hidden={hidden} onUpdate={(playbook: PlaybookRule[]) => void updateSettings({ playbook })} onUpdateBlueprints={(setupBlueprints: SetupBlueprint[], msg?: string) => void updateSettings({ setupBlueprints }, msg)}/>}
         {view === "Mindset" && <MindsetView settings={data.settings} trades={visibleTrades} onMood={selectMood} onSaveMoodNote={saveMoodNote} onBreath={() => openModal("breathing")} onPatience={() => navigate("Patience")} onSaveReflection={(reflection: WeeklyReflection) => updateSettings({ reflections: [...(dataRef.current.settings.reflections ?? []), reflection] }, locale === "id" ? "Refleksi tersimpan." : "Reflection saved.")} onDeleteReflection={(reflectionId) => { if (window.confirm(locale === "id" ? "Hapus refleksi ini?" : "Delete this reflection?")) void updateSettings({ reflections: (dataRef.current.settings.reflections ?? []).filter((item) => item.id !== reflectionId) }, locale === "id" ? "Refleksi dihapus." : "Reflection removed."); }}/>}
@@ -342,7 +371,17 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
     {modal === "import" && <ImportModal trades={data.trades} accounts={accounts} defaultAccount={defaultAccount} locale={locale} onClose={closeModal} onImport={importTrades}/>}
     {modal === "breathing" && <BreathingModal onClose={closeModal} locale={locale}/>}
     {modal === "cassette" && <CassetteDeckModal deck={cassetteDeck} mode={storage} locale={locale} onClose={closeModal}/>}
+    {modal === "recap" && <RecapCardModal trades={visibleTrades} dayJournals={data.settings.dayJournals} reflections={data.settings.reflections} accountLabel={activeAccountLabel} defaultTheme={data.settings.theme ?? "light"} initialWeekStart={recapWeekStart} locale={locale} onNotify={(msg, err) => notify(msg, Boolean(err))} onClose={closeModal}/>}
+    {modal === "command" && <CommandPaletteModal trades={visibleTrades} settings={data.settings} hidden={hidden} zenMode={zenMode} locale={locale} onClose={closeModal} onNavigate={navigate} onNewTrade={newTrade} onOpenRecap={() => openRecap()} onToggleZen={() => setZenMode((z) => !z)} onOpenBreathing={() => openModal("breathing")} onOpenCassette={() => openModal("cassette")} onPlaySoftRain={() => void cassetteDeck.selectAmbient("soft_rain")} onTogglePrivacy={() => setHidden((h) => !h)} onToggleTheme={() => void updateSettings({ theme: (data.settings.theme ?? "light") === "dark" ? "light" : "dark" })} onToggleLocale={() => { const next = locale === "en" ? "id" : "en"; void updateSettings({ locale: next, patienceLocale: next }); }} onDownloadBackup={() => void backup()} onOpenSettings={() => openSettings()} onEditTrade={editTrade}/>}
     </div>}
+    {zenMode && (
+      <div className="zen-floating-bar" role="region" aria-label={copy.zenModeActiveBadge}>
+        <span className="zen-badge"><Sparkles size={13}/> {copy.zenModeActiveBadge}</span>
+        <button type="button" className="zen-bar-btn" onClick={() => openModal("command")} aria-label={copy.cmdTriggerAria}><Search size={14}/> <span>{copy.cmdTriggerLabel}</span></button>
+        <button type="button" className="zen-bar-btn" onClick={() => setHidden((h) => !h)} aria-label={hidden ? copy.showAmounts : copy.hideAmounts}>{hidden ? <EyeOff size={14}/> : <Eye size={14}/>}</button>
+        <button type="button" className="zen-bar-exit" onClick={() => setZenMode(false)}>{copy.zenExitBtn}</button>
+      </div>
+    )}
     {lightbox && (
       <ChartLightbox
         slides={lightbox.slides}

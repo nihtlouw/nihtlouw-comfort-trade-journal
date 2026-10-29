@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, BookOpenText, ChevronLeft, ChevronRight, CircleAlert, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, BookOpenText, ChevronLeft, ChevronRight, CircleAlert, ImageDown, ShieldCheck, Sparkles } from "lucide-react";
 import { currency, shortDate, todayString } from "@/lib/format";
 import { translateAccountName, UI_COPY } from "@/lib/i18n";
 import { getWeeklyReview, shiftWeek, weekBounds } from "@/lib/review";
@@ -44,7 +44,7 @@ export function RiskOverview({ trades, settings, hidden, onReview, onSettings }:
   </section>;
 }
 
-export function WeeklyReview({ trades, settings, hidden, onMindset, onSettings, onEditTrade, onNewTrade, onJournal, onPreviewCharts }: { trades: Trade[]; settings: JournalSettings; hidden: boolean; onMindset: () => void; onSettings: () => void; onEditTrade: (trade: Trade) => void; onNewTrade: () => void; onJournal: () => void; onPreviewCharts?: (trade: Trade) => void }) {
+export function WeeklyReview({ trades, settings, hidden, onMindset, onSettings, onEditTrade, onNewTrade, onJournal, onPreviewCharts, onOpenRecap }: { trades: Trade[]; settings: JournalSettings; hidden: boolean; onMindset: () => void; onSettings: () => void; onEditTrade: (trade: Trade) => void; onNewTrade: () => void; onJournal: () => void; onPreviewCharts?: (trade: Trade) => void; onOpenRecap?: (weekStart: string) => void }) {
   const locale = settings.locale ?? "en";
   const copy = UI_COPY[locale];
   const [weekStart, setWeekStart] = useState(() => weekBounds().start);
@@ -55,7 +55,10 @@ export function WeeklyReview({ trades, settings, hidden, onMindset, onSettings, 
   const accounts = settings.accounts ?? [DEFAULT_ACCOUNT];
   return <div className="view-stack weekly-review">
     <section className="review-intro card"><div><span className="card-eyebrow"><Sparkles size={13}/> {copy.reviewEyebrow}</span><h2 aria-live="polite" aria-atomic="true">{shortDate(review.start, true, locale)} – {shortDate(review.end, true, locale)}</h2><p>{copy.reviewSub}</p></div>
-      <div className="review-navigation"><button type="button" className="icon-button" aria-label={copy.prevWeek} onClick={() => setWeekStart(shiftWeek(weekStart, -1))}><ChevronLeft size={19}/></button><button type="button" className="review-today" onClick={() => setWeekStart(currentStart)} disabled={weekStart === currentStart}>{copy.thisWeek}</button><button type="button" className="icon-button" aria-label={copy.nextWeek} onClick={() => setWeekStart(shiftWeek(weekStart, 1))}><ChevronRight size={19}/></button></div>
+      <div className="review-intro-controls">
+        {onOpenRecap && <button type="button" className="button-secondary recap-open-btn" onClick={() => onOpenRecap(weekStart)}><ImageDown size={15}/> <span>{copy.recapOpenBtn}</span></button>}
+        <div className="review-navigation"><button type="button" className="icon-button" aria-label={copy.prevWeek} onClick={() => setWeekStart(shiftWeek(weekStart, -1))}><ChevronLeft size={19}/></button><button type="button" className="review-today" onClick={() => setWeekStart(currentStart)} disabled={weekStart === currentStart}>{copy.thisWeek}</button><button type="button" className="icon-button" aria-label={copy.nextWeek} onClick={() => setWeekStart(shiftWeek(weekStart, 1))}><ChevronRight size={19}/></button></div>
+      </div>
     </section>
     <StatsCards trades={review.trades} hidden={hidden} locale={locale}/>
     <div className="review-grid"><div className="review-column">
