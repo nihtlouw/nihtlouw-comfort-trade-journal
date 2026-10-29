@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ElementType } from "react";
-import { BarChart3, BookOpenCheck, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, CircleAlert, Eye, EyeOff, Heart, LayoutDashboard, Menu, NotebookPen, Plus, Settings2, Sprout, Target, Wind, X } from "lucide-react";
+import { BarChart3, BookOpenCheck, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, CircleAlert, ClipboardList, CloudDownload, Eye, EyeOff, Heart, LayoutDashboard, Menu, NotebookPen, Plus, Settings2, Smartphone, Sprout, Target, Wind, X } from "lucide-react";
 import type { Intention, JournalData, JournalSettings, PlaybookRule, Trade, TradeAttachment, WeeklyReflection } from "@/lib/types";
 import { DEFAULT_ACCOUNT, MAX_JOURNAL_IMAGE_BYTES } from "@/lib/types";
 import { currency, longToday, todayString, type Period } from "@/lib/format";
@@ -12,20 +12,24 @@ import { removeAttachment, saveAttachment, type StorageMode } from "@/lib/attach
 import { createBackup, downloadFile, parseBackup, stageBackupImages } from "@/lib/backup";
 import { exportTradesCsv } from "@/lib/csv";
 import { parseTradeInput } from "@/lib/trade-validation";
+import { isBackupReminderDue, loadBackupReminder, recordBackupDownload, snoozeBackupReminder, writeBackupReminder, type BackupReminderState } from "@/lib/backup-reminder";
+import { WeeklyReview } from "@/components/journal-review";
+import { LocalPwaStatus } from "@/components/local-pwa";
 import { AnalyticsView, CalendarView, GoalsView, JournalView, MindsetView, Overview, PlaybookView, type View } from "@/components/journal-views";
-import { BreathingModal, ImportModal, SettingsModal, TradeModal, type TradeDraft } from "@/components/journal-dialogs";
+import { BreathingModal, ImportModal, SettingsModal, TradeModal, type SettingsTab, type TradeDraft } from "@/components/journal-dialogs";
 
 type Modal = "trade" | "settings" | "breathing" | "import" | null;
 // Keep this in sync with --bloom-dialog-exit in globals.css.
 const MODAL_EXIT_MS = 420;
 const workspaceNav: { label: View; icon: ElementType }[] = [
-  { label: "Overview", icon: LayoutDashboard }, { label: "Trade journal", icon: NotebookPen }, { label: "Analytics", icon: BarChart3 }, { label: "Calendar", icon: CalendarDays }, { label: "Playbook", icon: BookOpenCheck },
+  { label: "Overview", icon: LayoutDashboard }, { label: "Trade journal", icon: NotebookPen }, { label: "Analytics", icon: BarChart3 }, { label: "Weekly review", icon: ClipboardList }, { label: "Calendar", icon: CalendarDays }, { label: "Playbook", icon: BookOpenCheck },
 ];
 const personalNav: { label: View; icon: ElementType }[] = [{ label: "Mindset", icon: Heart }, { label: "Goals", icon: Target }];
 const titles: Record<View, { title: string; subtitle: string }> = {
   Overview: { title: "", subtitle: "Your recent trading activity, at a glance." },
   "Trade journal": { title: "Trade journal", subtitle: "Search, filter, and manage your trades." },
   Analytics: { title: "Analytics", subtitle: "Review performance for the selected account and period." },
+  "Weekly review": { title: "Weekly review", subtitle: "Trades, risk, and reflections in one thoughtful view." },
   Calendar: { title: "Calendar", subtitle: "Explore your trades by date." },
   Playbook: { title: "Playbook", subtitle: "Build checklists for each stage of a trade." },
   Mindset: { title: "Mindset", subtitle: "Check in and reflect on your trading." },
@@ -35,12 +39,16 @@ function greeting() { const hour = new Date().getHours(); return hour < 12 ? "Go
 function sortTrades(trades: Trade[]) { return [...trades].sort((a, b) => b.tradeDate.localeCompare(a.tradeDate) || b.id - a.id); }
 function id() { return crypto.randomUUID(); }
 
-export function JournalApp({ initialData, storage = "browser", initialRevision = 0, initialDamaged = null }: { initialData: JournalData; storage?: StorageMode; initialRevision?: number; initialDamaged?: string | null }) {
+export function JournalApp({ initialData, storage = "browser", initialRevision = 0, initialDamaged = null, backupScope = "browser" }: { initialData: JournalData; storage?: StorageMode; initialRevision?: number; initialDamaged?: string | null; backupScope?: string }) {
   const [data, setData] = useState(() => normalizeJournalData(initialData));
   const dataRef = useRef(data); const revision = useRef(initialRevision); const busyRef = useRef(false);
   const [view, setView] = useState<View>("Overview"); const [period, setPeriod] = useState<Period>("1M"); const [modal, setModal] = useState<Modal>(null); const [modalClosing, setModalClosing] = useState(false);
   const [editing, setEditing] = useState<Trade | null>(null); const [hidden, setHidden] = useState(false); const [accountFilter, setAccountFilter] = useState("all");
   const [selectedDay, setSelectedDay] = useState(""); const [mobileMenu, setMobileMenu] = useState(false); const [saving, setSaving] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("General");
+  const [backupTracking, setBackupTracking] = useState<{ state: BackupReminderState; available: boolean } | null>(null);
+  const [backupBusy, setBackupBusy] = useState(false); const backupBusyRef = useRef(false);
+  const [online, setOnline] = useState(true); const [reminderClock, setReminderClock] = useState(0);
   const [damaged, setDamaged] = useState(initialDamaged); const [toast, setToast] = useState<{ message: string; error: boolean; breath: boolean } | null>(null);
   const toastTimer = useRef<number | null>(null); const modalCloseTimer = useRef<number | null>(null); const modalLayer = useRef<HTMLDivElement>(null); const mobileClose = useRef<HTMLButtonElement>(null);
   const prefersReducedMotion = useCallback(() => dataRef.current.settings.reduceMotion === true || window.matchMedia("(prefers-reduced-motion: reduce)").matches, []);
@@ -48,6 +56,7 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
     if (modalCloseTimer.current !== null) window.clearTimeout(modalCloseTimer.current);
     modalCloseTimer.current = null; setModalClosing(false); setModal(next);
   }, []);
+  const openSettings = useCallback((tab: SettingsTab = "General") => { setSettingsTab(tab); openModal("settings"); }, [openModal]);
   const closeModal = useCallback(() => {
     if (modalCloseTimer.current !== null) return;
     if (prefersReducedMotion()) { setModal(null); setModalClosing(false); return; }
@@ -84,6 +93,17 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
     window.addEventListener("keydown", key);
     return () => { window.clearTimeout(focusTimer); window.removeEventListener("keydown", key); if (previousFocus?.isConnected) previousFocus.focus(); };
   }, [mobileMenu]);
+  useEffect(() => {
+    function refresh() {
+      try { setBackupTracking(loadBackupReminder(window.localStorage, backupScope, Date.now())); }
+      catch { setBackupTracking({ state: { firstSeenAt: Date.now(), lastDownloadAt: null, snoozedUntil: null }, available: false }); }
+      setOnline(window.navigator.onLine); setReminderClock(Date.now());
+    }
+    // Run after hydration and refresh while the journal is open or brought back into focus.
+    const first = window.setTimeout(refresh, 0); const interval = window.setInterval(refresh, 60_000);
+    window.addEventListener("focus", refresh); window.addEventListener("online", refresh); window.addEventListener("offline", refresh); window.addEventListener("storage", refresh);
+    return () => { window.clearTimeout(first); window.clearInterval(interval); window.removeEventListener("focus", refresh); window.removeEventListener("online", refresh); window.removeEventListener("offline", refresh); window.removeEventListener("storage", refresh); };
+  }, [backupScope]);
   const accounts = data.settings.accounts ?? [DEFAULT_ACCOUNT];
   const sampleCount = data.trades.filter((trade) => trade.isDemo).length;
   const visibleTrades = sortTrades(data.trades.filter((trade) => (data.settings.includeSamples !== false || !trade.isDemo) && (accountFilter === "all" || (trade.accountId ?? DEFAULT_ACCOUNT.id) === accountFilter)));
@@ -149,7 +169,27 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
   async function addGoal(goal: Intention) { const goals = dataRef.current.settings.goals ?? []; if (goals.length >= 20) { notify("You can have up to 20 intentions.", true); return false; } return updateGoals([...goals, goal], "Intention added."); }
   async function addAccount(name: string) { const current = dataRef.current.settings.accounts ?? [DEFAULT_ACCOUNT]; if (current.length >= 20 || current.some((item) => item.name.toLowerCase() === name.toLowerCase())) { notify("Choose a unique account name (up to 20 accounts).", true); return false; } return updateSettings({ accounts: [...current, { id: id(), name: name.slice(0, 40) }] }, "Account added."); }
   async function removeAccount(accountId: string) { const current = dataRef.current; if (current.trades.some((trade) => (trade.accountId ?? DEFAULT_ACCOUNT.id) === accountId)) { notify("Move or delete this account’s trades before removing it.", true); return false; } const next = (current.settings.accounts ?? []).filter((account) => account.id !== accountId); if (!next.length) return false; const ok = await updateSettings({ accounts: next }, "Account removed."); if (ok && accountFilter === accountId) setAccountFilter("all"); return ok; }
-  async function backup() { try { const content = await createBackup(dataRef.current, storage); downloadFile(`bloom-backup-${todayString()}.json`, content, "application/json"); notify("Backup downloaded. Keep it somewhere private."); } catch (error) { notify(error instanceof Error ? error.message : "Couldn’t create a backup.", true); } }
+  function saveBackupTracking(state: BackupReminderState) {
+    let available = false; try { available = writeBackupReminder(window.localStorage, backupScope, state); } catch { /* Device storage is unavailable. */ }
+    setBackupTracking({ state, available }); setReminderClock(Date.now()); return available;
+  }
+  function resetBackupTracking() { saveBackupTracking({ firstSeenAt: Date.now(), lastDownloadAt: null, snoozedUntil: null }); }
+  async function backup() {
+    if (backupBusyRef.current) return;
+    if (damaged !== null) { notify("Your saved journal needs recovery. Download the original from the recovery notice first.", true); return; }
+    if (busyRef.current) { notify("Wait for the current save to finish before creating a backup.", true); return; }
+    backupBusyRef.current = true; setBackupBusy(true);
+    try {
+      const content = await createBackup(dataRef.current, storage);
+      downloadFile(`bloom-backup-${todayString()}.json`, content, "application/json");
+      let state = backupTracking?.state;
+      if (!state) { try { state = loadBackupReminder(window.localStorage, backupScope, Date.now()).state; } catch { state = { firstSeenAt: Date.now(), lastDownloadAt: null, snoozedUntil: null }; } }
+      const remembered = saveBackupTracking(recordBackupDownload(state, Date.now()));
+      notify(remembered ? "Backup download started. Keep the unencrypted file somewhere private." : "Download started, but reminder history couldn’t be saved on this device.", !remembered);
+    } catch (error) { notify(error instanceof Error ? error.message : "Couldn’t create a backup.", true); }
+    finally { backupBusyRef.current = false; setBackupBusy(false); }
+  }
+  function snoozeBackup() { if (!backupTracking) return; const ok = saveBackupTracking(snoozeBackupReminder(backupTracking.state, Date.now())); if (!ok) notify("Couldn’t save reminder history on this device.", true); }
   function exportCsv(trades: Trade[]) { downloadFile(`bloom-trades-${todayString()}.csv`, exportTradesCsv(trades, dataRef.current.settings.accounts ?? [DEFAULT_ACCOUNT]), "text/csv;charset=utf-8"); notify("CSV downloaded."); }
   async function restore(file: File) {
     let staged: TradeAttachment[] = [];
@@ -159,7 +199,7 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
       const oldImages = dataRef.current.trades.flatMap((trade) => trade.attachments ?? []);
       const ok = await commit(result.journal, "Backup restored successfully.", true);
       if (!ok) { await Promise.allSettled(staged.map((image) => removeAttachment(image.id, storage))); return false; }
-      await removeUnusedImages(oldImages); setAccountFilter("all"); return true;
+      await removeUnusedImages(oldImages); setAccountFilter("all"); resetBackupTracking(); return true;
     } catch (error) { await Promise.allSettled(staged.map((image) => removeAttachment(image.id, storage))); notify(error instanceof Error ? error.message : "Couldn’t restore this backup.", true); return false; }
   }
   async function importTrades(trades: Trade[]) { const current = dataRef.current; return commit({ ...current, trades: sortTrades([...trades, ...current.trades]) }, `${trades.length} ${trades.length === 1 ? "trade" : "trades"} imported.`); }
@@ -171,24 +211,29 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
       window.location.replace("/");
     } catch (error) { notify(error instanceof Error ? error.message : "Couldn’t sign out.", true); }
   }
-  const common = { trades: visibleTrades, settings: data.settings, hidden, onEditTrade: editTrade, onNewTrade: newTrade, onView: navigate, onDay: day, onMood: selectMood, onMarkGoal: markGoal, period, onPeriod: setPeriod };
+  const common = { trades: visibleTrades, settings: data.settings, hidden, onEditTrade: editTrade, onNewTrade: newTrade, onView: navigate, onDay: day, onMood: selectMood, onMarkGoal: markGoal, onRiskSettings: () => openSettings("Risk"), period, onPeriod: setPeriod };
   const title = view === "Overview" ? `${greeting()}, ${data.settings.name}` : titles[view].title;
   const showTradeControls = view !== "Playbook" && view !== "Goals";
   const showAmountsControl = showTradeControls && view !== "Mindset";
   return <div className="app-shell" data-theme={data.settings.theme ?? "light"} data-motion={data.settings.reduceMotion ? "reduced" : "system"}>
     <aside id="primary-sidebar" className={`sidebar ${mobileMenu ? "mobile-open" : ""}`}><button type="button" className="brand" onClick={() => navigate("Overview")} aria-label="Bloom home"><span className="brand-mark"><Sprout size={25} strokeWidth={1.6}/></span><span className="brand-word"><strong>bloom<span>.</span></strong><small>TRADING JOURNAL</small></span></button><button type="button" ref={mobileClose} className="mobile-close icon-button" onClick={() => setMobileMenu(false)} aria-label="Close navigation"><X size={20}/></button>
       <div className="sidebar-scroll"><div className="nav-label">WORKSPACE <span>✳</span></div><nav className="sidebar-nav" aria-label="Workspace">{workspaceNav.map(({ label, icon: Icon }) => <button type="button" key={label} className={view === label ? "active" : ""} aria-current={view === label ? "page" : undefined} onClick={() => navigate(label)}><Icon size={18} strokeWidth={1.7}/><span>{label}</span>{view === label && <span className="nav-active-dot"/>}</button>)}</nav><div className="nav-label personal-label">YOUR WELLBEING <span>✳</span></div><nav className="sidebar-nav" aria-label="Your wellbeing">{personalNav.map(({ label, icon: Icon }) => <button type="button" key={label} className={view === label ? "active" : ""} aria-current={view === label ? "page" : undefined} onClick={() => navigate(label)}><Icon size={18} strokeWidth={1.7}/><span>{label}</span>{view === label && <span className="nav-active-dot"/>}</button>)}</nav>
-      <button type="button" className="sidebar-settings" onClick={() => { setMobileMenu(false); openModal("settings"); }}><Settings2 size={18}/> Settings</button></div>
-      <div className="sidebar-bottom"><div className="sidebar-storage"><span className="storage-dot"/>{storage === "browser" ? "SAVED IN THIS BROWSER" : "PRIVATE ACCOUNT"}</div><button type="button" className="profile-button" onClick={() => openModal("settings")}><span className="avatar">{data.settings.name.charAt(0).toUpperCase()}</span><span><strong>{data.settings.name === "friend" ? "My space" : data.settings.name}</strong><small>{storage === "browser" ? "Personal journal" : "Synced journal"}</small></span><Settings2 size={16}/></button></div>
+      <button type="button" className="sidebar-settings" onClick={() => { setMobileMenu(false); openSettings(); }}><Settings2 size={18}/> Settings</button></div>
+      <div className="sidebar-bottom"><div className="sidebar-storage"><span className="storage-dot"/>{storage === "browser" ? "SAVED IN THIS BROWSER" : "PRIVATE ACCOUNT"}</div><button type="button" className="profile-button" onClick={() => openSettings()}><span className="avatar">{data.settings.name.charAt(0).toUpperCase()}</span><span><strong>{data.settings.name === "friend" ? "My space" : data.settings.name}</strong><small>{storage === "browser" ? "Personal journal" : "Synced journal"}</small></span><Settings2 size={16}/></button></div>
     </aside><button type="button" className={`mobile-scrim ${mobileMenu ? "is-visible" : ""}`} onClick={() => setMobileMenu(false)} aria-label="Close navigation" aria-hidden={!mobileMenu} tabIndex={-1}/>
-    <main className="main-shell"><header className="topbar"><div className="topbar-left"><button type="button" className="mobile-menu-button icon-button" onClick={() => setMobileMenu(true)} aria-label="Open navigation" aria-expanded={mobileMenu} aria-controls="primary-sidebar"><Menu size={21}/></button><div className="breadcrumbs"><span>My workspace</span><ChevronRight size={14}/><strong>{view}</strong></div><span className="mobile-top-brand" aria-hidden="true">bloom<span>.</span></span></div><div className="topbar-actions"><span className="top-date"><CalendarDays size={15}/> {longToday()}</span><span className="top-divider"/><button type="button" className="breath-link" onClick={() => openModal("breathing")} aria-label="Take a breath"><Wind size={17}/><span> Take a breath</span></button><button type="button" className="top-avatar" onClick={() => openModal("settings")} aria-label="Open settings">{data.settings.name.charAt(0).toUpperCase()}</button></div></header>
+    <main className="main-shell"><header className="topbar"><div className="topbar-left"><button type="button" className="mobile-menu-button icon-button" onClick={() => setMobileMenu(true)} aria-label="Open navigation" aria-expanded={mobileMenu} aria-controls="primary-sidebar"><Menu size={21}/></button><div className="breadcrumbs"><span>My workspace</span><ChevronRight size={14}/><strong>{view}</strong></div><span className="mobile-top-brand" aria-hidden="true">bloom<span>.</span></span></div><div className="topbar-actions"><span className="top-date"><CalendarDays size={15}/> {longToday()}</span><span className="top-divider"/><button type="button" className="breath-link" onClick={() => openModal("breathing")} aria-label="Take a breath"><Wind size={17}/><span> Take a breath</span></button><button type="button" className="top-avatar" onClick={() => openSettings()} aria-label="Open settings">{data.settings.name.charAt(0).toUpperCase()}</button></div></header>
       <div className="page-content"><div className="page-heading"><div className="page-heading-copy" key={view}><h1>{title}{view === "Overview" && <span className="greeting-sun"> ☀</span>}</h1><p>{titles[view].subtitle}</p></div><div className="heading-actions">{showAmountsControl && <button type="button" className="privacy-button" onClick={() => setHidden(!hidden)} aria-label={hidden ? "Show amounts" : "Hide amounts"} title={hidden ? "Show amounts" : "Hide amounts"}>{hidden ? <EyeOff size={17}/> : <Eye size={17}/>}</button>}<button type="button" className="button-primary new-trade-button" onClick={newTrade}><Plus size={18}/> Log a trade</button></div></div>
-        {damaged !== null && <div className="recovery-banner" role="alert"><CircleAlert size={20}/><div><strong>Your saved journal needs recovery.</strong><p>We haven’t overwritten it. Download the original, then restore a valid Bloom backup or start fresh.</p><div><button type="button" onClick={() => downloadFile("bloom-damaged-journal.txt", damaged, "text/plain")}>Download original</button><button type="button" onClick={() => openModal("settings")}>Restore backup in settings</button><button type="button" onClick={() => { if (window.confirm("Replace the damaged journal with a fresh sample journal? Download the original first.")) void commit(createDemoData(), "A fresh journal is ready.", true); }}>Start fresh</button></div></div></div>}
+        {damaged !== null && <div className="recovery-banner" role="alert"><CircleAlert size={20}/><div><strong>Your saved journal needs recovery.</strong><p>We haven’t overwritten it. Download the original, then restore a valid Bloom backup or start fresh.</p><div><button type="button" onClick={() => downloadFile("bloom-damaged-journal.txt", damaged, "text/plain")}>Download original</button><button type="button" onClick={() => openSettings()}>Restore backup in settings</button><button type="button" onClick={() => { if (window.confirm("Replace the damaged journal with a fresh sample journal? Download the original first.")) void commit(createDemoData(), "A fresh journal is ready.", true).then((ok) => { if (ok) resetBackupTracking(); }); }}>Start fresh</button></div></div></div>}
+        {storage === "browser" && view === "Overview" && <LocalPwaStatus/>}
+        {storage === "server" && online && view === "Overview" && <section className="local-pwa-status" aria-label="Private and browser journal information"><span className="local-pwa-icon"><Smartphone size={18}/></span><div><strong>Private account · online sync</strong><p>The installable offline app opens a separate browser-only journal, not this private account.</p></div><a className="button-secondary" href="/local/">Open browser journal</a></section>}
+        {storage === "server" && !online && <div className="offline-notice" role="status"><CircleAlert size={19}/><div><strong>Private sync needs a connection.</strong><p>Changes to this account can’t be saved while offline. The separate browser-only journal can be used offline after it has been opened online.</p><a href="/local/">Open browser-only journal</a></div></div>}
+        {damaged === null && backupTracking?.available && isBackupReminderDue(backupTracking.state, data.settings.backupReminderDays ?? 7, reminderClock) && <section className="backup-reminder" aria-label="Backup reminder"><span className="backup-reminder-icon"><CloudDownload size={20}/></span><div><strong>Time for a backup?</strong><p>{backupTracking.state.lastDownloadAt ? "It’s been a while since a backup download was started on this device." : "Keep an independent copy of your journal and screenshots."} Backup files are not encrypted.</p></div><div className="backup-reminder-actions"><button type="button" className="button-secondary" disabled={backupBusy} onClick={() => void backup()}>{backupBusy ? "Preparing..." : "Back up now"}</button><button type="button" className="button-quiet" onClick={snoozeBackup}>Remind me in 7 days</button><button type="button" className="button-quiet" onClick={() => openSettings("Data")}>Settings</button></div></section>}
         {showTradeControls && <div className="workspace-controls"><div className="account-select-wrap"><span className="account-select-icon">✳</span><label><span>ACCOUNT</span><select aria-label="Filter by trading account" value={accountFilter} onChange={(event) => setAccountFilter(event.target.value)}><option value="all">All accounts</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label><ChevronDown size={14}/></div><div className="workspace-control-right">{sampleCount > 0 && <button type="button" className={`sample-toggle ${data.settings.includeSamples !== false ? "on" : ""}`} onClick={() => void updateSettings({ includeSamples: data.settings.includeSamples === false }, data.settings.includeSamples === false ? "Sample trades included." : "Sample trades hidden.")} aria-pressed={data.settings.includeSamples !== false}><span className="sample-indicator-dot"/> {data.settings.includeSamples === false ? "Samples hidden" : "Samples included"}<span className="switch"><i/></span></button>}<span className="save-indicator"><span/>{saving ? "Saving..." : storage === "browser" ? "Saved on this device" : "Private & synced"}</span></div></div>}
         <div className="view-motion" data-view={view} key={view}>
         {view === "Overview" && <Overview {...common}/>}
         {view === "Trade journal" && <JournalView trades={visibleTrades} hidden={hidden} onEditTrade={editTrade} onNewTrade={newTrade} onImport={() => openModal("import")} onExport={exportCsv} selectedDay={selectedDay} clearDay={() => setSelectedDay("")}/>}
         {view === "Analytics" && <AnalyticsView trades={visibleTrades} hidden={hidden} period={period} onPeriod={setPeriod}/>}
+        {view === "Weekly review" && <WeeklyReview trades={visibleTrades} settings={data.settings} hidden={hidden} onMindset={() => navigate("Mindset")} onSettings={() => openSettings("Risk")} onEditTrade={editTrade} onNewTrade={newTrade} onJournal={() => navigate("Trade journal")}/>}
         {view === "Calendar" && <CalendarView trades={visibleTrades} hidden={hidden} onDay={day}/>}
         {view === "Playbook" && <PlaybookView settings={data.settings} onUpdate={(playbook: PlaybookRule[]) => void updateSettings({ playbook })}/>}
         {view === "Mindset" && <MindsetView settings={data.settings} trades={visibleTrades} onMood={selectMood} onSaveMoodNote={saveMoodNote} onBreath={() => openModal("breathing")} onSaveReflection={(reflection: WeeklyReflection) => updateSettings({ reflections: [...(dataRef.current.settings.reflections ?? []), reflection] }, "Reflection saved.")} onDeleteReflection={(reflectionId) => { if (window.confirm("Delete this reflection?")) void updateSettings({ reflections: (dataRef.current.settings.reflections ?? []).filter((item) => item.id !== reflectionId) }, "Reflection removed."); }}/>}
@@ -199,8 +244,8 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
     {modal && <div ref={modalLayer} className={`modal-layer ${modalClosing ? "is-closing" : ""}`}
       onClickCapture={(event) => { if (modalClosing) { event.preventDefault(); event.stopPropagation(); } }}
       onSubmitCapture={(event) => { if (modalClosing) { event.preventDefault(); event.stopPropagation(); } }}>
-    {modal === "trade" && <TradeModal key={editing?.id ?? "new"} trade={editing} accounts={accounts} playbook={data.settings.playbook} defaultAccount={defaultAccount} mode={storage} onClose={closeModal} onSave={saveTrade} onDelete={deleteTrade}/>}
-    {modal === "settings" && <SettingsModal data={data} mode={storage} sampleCount={sampleCount} onClose={closeModal} onUpdate={updateSettings} onClearSamples={clearSamples} onBackup={backup} onRestore={restore} onExportCsv={() => exportCsv(dataRef.current.trades)} onImportCsv={() => openModal("import")} onAddAccount={addAccount} onRemoveAccount={removeAccount} onSignOut={storage === "server" ? signOut : undefined}/>}
+    {modal === "trade" && <TradeModal key={editing?.id ?? "new"} trade={editing} trades={data.trades} limits={data.settings.riskLimits ?? { perTrade: null, dailyLoss: null }} hidden={hidden} accounts={accounts} playbook={data.settings.playbook} defaultAccount={defaultAccount} mode={storage} onClose={closeModal} onSave={saveTrade} onDelete={deleteTrade}/>}
+    {modal === "settings" && <SettingsModal data={data} mode={storage} sampleCount={sampleCount} initialTab={settingsTab} backupState={backupTracking?.state ?? null} backupAvailable={backupTracking?.available ?? false} backupEnabled={damaged === null} onClose={closeModal} onUpdate={updateSettings} onClearSamples={clearSamples} onBackup={backup} onRestore={restore} onExportCsv={() => exportCsv(dataRef.current.trades)} onImportCsv={() => openModal("import")} onAddAccount={addAccount} onRemoveAccount={removeAccount} onSignOut={storage === "server" ? signOut : undefined}/>}
     {modal === "import" && <ImportModal trades={data.trades} accounts={accounts} defaultAccount={defaultAccount} onClose={closeModal} onImport={importTrades}/>}
     {modal === "breathing" && <BreathingModal onClose={closeModal}/>}
     </div>}

@@ -17,6 +17,9 @@ export type TradingAccount = { id: string; name: string };
 export type MoodEntry = { date: string; mood: string; note: string };
 export type Intention = { id: string; text: string; target: number; progress: number; markedDates: string[] };
 export type WeeklyReflection = { id: string; date: string; wentWell: string; learned: string; nextWeek: string };
+/** Informational thresholds, in USD. A null limit is disabled. */
+export type RiskLimits = { perTrade: number | null; dailyLoss: number | null };
+export type BackupReminderDays = 0 | 7 | 14 | 30;
 
 export type Trade = {
   id: number;
@@ -64,6 +67,9 @@ export type JournalSettings = {
   /** Reduce interface motion regardless of the device preference. */
   reduceMotion?: boolean;
   includeSamples?: boolean;
+  riskLimits?: RiskLimits;
+  /** Reminder preference; last-download status stays on the current device. */
+  backupReminderDays?: BackupReminderDays;
 };
 
 export type JournalData = { trades: Trade[]; settings: JournalSettings };

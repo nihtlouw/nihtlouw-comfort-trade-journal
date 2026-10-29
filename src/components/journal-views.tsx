@@ -5,10 +5,11 @@ import { ArrowRight, BookHeart, CalendarDays, Check, CheckCircle2, ChevronDown, 
 import { groupTrades, maxRealizedDrawdown, previousPeriodTrades } from "@/lib/analytics";
 import { currency, filterTrades, getStats, shortDate, todayString, type Period } from "@/lib/format";
 import { MARKETS, MOODS, type Intention, type JournalSettings, type PlaybookRule, type Trade, type WeeklyReflection } from "@/lib/types";
+import { RiskOverview } from "@/components/journal-review";
 import { CardTitle, GoalCard, MoodCard, PerformanceChart, StatsCards, TradeTable, TradingCalendar } from "@/components/journal-ui";
 
-export type View = "Overview" | "Trade journal" | "Analytics" | "Calendar" | "Playbook" | "Mindset" | "Goals";
-export type CommonProps = { trades: Trade[]; settings: JournalSettings; hidden: boolean; onEditTrade: (trade: Trade) => void; onNewTrade: () => void; onView: (view: View) => void; onDay: (date: string) => void; onMood: (mood: string) => void; onMarkGoal: (id: string) => void; period: Period; onPeriod: (period: Period) => void };
+export type View = "Overview" | "Trade journal" | "Analytics" | "Calendar" | "Playbook" | "Mindset" | "Goals" | "Weekly review";
+export type CommonProps = { trades: Trade[]; settings: JournalSettings; hidden: boolean; onEditTrade: (trade: Trade) => void; onNewTrade: () => void; onView: (view: View) => void; onDay: (date: string) => void; onMood: (mood: string) => void; onMarkGoal: (id: string) => void; onRiskSettings: () => void; period: Period; onPeriod: (period: Period) => void };
 
 export function Overview(props: CommonProps) {
   const periodTrades = filterTrades(props.trades, props.period);
@@ -22,7 +23,7 @@ export function Overview(props: CommonProps) {
     <PerformanceChart trades={periodTrades} period={props.period} onPeriodChange={props.onPeriod} hidden={props.hidden}/>
     <TradeTable trades={props.trades.slice(0, 5)} hidden={props.hidden} onEdit={props.onEditTrade} onNew={props.onNewTrade} onViewAll={() => props.onView("Trade journal")} compact/>
     <TradingCalendar trades={props.trades} hidden={props.hidden} onDay={props.onDay} compact/>
-  </div><aside className="overview-side"><MoodCard settings={props.settings} onMood={props.onMood} onOpen={() => props.onView("Mindset")}/><GoalCard settings={props.settings} onMark={props.onMarkGoal} onOpen={() => props.onView("Goals")}/></aside></div>;
+  </div><aside className="overview-side"><MoodCard settings={props.settings} onMood={props.onMood} onOpen={() => props.onView("Mindset")}/><GoalCard settings={props.settings} onMark={props.onMarkGoal} onOpen={() => props.onView("Goals")}/><RiskOverview trades={props.trades} settings={props.settings} hidden={props.hidden} onReview={() => props.onView("Weekly review")} onSettings={props.onRiskSettings}/></aside></div>;
 }
 
 export function JournalView({ trades, hidden, onEditTrade, onNewTrade, onImport, onExport, selectedDay, clearDay }: { trades: Trade[]; hidden: boolean; onEditTrade: (trade: Trade) => void; onNewTrade: () => void; onImport: () => void; onExport: (trades: Trade[]) => void; selectedDay: string; clearDay: () => void }) {

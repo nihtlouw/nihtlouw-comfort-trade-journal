@@ -8,8 +8,9 @@ A calmer place to record trades, understand your process, and look after your mi
 - Trade logging with optional entry/exit, size, stop, target, fees, initial risk, timeframe, session, tags, checklist snapshots, and screenshots.
 - Search and filters, a trading calendar, CSV export, and mapped CSV import with a preview, validation, and possible-duplicate checks. On phones, filters collapse, trade rows show all details without horizontal scrolling, and calendar markers lead to exact daily amounts. Broker CSV files can be imported without giving Bloom trading permissions; **there is no live broker API connection or order execution**.
 - Realized P&L charts, period comparisons, expectancy, average win/loss, R-multiple, realized drawdown, and breakdowns by market, setup, mood, and weekday.
+- A Monday–Sunday weekly review bringing together trades, setups, risk coverage, trade notes, and reflections; optional post-trade risk reminders.
 - A playbook, mood-check-in history, reflections, multiple intentions, and an optional breathing break.
-- Full JSON backup/restore including screenshots, plus an optional private PostgreSQL account mode.
+- An installable browser-only Android experience with offline access, full JSON backup/restore including screenshots, periodic backup reminders, and an optional private PostgreSQL account mode.
 
 ## Quick start: browser-only
 
@@ -24,6 +25,26 @@ Open http://localhost:3000. If `DATABASE_URL` is not set, the app uses the brows
 
 Use **Settings → Data → Download** to make a full backup and keep it somewhere safe. The JSON file contains sensitive financial information and images **in plaintext**, so protect it and do not commit it to Git. Restoring a backup replaces the current journal after confirmation. CSV contains trades only, not screenshots, settings, or reflections.
 
+### Install and use offline on Android
+
+1. On an HTTPS deployment (or localhost), open **`/local/`** online in a supported Android browser (append it to the site’s base path on GitHub Pages). Offline installation is enabled in production builds, not `npm run dev`; locally, use `npm run build` followed by `npm start`. The app is browser-only here, even when private accounts are configured. Wait until the Overview says **“Browser journal ready offline.”**
+2. Use the **Install app** button if offered, or the browser menu’s **Install app / Add to Home screen** option. The Bloom icon opens the browser-only journal; the exact menu wording depends on the browser. This is a web app, not a Play Store package.
+3. Open it while connected after an update so the new shell can be prepared. Once ready, the local journal, trade screenshots, and backup/restore work without a network. Existing local data remains in the browser’s local storage and IndexedDB—not in the app cache. Browser storage may be cleared or evicted, so keep independent backups.
+
+The service worker caches **only** the generic `/local/` shell and public build assets, fonts, artwork, and icons. It does not cache signed-in pages, API responses, account data, or private screenshot responses. Private-account sync requires connectivity; its journal is separate from the local journal. If the private page is already open when connectivity is lost, changes cannot sync and are not silently saved to the browser journal. To move data between modes, explicitly create and restore a backup.
+
+### Weekly review and risk reminders
+
+**Weekly review** uses the device’s date for the current Monday–Sunday week. Navigate between weeks to see the account- and sample-filtered trades, net P&L, setups, risk-entry coverage, trade notes, and recorded reflections. Reflections are journal-wide and are not tied to a trading account; they stay visible when changing the account filter. The trade list shows up to 100 entries; use the journal for additional trades. Amount hiding applies to displayed calculated amounts.
+
+In **Settings → Risk**, optionally set an initial-risk limit per trade and a daily realized-net-loss limit, in USD. The same chosen daily limit is checked **separately for each account and calendar date**. A reminder appears when an amount is **greater than** its limit: daily realized net loss is the negative of the sum of recorded net P&L that day, with each amount rounded to cents, so gains offset losses. Samples are excluded. Only positive entered initial-risk values can be checked; missing or zero risk is shown as missing coverage in the review. These are informational checks on manually recorded outcomes, not live brokerage monitoring or investment advice; they do not place or block orders or prevent saving a trade.
+
+### Backup reminders
+
+In **Settings → Data**, choose reminders every 7, 14, or 30 days, or turn them off. The default is 7 days, counted from the first time this journal is opened on the device or the most recent backup download started there. Reminders appear only while Bloom is open; they are not push notifications. You can snooze a reminder for seven days.
+
+The frequency is a journal setting and travels with backups and private sync. The **last download started** and snooze history are stored only in this browser, separately for the browser journal and each private user. Restoring/replacing a journal resets that device’s tracking for it; clearing site data also removes the history. A download start is recorded only after backup creation and browser download initiation, but it **does not prove the file was saved**. Check the downloaded file and keep it somewhere private.
+
 Existing v1 browser journals are read and upgraded in memory using the original storage key; no manual migration is required. If saved data is invalid, Bloom leaves it untouched and blocks writes until you download the original, restore a backup, or explicitly start fresh.
 
 ## GitHub Pages
@@ -34,9 +55,10 @@ The static app is published at **https://nihtlouw.github.io/nihtlouw-comfort-tra
 npm run build:pages
 # With Chrome/Chromium installed:
 CHROME_PATH=/path/to/chromium npm run test:pages
+CHROME_PATH=/path/to/chromium npm run test:features
 ```
 
-The site is generated in `out/` using a temporary source copy; API routes and environment files are excluded. The UI test uses an isolated browser profile and checks the repository base path, persistence, imports, backup/restore, recovery, and all seven views on 320px, 360px, and 412px touch screens, plus landscape layouts. `PAGES_TEST_URL` can point it at a deployed Pages URL.
+The site is generated in `out/` using a temporary source copy; API routes and environment files are excluded. The UI test uses an isolated browser profile and checks the repository base path, persistence, imports, backup/restore, recovery, and the existing views on 320px, 360px, and 412px touch screens, plus landscape layouts. `test:features` checks the installed shell, offline reload and screenshots, update behavior, weekly review, risk alerts, reminders, and backup/restore. `PAGES_TEST_URL` can point the existing UI suite at a deployed Pages URL; `BLOOM_FEATURE_URL` can point the feature suite at a production server’s root URL.
 
 ## Optional private accounts and sync
 
@@ -85,6 +107,7 @@ npm test
 npm run build
 npm run build:pages
 CHROME_PATH=/path/to/chromium npm run test:pages
+CHROME_PATH=/path/to/chromium npm run test:features
 ```
 
-`npm run test:private` and `CHROME_PATH=/path/to/chromium npm run test:private:ui` are additional API and browser smoke tests for a **disposable local** PostgreSQL database and local server with sign-up enabled. Set `BLOOM_TEST_URL=http://localhost:3001`; the scripts create test accounts and check isolation, conflicts, origin checks, image ownership, backups, and the disabled legacy API. Do not point tests at real user data.
+`npm run test:private`, `CHROME_PATH=/path/to/chromium npm run test:private:ui`, and `CHROME_PATH=/path/to/chromium npm run test:private:features` are additional API and browser smoke tests for a **disposable local** PostgreSQL database and local server with sign-up enabled. Set `BLOOM_TEST_URL=http://localhost:3001`; the scripts create test accounts and check isolation, conflicts, origin checks, image ownership, backups, and the disabled legacy API. Do not point tests at real user data.

@@ -29,7 +29,7 @@ await new Promise((ready) => server.listen(0, "127.0.0.1", ready));
 const url = process.env.PAGES_TEST_URL ?? `http://127.0.0.1:${server.address().port}${basePath}`;
 let browser;
 try {
-  browser = await chromium.launch({ executablePath: browserPath, headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage", "--no-zygote", "--single-process"] });
+  browser = await chromium.launch({ executablePath: browserPath, headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
   const staticContext = await browser.newContext({ viewport: { width: 1440, height: 900 }, javaScriptEnabled: false });
   const staticLoading = await staticContext.newPage(); await staticLoading.goto(url);
@@ -37,8 +37,7 @@ try {
   assert.equal(await staticLoading.getByRole("status").innerText(), "Opening your journal…");
   assert.equal(await staticLoading.locator(".loading-content noscript").textContent(), "Please enable JavaScript to use this journal.");
   assert.equal(await staticLoading.getByRole("progressbar").count(), 0, "loading must not claim a made-up percentage");
-  // Keep this context open until browser shutdown; single-process Chromium can
-  // otherwise terminate when the first page is closed.
+  // Keep the static context open until browser cleanup.
   console.log("PASS: an honest, accessible branded loading state is server-rendered.");
 
   const page = await context.newPage(); const errors = []; const apiRequests = [];
@@ -288,6 +287,10 @@ try {
   await recovery.goto(url, { waitUntil: "networkidle" }); await recovery.evaluate(() => localStorage.setItem("nihtlouw-comfort-trade-journal:v1", "{broken")); await recovery.reload({ waitUntil: "networkidle" });
   assert.equal(await recovery.locator(".recovery-banner").isVisible(), true); await recovery.locator(".goal-button").click(); await recovery.getByText(/Saved journal needs recovery/).waitFor();
   assert.equal(await recovery.evaluate(() => localStorage.getItem("nihtlouw-comfort-trade-journal:v1")), "{broken");
+  await recovery.getByLabel("Open settings").click(); await recovery.getByRole("button", { name: "Data", exact: true }).click();
+  assert.equal(await recovery.getByRole("button", { name: "Download", exact: true }).isDisabled(), true);
+  assert.match(await recovery.locator(".data-settings").innerText(), /Full backup is unavailable/);
+  await recovery.getByRole("button", { name: "Close", exact: true }).click(); await recovery.locator(".modal").waitFor({ state: "detached" });
   await recovery.getByRole("button", { name: "Start fresh", exact: true }).click(); await recovery.locator(".recovery-banner").waitFor({ state: "detached" });
   await recovery.evaluate(() => { Storage.prototype.setItem = () => { throw new DOMException("Storage blocked", "SecurityError"); }; }); await recovery.locator(".goal-button").click();
   await recovery.getByText(/Couldn't save in this browser/).waitFor(); assert.match(await recovery.locator(".goal-progress-label").first().innerText(), /0/);

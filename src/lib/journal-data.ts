@@ -36,6 +36,8 @@ const settings = z.object({
   moodHistory: z.array(z.object({ date, mood: z.string().min(1).max(24), note: z.string().max(1000) })).max(3660).optional(),
   reflections: z.array(z.object({ id, date, wentWell: z.string().max(2000), learned: z.string().max(2000), nextWeek: z.string().max(2000) })).max(520).optional(),
   theme: z.enum(["light", "dark"]).optional(), reduceMotion: z.boolean().optional(), includeSamples: z.boolean().optional(),
+  riskLimits: z.object({ perTrade: z.number().finite().positive().max(99999999999).nullable(), dailyLoss: z.number().finite().positive().max(99999999999).nullable() }).optional(),
+  backupReminderDays: z.union([z.literal(0), z.literal(7), z.literal(14), z.literal(30)]).optional(),
 });
 const journal = z.object({ trades: z.array(trade).max(10000), settings }).superRefine((value, ctx) => {
   const ids = value.trades.map((item) => item.id);
@@ -72,6 +74,8 @@ export function normalizeJournalData(input: unknown): JournalData {
       theme: data.settings.theme ?? "light",
       reduceMotion: data.settings.reduceMotion ?? false,
       includeSamples: data.settings.includeSamples ?? true,
+      riskLimits: data.settings.riskLimits ?? { perTrade: null, dailyLoss: null },
+      backupReminderDays: data.settings.backupReminderDays ?? 7,
     },
   };
 }
