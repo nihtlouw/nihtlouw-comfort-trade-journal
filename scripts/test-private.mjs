@@ -25,5 +25,21 @@ const upload = await request("/api/attachments", alice, { method: "POST", header
 const image = await upload.json(); assert.equal((await request(`/api/attachments/${image.id}`, alice)).status, 200); assert.equal((await request(`/api/attachments/${image.id}`, bob)).status, 404);
 assert.equal((await request(`/api/attachments/${image.id}`, bob, { method: "DELETE", headers: { origin } })).status, 404);
 assert.equal((await request(`/api/attachments/${image.id}`, alice, { method: "DELETE", headers: { origin } })).status, 200);
+// Exercise private /api/audio chunked upload, Range streaming, CSRF, and user isolation.
+const wavHeader = Buffer.alloc(64);
+wavHeader.write("RIFF", 0); wavHeader.writeUInt32LE(56, 4); wavHeader.write("WAVE", 8); wavHeader.write("fmt ", 12);
+assert.equal((await fetch(`${origin}/api/audio`)).status, 401);
+assert.equal((await request("/api/audio", alice, { method: "POST", headers: { "content-type": "application/json", origin: "https://attacker.invalid" }, body: JSON.stringify({ fileName: "calm.wav", mimeType: "audio/wav", size: wavHeader.length }) })).status, 403);
+const initAudio = await request("/api/audio", alice, { method: "POST", headers: { "content-type": "application/json", origin }, body: JSON.stringify({ fileName: "calm.wav", mimeType: "audio/wav", size: wavHeader.length }) });
+assert.equal(initAudio.status, 201, await initAudio.clone().text());
+const { id: audioId } = await initAudio.json();
+assert.equal((await request(`/api/audio/${audioId}/chunk?index=0`, alice, { method: "PUT", headers: { "content-type": "application/octet-stream", origin }, body: wavHeader })).status, 200);
+assert.equal((await request(`/api/audio/${audioId}/complete`, alice, { method: "POST", headers: { origin } })).status, 200);
+const rangeResp = await request(`/api/audio/${audioId}`, alice, { headers: { range: "bytes=0-11" } });
+assert.equal(rangeResp.status, 206);
+assert.equal((await rangeResp.arrayBuffer()).byteLength, 12);
+assert.equal((await request(`/api/audio/${audioId}`, bob)).status, 404);
+assert.equal((await request(`/api/audio/${audioId}`, bob, { method: "DELETE", headers: { origin } })).status, 404);
+assert.equal((await request(`/api/audio/${audioId}`, alice, { method: "DELETE", headers: { origin } })).status, 200);
 assert.equal((await fetch(`${origin}/api/trades`, { method: "DELETE" })).status, 410);
-console.log("PASS: private signup, isolation, conflict detection, CSRF checks, image ownership, and disabled legacy API.");
+console.log("PASS: private signup, isolation, conflict detection, CSRF checks, image & audio ownership/Range streaming, and disabled legacy API.");

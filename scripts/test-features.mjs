@@ -200,6 +200,105 @@ try {
   await page.locator('.view-motion[data-view="Trade journal"]').waitFor();
   assert.match(await page.locator(".selected-day").innerText(), /Showing/);
   console.log("PASS: Patience reset, green-to-red giveback mirror, walk-away log, simulator, and EN/ID toggle work offline.");
+
+  // Exercise Account Starting Balance & Realized Balance (excluding sample trades).
+  await navigate("Overview");
+  await page.getByLabel("Filter by trading account").selectOption({ label: "Swing account" });
+  await openSettings("Accounts");
+  const swingCard = page.locator(".account-card-item").filter({ hasText: "Swing account" });
+  await swingCard.getByRole("button", { name: /Set \/ Edit|Edit/ }).click();
+  await swingCard.getByLabel("Starting balance (USD, optional)").fill("5000");
+  await swingCard.getByRole("button", { name: "Save", exact: true }).click();
+  await swingCard.getByText(/Start \$5,000\.00/).waitFor();
+  await close();
+  // Swing account has -60 + 250 - 220 = -30.00 realized net on real trades -> $4,970.00 current balance!
+  assert.match(await page.locator(".balance-banner").innerText(), /\$5,000\.00/);
+  assert.match(await page.locator(".balance-banner").innerText(), /\$4,970\.00/);
+  await page.getByLabel("Hide amounts").click();
+  assert.doesNotMatch(await page.locator(".balance-banner").innerText(), /\$5,000\.00|\$4,970\.00/);
+  assert.match(await page.locator(".balance-banner").innerText(), /••••••/);
+  await page.getByLabel("Show amounts").click();
+  console.log("PASS: Account starting balance, realized current balance (excluding samples), and privacy work.");
+
+  // Exercise Full App Bilingual Mode (EN <-> ID) across views at 360px offline.
+  await openSettings("General");
+  await page.locator(".settings-lang-switch").getByRole("button", { name: "Indonesia", exact: true }).click();
+  assert.equal(await page.evaluate(() => document.documentElement.lang), "id");
+  await page.getByRole("heading", { name: "Pengaturan" }).waitFor();
+  await page.getByRole("button", { name: "Tutup", exact: true }).click();
+  await page.locator(".modal").waitFor({ state: "detached" });
+  assert.match(await page.locator(".balance-banner").innerText(), /Saldo awal/i);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Overview ID fits 360px");
+  await page.locator(".mobile-bottom-nav").getByRole("button", { name: "Jurnal", exact: true }).click();
+  await page.locator('.view-motion[data-view="Trade journal"]').waitFor();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Journal ID fits 360px");
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.locator(".app-shell").waitFor();
+  assert.equal(await page.evaluate(() => document.documentElement.lang), "id");
+  // Switch back to English via the mobile drawer language switcher.
+  await page.locator(".mobile-bottom-nav").getByRole("button", { name: "Lainnya", exact: true }).click();
+  await page.locator(".sidebar-mobile-lang").getByRole("button", { name: "English", exact: true }).click();
+  assert.equal(await page.evaluate(() => document.documentElement.lang), "en");
+  await page.getByLabel("Close navigation").first().click();
+  console.log("PASS: Full app bilingual EN/ID localization persists and fits 360px without overflow.");
+
+  // Exercise Spinning Cassette Music Player: 5-song quota, persistent playback across views, and Stop reset.
+  function makePlayableWavBuffer(durationSec = 1.5) {
+    const sampleRate = 8000;
+    const numSamples = Math.floor(sampleRate * durationSec);
+    const dataBytes = numSamples * 2;
+    const buf = Buffer.alloc(44 + dataBytes);
+    buf.write("RIFF", 0);
+    buf.writeUInt32LE(36 + dataBytes, 4);
+    buf.write("WAVE", 8);
+    buf.write("fmt ", 12);
+    buf.writeUInt32LE(16, 16);
+    buf.writeUInt16LE(1, 20); // PCM
+    buf.writeUInt16LE(1, 22); // Mono
+    buf.writeUInt32LE(sampleRate, 24);
+    buf.writeUInt32LE(sampleRate * 2, 28);
+    buf.writeUInt16LE(2, 32);
+    buf.writeUInt16LE(16, 34);
+    buf.write("data", 36);
+    buf.writeUInt32LE(dataBytes, 40);
+    for (let i = 0; i < numSamples; i++) {
+      const sample = Math.round(Math.sin((2 * Math.PI * 220 * i) / sampleRate) * 4000);
+      buf.writeInt16LE(sample, 44 + i * 2);
+    }
+    return buf;
+  }
+  const wavBuf = makePlayableWavBuffer(1.8);
+  await page.locator(".cassette-top-btn").click();
+  await page.getByRole("heading", { name: "Cassette player" }).waitFor();
+  for (let i = 1; i <= 5; i++) {
+    await page.locator(".cassette-add-btn input").setInputFiles({
+      name: `calm-session-${i}.wav`,
+      mimeType: "audio/wav",
+      buffer: wavBuf,
+    });
+    await page.getByText(`${i} / 5 songs`, { exact: false }).waitFor();
+  }
+  assert.equal(await page.locator(".cassette-tracklist > li").count(), 5);
+  assert.equal(await page.locator(".cassette-add-btn input").isDisabled(), true, "6th song upload disabled at 5/5 cap");
+  await page.getByLabel("Remove calm session 5").click();
+  await page.getByText("4 / 5 songs", { exact: false }).waitFor();
+  assert.equal(await page.locator(".cassette-tracklist > li").count(), 4);
+  assert.equal(await page.locator(".cassette-add-btn input").isDisabled(), false);
+
+  await page.locator(".cassette-play-btn").click();
+  await page.locator(".cassette-shell.status-playing").waitFor();
+  assert.equal(await page.locator(".cassette-reel-svg.is-spinning").count(), 2);
+  await close();
+  // Navigate across views and verify audio element stays mounted & playing!
+  await navigate("Calendar");
+  await navigate("Overview");
+  assert.equal(await page.locator(".cassette-top-btn.is-playing").count(), 1, "playback persists across view changes");
+  await page.locator(".cassette-top-btn").click();
+  await page.locator(".modal").getByLabel("Stop", { exact: true }).click();
+  assert.equal(await page.locator(".cassette-reel-svg.is-spinning").count(), 0, "Stop halts cassette reel spin");
+  assert.equal(await page.locator(".cassette-timeline > span").first().innerText(), "0:00");
+  await close();
+  console.log("PASS: Spinning cassette deck enforces 5-song cap, persists audio across views, and stops cleanly.");
   if (!external) {
     const didFetch = await page.evaluate((url) => fetch(url).then(() => true).catch(() => false), new URL("api/private-test", base).href); assert.equal(didFetch, false, "API responses must not be cached");
   }

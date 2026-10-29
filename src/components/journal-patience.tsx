@@ -351,7 +351,7 @@ export function PatienceView({
   onUpdateSettings: (patch: Partial<JournalSettings>, message?: string) => Promise<boolean>;
 }) {
   const [localeOverride, setLocaleOverride] = useState<PatienceLocale | null>(null);
-  const locale: PatienceLocale = localeOverride ?? settings.patienceLocale ?? "en";
+  const locale: PatienceLocale = localeOverride ?? settings.patienceLocale ?? settings.locale ?? "en";
   const t = copy[locale];
 
   const [capOverride, setCapOverride] = useState<number | null>(null);
@@ -377,7 +377,7 @@ export function PatienceView({
   }, [timerRunning]);
 
   const today = todayString();
-  const accounts = settings.accounts ?? [DEFAULT_ACCOUNT];
+  const accounts = useMemo(() => settings.accounts ?? [DEFAULT_ACCOUNT], [settings.accounts]);
   const walkAwayLogs = useMemo(
     () => [...(settings.walkAwayLogs ?? [])].sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)),
     [settings.walkAwayLogs],
@@ -394,8 +394,20 @@ export function PatienceView({
   const effectiveWalkReason = !walkEdited && todayWalkAway ? todayWalkAway.reason : walkReason;
   const effectiveWalkNote = !walkEdited && todayWalkAway ? todayWalkAway.note : walkNote;
 
+  const configuredCapital = useMemo(() => {
+    if (accountFilter !== "all") {
+      const target = accounts.find((item) => item.id === accountFilter);
+      return target?.startingBalance && target.startingBalance > 0 ? target.startingBalance : null;
+    }
+    const configured = accounts.filter((item) => item.startingBalance && item.startingBalance > 0);
+    if (!configured.length) return null;
+    return configured.reduce((sum, item) => sum + (item.startingBalance ?? 0), 0);
+  }, [accounts, accountFilter]);
+
   // Realistic compounding simulator state
-  const [startingBalanceText, setStartingBalanceText] = useState("5000");
+  const [startingBalanceText, setStartingBalanceText] = useState(() =>
+    configuredCapital !== null ? String(configuredCapital) : "5000",
+  );
   const [riskPercent, setRiskPercent] = useState(1);
   const [winRateText, setWinRateText] = useState("50");
   const [rewardRiskText, setRewardRiskText] = useState("1.8");
@@ -469,6 +481,9 @@ export function PatienceView({
   }
 
   function applyJournalPreset() {
+    if (configuredCapital !== null) {
+      setStartingBalanceText(String(configuredCapital));
+    }
     if (!preset) {
       setPresetMessage(t.journalNeedMore);
       return;

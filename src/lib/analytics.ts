@@ -1,4 +1,4 @@
-import type { Trade } from "@/lib/types";
+import type { AppLocale, Trade } from "@/lib/types";
 import { dateFromString, periodStart, shortDate, todayString, type Period } from "@/lib/format";
 
 export type ChartPoint = { date: string; time: number; label: string; pnl: number; daily: number; trades: number; drawdown: number };
@@ -33,9 +33,9 @@ export function maxRealizedDrawdown(trades: Trade[]) {
   return maxDrawdown;
 }
 
-export function groupTrades(trades: Trade[], key: (trade: Trade) => string) {
+export function groupTrades(trades: Trade[], key: (trade: Trade) => string, fallbackLabel = "Not specified") {
   const groups = new Map<string, Trade[]>();
-  trades.forEach((trade) => { const value = key(trade) || "Not specified"; const existing = groups.get(value); if (existing) existing.push(trade); else groups.set(value, [trade]); });
+  trades.forEach((trade) => { const value = key(trade) || fallbackLabel; const existing = groups.get(value); if (existing) existing.push(trade); else groups.set(value, [trade]); });
   return [...groups.entries()].map(([name, rows]) => ({
     name, count: rows.length, pnl: rows.reduce((sum, trade) => sum + Number(trade.pnl), 0),
     wins: rows.filter((trade) => Number(trade.pnl) > 0).length,
@@ -52,8 +52,8 @@ export function monthGrid(year: number, month: number) {
     return day < 1 || day > count ? null : `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   });
 }
-export function monthTitle(year: number, month: number) {
-  return dateFromString(`${year}-${String(month + 1).padStart(2, "0")}-01`).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+export function monthTitle(year: number, month: number, locale: AppLocale = "en") {
+  return dateFromString(`${year}-${String(month + 1).padStart(2, "0")}-01`).toLocaleDateString(locale === "id" ? "id-ID" : "en-US", { month: "long", year: "numeric", timeZone: "UTC" });
 }
 
 /** Previous equal-length calendar period; ALL has no meaningful comparison. */

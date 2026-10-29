@@ -2,13 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Download, Smartphone } from "lucide-react";
+import { UI_COPY } from "@/lib/i18n";
+import type { AppLocale } from "@/lib/types";
 
 type InstallEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
 type OfflineStatus = "checking" | "ready" | "unavailable";
 const basePath = process.env.NEXT_PUBLIC_GITHUB_PAGES === "true" ? "/nihtlouw-comfort-trade-journal" : "";
 
 /** Only the browser journal registers the worker. The worker itself never caches private routes. */
-export function LocalPwaStatus() {
+export function LocalPwaStatus({ locale = "en" }: { locale?: AppLocale }) {
+  const copy = UI_COPY[locale];
   const [status, setStatus] = useState<OfflineStatus>("checking");
   const [canInstall, setCanInstall] = useState(false); const [installed, setInstalled] = useState(false);
   const installPrompt = useRef<InstallEvent | null>(null);
@@ -37,6 +40,6 @@ export function LocalPwaStatus() {
     try { await prompt.prompt(); await prompt.userChoice; } catch { /* The browser may dismiss or revoke its install prompt. */ }
     finally { installPrompt.current = null; setCanInstall(false); }
   }
-  return <section className="local-pwa-status" aria-label="Browser-only app status"><span className="local-pwa-icon"><Smartphone size={18}/></span><div><strong aria-live="polite">{status === "ready" ? "Browser journal ready offline" : status === "checking" ? "Preparing browser journal for offline use" : "Offline app is not ready"}</strong><p>{status === "ready" ? "Stored on this device. Private-account sync is separate and requires a connection." : "Open this browser journal online and wait for it to prepare. Private sync needs a connection."}</p>
-    {!installed && <details><summary>Install on Android</summary><p>In your browser menu, choose <b>Install app</b> or <b>Add to Home screen</b>. The installed icon opens this browser-only journal, not your private account.</p></details>}</div>{canInstall && !installed && <button type="button" className="button-secondary" onClick={() => void install()}><Download size={15}/> Install app</button>}</section>;
+  return <section className="local-pwa-status" aria-label="Browser-only app status"><span className="local-pwa-icon"><Smartphone size={18}/></span><div><strong aria-live="polite">{status === "ready" ? copy.pwaReadyTitle : status === "checking" ? copy.pwaCheckingTitle : copy.pwaUnavailableTitle}</strong><p>{status === "ready" ? copy.pwaReadyBody : copy.pwaWaitBody}</p>
+    {!installed && <details><summary>{copy.pwaInstallSummary}</summary><p>{copy.pwaInstallHelpPrefix} <b>{copy.pwaInstallMenu1}</b> {copy.pwaOr} <b>{copy.pwaInstallMenu2}</b>. {copy.pwaInstallHelpSuffix}</p></details>}</div>{canInstall && !installed && <button type="button" className="button-secondary" onClick={() => void install()}><Download size={15}/> {copy.pwaInstallBtn}</button>}</section>;
 }

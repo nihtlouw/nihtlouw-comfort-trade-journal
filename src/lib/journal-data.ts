@@ -13,6 +13,18 @@ const numberText = z.string().max(40).refine((value) => value === "" || (Number.
 const optionalNumber = numberText.optional().default("");
 const rule = z.object({ id, text: z.string().max(160), checked: z.boolean(), group: z.enum(["Before trading", "While trading", "After trading"]) });
 const attachment = z.object({ id, name: z.string().min(1).max(200), type: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]), size: z.number().int().min(1).max(MAX_ATTACHMENT_BYTES) });
+const accountSchema = z.object({
+  id,
+  name: z.string().min(1).max(40),
+  startingBalance: z
+    .number()
+    .finite()
+    .min(0)
+    .max(99999999999)
+    .transform((n) => Math.round(n * 100) / 100)
+    .nullable()
+    .optional(),
+});
 const trade = z.object({
   id: z.number().int().positive().safe(),
   symbol: z.string().min(1).max(24), market: z.string().min(1).max(24), side: z.enum(["Long", "Short"]),
@@ -31,11 +43,13 @@ const settings = z.object({
   id: z.literal(1), name: z.string().min(1).max(40), mood: z.string().max(24).nullable(), moodDate: date.nullable(),
   goal: z.string().min(1).max(100), goalProgress: z.number().int().min(0).max(7), goalTarget: z.number().int().min(1).max(7),
   playbook: z.array(rule).max(100),
-  accounts: z.array(z.object({ id, name: z.string().min(1).max(40) })).min(1).max(20).optional(),
+  accounts: z.array(accountSchema).min(1).max(20).optional(),
   goals: z.array(z.object({ id, text: z.string().min(1).max(100), target: z.number().int().min(1).max(7), progress: z.number().int().min(0).max(7), markedDates: z.array(date).max(1000) })).max(20).optional(),
   moodHistory: z.array(z.object({ date, mood: z.string().min(1).max(24), note: z.string().max(1000) })).max(3660).optional(),
   reflections: z.array(z.object({ id, date, wentWell: z.string().max(2000), learned: z.string().max(2000), nextWeek: z.string().max(2000) })).max(520).optional(),
-  theme: z.enum(["light", "dark"]).optional(), reduceMotion: z.boolean().optional(), includeSamples: z.boolean().optional(),
+  theme: z.enum(["light", "dark"]).optional(),
+  locale: z.enum(["en", "id"]).optional(),
+  reduceMotion: z.boolean().optional(), includeSamples: z.boolean().optional(),
   riskLimits: z.object({ perTrade: z.number().finite().positive().max(99999999999).nullable(), dailyLoss: z.number().finite().positive().max(99999999999).nullable() }).optional(),
   backupReminderDays: z.union([z.literal(0), z.literal(7), z.literal(14), z.literal(30)]).optional(),
   patienceLocale: z.enum(["en", "id"]).optional(),
@@ -74,20 +88,26 @@ export function normalizeJournalData(input: unknown): JournalData {
   const data = result.data;
   const legacyMood = data.settings.mood && data.settings.moodDate
     ? [{ date: data.settings.moodDate, mood: data.settings.mood, note: "" }] : [];
+  const resolvedLocale = data.settings.locale ?? data.settings.patienceLocale ?? "en";
   return {
     trades: data.trades,
     settings: {
       ...data.settings,
-      accounts: data.settings.accounts ?? [{ ...DEFAULT_ACCOUNT }],
+      accounts: (data.settings.accounts ?? [{ ...DEFAULT_ACCOUNT }]).map((account) => ({
+        id: account.id,
+        name: account.name,
+        startingBalance: account.startingBalance ?? null,
+      })),
       goals: data.settings.goals ?? [{ id: "original", text: data.settings.goal, target: data.settings.goalTarget, progress: data.settings.goalProgress, markedDates: [] }],
       moodHistory: data.settings.moodHistory ?? legacyMood,
       reflections: data.settings.reflections ?? [],
       theme: data.settings.theme ?? "light",
+      locale: resolvedLocale,
       reduceMotion: data.settings.reduceMotion ?? false,
       includeSamples: data.settings.includeSamples ?? true,
       riskLimits: data.settings.riskLimits ?? { perTrade: null, dailyLoss: null },
       backupReminderDays: data.settings.backupReminderDays ?? 7,
-      patienceLocale: data.settings.patienceLocale ?? "en",
+      patienceLocale: data.settings.patienceLocale ?? resolvedLocale,
       patienceMaxTrades: data.settings.patienceMaxTrades ?? 3,
       walkAwayLogs: data.settings.walkAwayLogs ?? [],
     },
