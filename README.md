@@ -6,7 +6,7 @@ A calmer place to record trades, understand your process, and look after your mi
 
 - A redesigned responsive dashboard, a calm loading transition and varied, unhurried interface motion, light/dark themes, amount-hiding control, sample-data toggle, and portfolio filters. Motion follows the device’s reduced-motion setting and can also be reduced in Settings.
 - Trade logging with optional entry/exit, size, stop, target, fees, initial risk, timeframe, session, tags, checklist snapshots, and screenshots.
-- Search and filters, a trading calendar, CSV export, and mapped CSV import with a preview, validation, and possible-duplicate checks. Broker CSV files can be imported without giving Bloom trading permissions; **there is no live broker API connection or order execution**.
+- Search and filters, a trading calendar, CSV export, and mapped CSV import with a preview, validation, and possible-duplicate checks. On phones, filters collapse, trade rows show all details without horizontal scrolling, and calendar markers lead to exact daily amounts. Broker CSV files can be imported without giving Bloom trading permissions; **there is no live broker API connection or order execution**.
 - Realized P&L charts, period comparisons, expectancy, average win/loss, R-multiple, realized drawdown, and breakdowns by market, setup, mood, and weekday.
 - A playbook, mood-check-in history, reflections, multiple intentions, and an optional breathing break.
 - Full JSON backup/restore including screenshots, plus an optional private PostgreSQL account mode.
@@ -36,7 +36,7 @@ npm run build:pages
 CHROME_PATH=/path/to/chromium npm run test:pages
 ```
 
-The site is generated in `out/` using a temporary source copy; API routes and environment files are excluded. The UI test uses an isolated browser profile and checks the repository base path, persistence, imports, backup/restore, mobile navigation, and recovery. `PAGES_TEST_URL` can point it at a deployed Pages URL.
+The site is generated in `out/` using a temporary source copy; API routes and environment files are excluded. The UI test uses an isolated browser profile and checks the repository base path, persistence, imports, backup/restore, recovery, and all seven views on 320px, 360px, and 412px touch screens, plus landscape layouts. `PAGES_TEST_URL` can point it at a deployed Pages URL.
 
 ## Optional private accounts and sync
 

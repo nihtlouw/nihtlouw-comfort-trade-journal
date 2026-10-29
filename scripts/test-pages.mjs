@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import { testAndroid } from "./test-android.mjs";
 
 const project = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = join(project, "out");
@@ -55,7 +56,7 @@ try {
   const tradeDate = await page.getByLabel("Trade date").inputValue();
   await page.getByLabel("Asset / symbol").fill("UI-TEST"); await page.getByLabel("Net P&L (USD)").fill("123.45");
   await page.getByLabel("Setup", { exact: true }).fill("Patience"); await page.getByLabel("Notes", { exact: true }).fill("A note worth keeping.");
-  await page.getByRole("button", { name: /TRADE DETAILS & REFLECTION/ }).click();
+  await page.getByRole("button", { name: /OPTIONAL DETAILS/ }).click();
   await page.getByLabel("Initial risk (USD)").fill("100"); await page.getByLabel("Tags").fill("patient, test");
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg==", "base64");
   await page.locator(".upload-image input").setInputFiles({ name: "chart.png", mimeType: "image/png", buffer: png });
@@ -93,9 +94,10 @@ try {
   assert.ok(await page.getByText("Review the context").count());
   await page.getByLabel("Open settings").click(); await page.getByRole("button", { name: "Accounts", exact: true }).click(); await page.getByLabel("New account name").fill("Swing account"); await page.getByRole("button", { name: "Add account", exact: true }).click();
   await page.locator(".account-settings").getByText("Swing account").waitFor(); await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.locator(".sidebar-nav").getByRole("button", { name: "Trade journal", exact: true }).click();
   await page.getByLabel("Filter by trading account").selectOption({ label: "Swing account" }); await page.getByRole("button", { name: "Log a trade", exact: true }).first().click();
   await page.getByLabel("Asset / symbol").fill("SWING-TEST"); await page.getByLabel("Net P&L (USD)").fill("75"); assert.equal(await page.locator(".modal").getByLabel("Trading account").inputValue(), await page.getByLabel("Filter by trading account").inputValue());
-  await page.getByRole("button", { name: /TRADE DETAILS & REFLECTION/ }).click(); await page.getByRole("checkbox", { name: "Review the context", exact: true }).check(); await page.getByRole("button", { name: "Save trade", exact: true }).click(); await page.locator(".modal").waitFor({ state: "detached" });
+  await page.getByRole("button", { name: /OPTIONAL DETAILS/ }).click(); await page.getByRole("checkbox", { name: "Review the context", exact: true }).check(); await page.getByRole("button", { name: "Save trade", exact: true }).click(); await page.locator(".modal").waitFor({ state: "detached" });
   await page.getByLabel("Filter by trading account").selectOption("all");
   await page.locator(".sidebar-nav").getByRole("button", { name: "Mindset", exact: true }).click();
   await page.locator(".checkin-note textarea").fill("A steady start."); await page.getByRole("button", { name: /Save today/ }).click();
@@ -116,7 +118,7 @@ try {
   assert.equal(await page.locator(".mobile-bottom-nav").isVisible(), true); await page.getByRole("button", { name: "More", exact: true }).click();
   assert.equal(await page.getByRole("button", { name: "More", exact: true }).getAttribute("aria-expanded"), "true");
   assert.equal(await page.locator(".mobile-scrim").evaluate((element) => getComputedStyle(element).visibility), "visible");
-  await page.locator(".sidebar-nav").getByRole("button", { name: "Goals", exact: true }).click(); assert.equal(await page.locator(".breadcrumbs strong").innerText(), "Goals");
+  await page.locator(".sidebar-nav").getByRole("button", { name: "Goals", exact: true }).click(); assert.equal(await page.locator(".page-heading h1").innerText(), "Goals");
   console.log("PASS: mobile navigation and layout work without horizontal page overflow.");
 
   const motionContext = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "no-preference" });
@@ -290,6 +292,7 @@ try {
   await recovery.evaluate(() => { Storage.prototype.setItem = () => { throw new DOMException("Storage blocked", "SecurityError"); }; }); await recovery.locator(".goal-button").click();
   await recovery.getByText(/Couldn't save in this browser/).waitFor(); assert.match(await recovery.locator(".goal-progress-label").first().innerText(), /0/);
   console.log("PASS: damaged data is protected and blocked storage leaves the UI unchanged.");
+  await testAndroid(browser, url, errors, apiRequests);
   assert.deepEqual(errors, [], "no uncaught browser errors"); assert.deepEqual(apiRequests, [], "Pages never calls unavailable server APIs");
   console.log("PASS: no uncaught browser errors or backend calls in the static build.");
 } finally { if (browser) await browser.close().catch(() => {}); server.close(); rmSync(temp, { recursive: true, force: true }); }
