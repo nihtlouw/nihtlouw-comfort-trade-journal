@@ -56,7 +56,7 @@ try {
   let privateReloaded = true; try { await privateProbe.goto(base, { waitUntil: "domcontentloaded", timeout: 5000 }); } catch { privateReloaded = false; }
   assert.equal(privateReloaded, false, "private account HTML must not be available offline"); await privateProbe.close();
   await page.goto(local, { waitUntil: "domcontentloaded" }); await page.getByLabel("Edit LOCAL-ONLY trade").waitFor(); assert.equal(await page.getByLabel("Edit ALPHA-PRIVATE trade").count(), 0);
-  await context.setOffline(false); await page.goto(base); await page.getByLabel("Edit ALPHA-PRIVATE trade").click(); assert.equal(await page.getByLabel("Notes", { exact: true }).inputValue(), ""); await page.locator(".attachment-thumb a").waitFor(); await close();
+  await context.setOffline(false); await page.goto(base); await page.getByLabel("Edit ALPHA-PRIVATE trade").click(); assert.equal(await page.getByLabel("Notes", { exact: true }).inputValue(), ""); await page.locator(".attachment-editor-card .attachment-preview-btn img").waitFor(); await close();
   await page.getByLabel("Open settings").click(); await page.getByRole("button", { name: "Sign out", exact: true }).click(); await page.getByRole("heading", { name: "Sign in", exact: true }).waitFor();
   await signUp("Beta"); assert.equal(await page.getByLabel("Edit ALPHA-PRIVATE trade").count(), 0);
   await page.getByLabel("Open navigation").click(); await page.locator(".sidebar-nav").getByRole("button", { name: "Patience", exact: true }).click();

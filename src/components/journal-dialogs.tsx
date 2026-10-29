@@ -2,17 +2,19 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import Image from "next/image";
-import { Check, ChevronDown, CircleHelp, Download, FileImage, ImagePlus, Pause, Pencil, Play, Plus, RotateCcw, ShieldCheck, Trash2, Upload, X } from "lucide-react";
+import { Check, ChevronDown, CircleHelp, Download, FileImage, ImagePlus, Maximize2, Pause, Pencil, Play, Plus, RotateCcw, ShieldCheck, Trash2, Upload, X } from "lucide-react";
 import { getAttachment, type StorageMode } from "@/lib/attachments";
 import { CSV_FIELDS, csvRowsToTrades, parseCsv, type CsvMapping, type CsvPreview } from "@/lib/csv";
 import { currency, todayString } from "@/lib/format";
-import { csvFieldLabel, translateAccountName, translateMarket, translateMood, translateSide, UI_COPY } from "@/lib/i18n";
+import { csvFieldLabel, translateAccountName, translateAttachmentStage, translateMarket, translateMood, translateSide, UI_COPY } from "@/lib/i18n";
 import {
+  ATTACHMENT_STAGES,
   DEFAULT_ACCOUNT,
   MARKETS,
   MAX_ATTACHMENT_BYTES,
   MOODS,
   type AppLocale,
+  type AttachmentStage,
   type BackupReminderDays,
   type JournalData,
   type PlaybookRule,
@@ -24,6 +26,7 @@ import {
 import { parseTradeInput } from "@/lib/trade-validation";
 import { getDraftRiskAlerts } from "@/lib/risk";
 import type { BackupReminderState } from "@/lib/backup-reminder";
+import { ChartLightbox, type ChartLightboxSlide } from "@/components/chart-lightbox";
 
 export function ModalShell({ children, onClose, label, wide = false }: { children: ReactNode; onClose: () => void; label: string; wide?: boolean }) {
   const dialog = useRef<HTMLDivElement>(null);
@@ -50,10 +53,129 @@ function ModalHeader({ title, description, onClose, id, closeLabel = "Close" }: 
   return <div className="modal-header"><div><h2 id={id}>{title}</h2><p>{description}</p></div><button type="button" className="icon-button modal-close" onClick={onClose} aria-label={closeLabel}><X size={19}/></button></div>;
 }
 
-function ImagePreview({ item, mode, onRemove }: { item: TradeAttachment; mode: StorageMode; onRemove?: () => void }) {
+export type PendingAttachmentFile = {
+  id: string;
+  file: File;
+  stage?: AttachmentStage;
+  caption?: string;
+};
+
+function AttachmentEditorCard({
+  item,
+  file,
+  name,
+  stage,
+  caption,
+  mode,
+  locale,
+  onStageChange,
+  onCaptionChange,
+  onZoom,
+  onRemove,
+}: {
+  item?: TradeAttachment;
+  file?: File;
+  name: string;
+  stage?: AttachmentStage;
+  caption?: string;
+  mode: StorageMode;
+  locale: AppLocale;
+  onStageChange: (next?: AttachmentStage) => void;
+  onCaptionChange: (next: string) => void;
+  onZoom: () => void;
+  onRemove: () => void;
+}) {
+  const copy = UI_COPY[locale];
   const [url, setUrl] = useState("");
-  useEffect(() => { let active = true; let created = ""; getAttachment(item, mode).then((blob) => { if (active) { created = URL.createObjectURL(blob); setUrl(created); } }).catch(() => {}); return () => { active = false; if (created) URL.revokeObjectURL(created); }; }, [item, mode]);
-  return <div className="attachment-thumb">{url ? <a href={url} target="_blank" rel="noreferrer" aria-label={`Open ${item.name}`}><Image src={url} alt={item.name} width={90} height={58} unoptimized/></a> : <span><FileImage size={20}/></span>}<small title={item.name}>{item.name}</small>{onRemove && <button type="button" onClick={onRemove} aria-label={`Remove ${item.name}`}><X size={13}/></button>}</div>;
+  useEffect(() => {
+    let active = true;
+    let created = "";
+    if (file) {
+      created = URL.createObjectURL(file);
+      queueMicrotask(() => {
+        if (active) setUrl(created);
+      });
+      return () => {
+        active = false;
+        if (created) URL.revokeObjectURL(created);
+      };
+    }
+    if (!item) return;
+    getAttachment(item, mode)
+      .then((blob) => {
+        if (active) {
+          created = URL.createObjectURL(blob);
+          setUrl(created);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+      if (created) URL.revokeObjectURL(created);
+    };
+  }, [item, file, mode]);
+
+  return (
+    <div className={`attachment-editor-card attachment-thumb ${file ? "pending" : ""}`}>
+      <div className="attachment-editor-top">
+        <button
+          type="button"
+          className="attachment-preview-btn"
+          onClick={onZoom}
+          aria-label={copy.zoomPreviewAria(name)}
+        >
+          {url ? (
+            <Image src={url} alt={name} width={96} height={62} unoptimized />
+          ) : (
+            <span><FileImage size={20} /></span>
+          )}
+          <i className="attachment-zoom-badge" aria-hidden="true">
+            <Maximize2 size={11} />
+          </i>
+        </button>
+
+        <div className="attachment-editor-meta">
+          <div className="attachment-editor-head">
+            <small title={name}>{name}</small>
+            <button
+              type="button"
+              className="attachment-remove-btn"
+              onClick={onRemove}
+              aria-label={`Remove ${name}`}
+            >
+              <X size={13} />
+            </button>
+          </div>
+          <div className="attachment-stage-pills" role="group" aria-label={copy.stageSelectorAria(name)}>
+            {ATTACHMENT_STAGES.map((option) => {
+              const active = stage === option;
+              return (
+                <button
+                  type="button"
+                  key={option}
+                  className={`stage-pill stage-${option.toLowerCase()} ${active ? "selected" : ""}`}
+                  aria-pressed={active}
+                  onClick={() => onStageChange(active ? undefined : option)}
+                >
+                  {translateAttachmentStage(option, locale)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <input
+        type="text"
+        className="attachment-caption-input"
+        maxLength={180}
+        value={caption ?? ""}
+        placeholder={copy.captionPlaceholder}
+        aria-label={copy.captionAria(name)}
+        onChange={(event) => onCaptionChange(event.target.value)}
+      />
+    </div>
+  );
 }
 
 type TradeForm = {
@@ -63,17 +185,22 @@ type TradeForm = {
 };
 export type TradeDraft = Omit<TradeForm, "tags"> & { tags: string[] };
 
-export function TradeModal({ trade, trades, limits, hidden, accounts, playbook, defaultAccount, mode, locale = "en", onClose, onSave, onDelete }: { trade: Trade | null; trades: Trade[]; limits: RiskLimits; hidden: boolean; accounts: TradingAccount[]; playbook: PlaybookRule[]; defaultAccount: string; mode: StorageMode; locale?: AppLocale; onClose: () => void; onSave: (draft: TradeDraft, files: File[], removed: TradeAttachment[], id?: number) => Promise<boolean>; onDelete: (id: number) => Promise<boolean> }) {
+export function TradeModal({ trade, trades, limits, hidden, accounts, playbook, defaultAccount, mode, locale = "en", onClose, onSave, onDelete }: { trade: Trade | null; trades: Trade[]; limits: RiskLimits; hidden: boolean; accounts: TradingAccount[]; playbook: PlaybookRule[]; defaultAccount: string; mode: StorageMode; locale?: AppLocale; onClose: () => void; onSave: (draft: TradeDraft, files: PendingAttachmentFile[], removed: TradeAttachment[], id?: number) => Promise<boolean>; onDelete: (id: number) => Promise<boolean> }) {
   const copy = UI_COPY[locale];
   const [form, setForm] = useState<TradeForm>(() => ({
     symbol: trade?.symbol ?? "", market: trade?.market ?? "Forex", side: trade?.side ?? "Long", tradeDate: trade?.tradeDate ?? todayString(), pnl: trade?.pnl ?? "",
     setup: trade?.setup ?? "", mood: trade?.mood ?? "Calm", notes: trade?.notes ?? "", accountId: trade?.accountId ?? defaultAccount,
     entryPrice: trade?.entryPrice ?? "", exitPrice: trade?.exitPrice ?? "", positionSize: trade?.positionSize ?? "", stopLoss: trade?.stopLoss ?? "", takeProfit: trade?.takeProfit ?? "", fees: trade?.fees ?? "", initialRisk: trade?.initialRisk ?? "", timeframe: trade?.timeframe ?? "", session: trade?.session ?? "", tags: (trade?.tags ?? []).join(", "),
-    checklist: trade?.checklist?.length ? trade.checklist.map((rule) => ({ ...rule })) : playbook.map(({ id, text }) => ({ id, text, checked: false })), attachments: trade?.attachments ?? [],
+    checklist: trade?.checklist?.length ? trade.checklist.map((rule) => ({ ...rule })) : playbook.map(({ id, text }) => ({ id, text, checked: false })), attachments: (trade?.attachments ?? []).map((item) => ({ ...item })),
   }));
-  const [files, setFiles] = useState<File[]>([]); const [saving, setSaving] = useState(false); const [error, setError] = useState(""); const [advanced, setAdvanced] = useState(!!trade && !!(trade.entryPrice || trade.initialRisk || trade.tags?.length || trade.attachments?.length || trade.checklist?.some((rule) => rule.checked)));
+  const [files, setFiles] = useState<PendingAttachmentFile[]>([]); const [saving, setSaving] = useState(false); const [error, setError] = useState(""); const [advanced, setAdvanced] = useState(!!trade && !!(trade.entryPrice || trade.initialRisk || trade.tags?.length || trade.attachments?.length || trade.checklist?.some((rule) => rule.checked)));
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const update = <K extends keyof TradeForm>(key: K, value: TradeForm[K]) => setForm((current) => ({ ...current, [key]: value }));
   const draftAlerts = getDraftRiskAlerts(trades, { ...form, tags: [], id: trade?.id ?? 0, isDemo: trade?.isDemo ?? false }, limits, trade?.id);
+  const modalSlides = useMemo<ChartLightboxSlide[]>(() => [
+    ...form.attachments.map((att) => ({ key: `saved-${att.id}`, attachment: att, name: att.name, stage: att.stage, caption: att.caption })),
+    ...files.map((pending) => ({ key: `pending-${pending.id}`, blob: pending.file, name: pending.file.name, stage: pending.stage, caption: pending.caption })),
+  ], [form.attachments, files]);
   async function submit(event: FormEvent) { event.preventDefault(); setError("");
     const draft: TradeDraft = { ...form, tags: form.tags.split(",").map((tag) => tag.trim()).filter(Boolean) };
     try { parseTradeInput(draft); } catch (caught) { setError(caught instanceof Error ? caught.message : "Please check your trade."); return; }
@@ -81,7 +208,7 @@ export function TradeModal({ trade, trades, limits, hidden, accounts, playbook, 
     const ok = await onSave(draft, files, removed, trade?.id); setSaving(false); if (ok) onClose();
   }
   async function remove() { if (!trade || !window.confirm(copy.confirmDeleteTrade(trade.symbol))) return; setSaving(true); const ok = await onDelete(trade.id); setSaving(false); if (ok) onClose(); }
-  function chooseFiles(event: React.ChangeEvent<HTMLInputElement>) { const chosen = Array.from(event.target.files ?? []); event.target.value = ""; if (chosen.some((file) => file.size > MAX_ATTACHMENT_BYTES)) { setError(locale === "id" ? "Setiap gambar maksimal berukuran 2 MB." : "Each screenshot must be 2 MB or less."); return; } if (form.attachments.length + files.length + chosen.length > 8) { setError(locale === "id" ? "Maksimal 8 screenshot per trade." : "Add up to 8 screenshots per trade."); return; } setError(""); setFiles((current) => [...current, ...chosen]); }
+  function chooseFiles(event: React.ChangeEvent<HTMLInputElement>) { const chosen = Array.from(event.target.files ?? []); event.target.value = ""; if (chosen.some((file) => file.size > MAX_ATTACHMENT_BYTES)) { setError(locale === "id" ? "Setiap gambar maksimal berukuran 2 MB." : "Each screenshot must be 2 MB or less."); return; } if (form.attachments.length + files.length + chosen.length > 8) { setError(locale === "id" ? "Maksimal 8 screenshot per trade." : "Add up to 8 screenshots per trade."); return; } setError(""); setFiles((current) => [...current, ...chosen.map((file) => ({ id: crypto.randomUUID(), file }))]); }
   return <ModalShell onClose={onClose} label="trade-modal-title" wide><ModalHeader id="trade-modal-title" title={trade ? copy.editTradeTitle : copy.logTradeTitle} description={copy.tradeModalDesc} onClose={onClose} closeLabel={copy.close}/>
     <form className="modal-form" onSubmit={submit}><div className="form-section-label">{copy.tradeDetailsSection}</div><div className="form-grid">
       <label>{copy.assetSymbolLabel}<input required maxLength={24} placeholder="e.g. EUR/USD" value={form.symbol} onChange={(event) => update("symbol", event.target.value)}/></label>
@@ -97,11 +224,79 @@ export function TradeModal({ trade, trades, limits, hidden, accounts, playbook, 
     <button type="button" className="advanced-toggle" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}><span>{copy.optionalDetails}</span><ChevronDown size={17} className={advanced ? "rotated" : ""}/></button>
     {advanced && <div className="advanced-content"><div className="form-grid"><label>{copy.entryPriceLabel}<input type="number" min="0" step="any" value={form.entryPrice} onChange={(event) => update("entryPrice", event.target.value)} placeholder={copy.optionalPlaceholder}/></label><label>{copy.exitPriceLabel}<input type="number" min="0" step="any" value={form.exitPrice} onChange={(event) => update("exitPrice", event.target.value)} placeholder={copy.optionalPlaceholder}/></label><label>{copy.positionSizeLabel}<input type="number" min="0" step="any" value={form.positionSize} onChange={(event) => update("positionSize", event.target.value)} placeholder={copy.optionalPlaceholder}/></label><label>{copy.initialRiskLabel}<input type="number" min="0" step="any" value={form.initialRisk} onChange={(event) => update("initialRisk", event.target.value)} placeholder="e.g. 100"/><small>{copy.initialRiskHint}</small></label><label>{copy.stopLossLabel}<input type="number" min="0" step="any" value={form.stopLoss} onChange={(event) => update("stopLoss", event.target.value)} placeholder={copy.optionalPlaceholder}/></label><label>{copy.takeProfitLabel}<input type="number" min="0" step="any" value={form.takeProfit} onChange={(event) => update("takeProfit", event.target.value)} placeholder={copy.optionalPlaceholder}/></label><label>{copy.feesLabel}<input type="number" min="0" step="any" value={form.fees} onChange={(event) => update("fees", event.target.value)} placeholder={copy.optionalPlaceholder}/><small>{copy.feesHint}</small></label><label>{copy.timeframeLabel}<input maxLength={40} value={form.timeframe} onChange={(event) => update("timeframe", event.target.value)} placeholder={copy.timeframePlaceholder}/></label><label>{copy.sessionLabel}<input maxLength={40} value={form.session} onChange={(event) => update("session", event.target.value)} placeholder="e.g. London"/></label><label>{copy.tagsLabel}<input value={form.tags} onChange={(event) => update("tags", event.target.value)} placeholder="breakout, patient, A+"/><small>{copy.tagsHint}</small></label></div>
       <div className="form-subheading"><strong>{copy.playbookChecklistTitle}</strong><span>{copy.playbookChecklistSub}</span></div><div className="trade-checklist">{form.checklist.map((rule) => <label key={rule.id}><input type="checkbox" checked={rule.checked} onChange={(event) => update("checklist", form.checklist.map((item) => item.id === rule.id ? { ...item, checked: event.target.checked } : item))}/><span>{rule.text}</span></label>)}{!form.checklist.length && <p>{copy.emptyChecklistHint}</p>}</div>
-      <div className="form-subheading"><strong>{copy.screenshotsTitle}</strong><span>{copy.screenshotsSub}</span></div><div className="attachment-list">{form.attachments.map((item) => <ImagePreview key={item.id} item={item} mode={mode} onRemove={() => update("attachments", form.attachments.filter((image) => image.id !== item.id))}/>)}{files.map((file, index) => <div className="attachment-thumb pending" key={`${file.name}-${index}`}><span><FileImage size={20}/></span><small>{file.name}</small><button type="button" onClick={() => setFiles(files.filter((_, item) => item !== index))} aria-label={`Remove ${file.name}`}><X size={13}/></button></div>)}<label className="upload-image"><ImagePlus size={20}/><span>{copy.addImage}</span><input type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple onChange={chooseFiles}/></label></div>
+      <div className="form-subheading"><strong>{copy.screenshotsTitle}</strong><span>{copy.screenshotsSub}</span></div>
+      <div className="attachment-editor-list">
+        {form.attachments.map((item, idx) => (
+          <AttachmentEditorCard
+            key={item.id}
+            item={item}
+            name={item.name}
+            stage={item.stage}
+            caption={item.caption}
+            mode={mode}
+            locale={locale}
+            onStageChange={(nextStage) =>
+              update(
+                "attachments",
+                form.attachments.map((image) => (image.id === item.id ? { ...image, stage: nextStage } : image)),
+              )
+            }
+            onCaptionChange={(nextCaption) =>
+              update(
+                "attachments",
+                form.attachments.map((image) => (image.id === item.id ? { ...image, caption: nextCaption } : image)),
+              )
+            }
+            onZoom={() => setLightboxIndex(idx)}
+            onRemove={() => update("attachments", form.attachments.filter((image) => image.id !== item.id))}
+          />
+        ))}
+        {files.map((pending, index) => (
+          <AttachmentEditorCard
+            key={pending.id}
+            file={pending.file}
+            name={pending.file.name}
+            stage={pending.stage}
+            caption={pending.caption}
+            mode={mode}
+            locale={locale}
+            onStageChange={(nextStage) =>
+              setFiles((current) =>
+                current.map((entry, idx) => (idx === index ? { ...entry, stage: nextStage } : entry)),
+              )
+            }
+            onCaptionChange={(nextCaption) =>
+              setFiles((current) =>
+                current.map((entry, idx) => (idx === index ? { ...entry, caption: nextCaption } : entry)),
+              )
+            }
+            onZoom={() => setLightboxIndex(form.attachments.length + index)}
+            onRemove={() => setFiles((current) => current.filter((_, idx) => idx !== index))}
+          />
+        ))}
+        {form.attachments.length + files.length < 8 && (
+          <label className="upload-image upload-image-wide">
+            <ImagePlus size={20} />
+            <span>{copy.addImage}</span>
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple onChange={chooseFiles} />
+          </label>
+        )}
+      </div>
     </div>}
     {draftAlerts.length > 0 && <div className="draft-risk-notice" role="status"><ShieldCheck size={19}/><div><strong>{copy.draftRiskTitle}</strong>{draftAlerts.map((alert) => <p key={alert.kind}>{alert.kind === "trade" ? copy.draftRiskTradePrefix : copy.draftRiskDailyPrefix} {copy.draftRiskExceeds(currency(alert.amount, false, hidden), currency(alert.limit, false, hidden))}</p>)}<small>{copy.draftRiskNote}</small></div></div>}
     {error && <div className="form-error" role="alert">{error}</div>}
     <div className="modal-actions">{trade && <button type="button" className="delete-link" onClick={remove} disabled={saving}><Trash2 size={15}/> {copy.deleteTrade}</button>}<span className="actions-spacer"/><button type="button" className="button-secondary" onClick={onClose} disabled={saving}>{copy.cancel}</button><button type="submit" className="button-primary" disabled={saving}><Check size={16}/> {saving ? copy.saving : trade ? copy.saveChanges : copy.saveTrade}</button></div></form>
+    {lightboxIndex !== null && modalSlides.length > 0 && (
+      <ChartLightbox
+        slides={modalSlides}
+        index={lightboxIndex}
+        onIndexChange={setLightboxIndex}
+        onClose={() => setLightboxIndex(null)}
+        mode={mode}
+        hidden={hidden}
+        locale={locale}
+      />
+    )}
   </ModalShell>;
 }
 

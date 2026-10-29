@@ -22,7 +22,7 @@ export async function createBackup(data: JournalData, mode: StorageMode) {
   for (const item of uniqueAttachments(data)) {
     const blob = await getAttachment(item, mode);
     if (blob.size !== item.size || await validateImage(blob) !== item.type) throw new Error(`Screenshot “${item.name}” is damaged. Backup stopped to avoid producing an incomplete file.`);
-    images.push({ ...item, base64: toBase64(await blob.arrayBuffer()) });
+    images.push({ id: item.id, name: item.name, type: item.type, size: item.size, base64: toBase64(await blob.arrayBuffer()) });
   }
   const content = JSON.stringify({ format: BACKUP_FORMAT, version: 2, exportedAt: new Date().toISOString(), journal: normalizeJournalData(data), images }, null, 2);
   if (new Blob([content]).size > 50_000_000) throw new Error("This journal is too large for a single backup. Remove some screenshots and try again.");
@@ -62,7 +62,23 @@ export async function stageBackupImages(backup: ParsedBackup, mode: StorageMode)
     for (const image of backup.images) {
       const saved = await saveAttachment(image.blob, image.name, mode); staged.push(saved); replacements.set(image.originalId, saved);
     }
-    return { staged, journal: { ...backup.journal, trades: backup.journal.trades.map((trade) => ({ ...trade, attachments: (trade.attachments ?? []).map((image) => replacements.get(image.id)!) })) } };
+    return {
+      staged,
+      journal: {
+        ...backup.journal,
+        trades: backup.journal.trades.map((trade) => ({
+          ...trade,
+          attachments: (trade.attachments ?? []).map((image) => {
+            const replaced = replacements.get(image.id)!;
+            return {
+              ...replaced,
+              ...(image.stage ? { stage: image.stage } : {}),
+              ...(image.caption ? { caption: image.caption } : {}),
+            };
+          }),
+        })),
+      },
+    };
   } catch (error) {
     const { removeAttachment } = await import("@/lib/attachments");
     await Promise.allSettled(staged.map((item) => removeAttachment(item.id, mode)));

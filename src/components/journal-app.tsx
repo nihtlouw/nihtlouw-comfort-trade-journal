@@ -18,8 +18,9 @@ import { WeeklyReview } from "@/components/journal-review";
 import { PatienceView } from "@/components/journal-patience";
 import { LocalPwaStatus } from "@/components/local-pwa";
 import { AnalyticsView, CalendarView, GoalsView, JournalView, MindsetView, Overview, PlaybookView, type View } from "@/components/journal-views";
-import { BreathingModal, ImportModal, SettingsModal, TradeModal, type SettingsTab, type TradeDraft } from "@/components/journal-dialogs";
+import { BreathingModal, ImportModal, SettingsModal, TradeModal, type PendingAttachmentFile, type SettingsTab, type TradeDraft } from "@/components/journal-dialogs";
 import { CassetteDeckModal, CassetteSidebarMini, CassetteTopbarButton, useCassetteDeck } from "@/components/cassette-player";
+import { ChartLightbox, type ChartLightboxSlide } from "@/components/chart-lightbox";
 
 type Modal = "trade" | "settings" | "breathing" | "import" | "cassette" | null;
 // Keep this in sync with --bloom-dialog-exit in globals.css.
@@ -43,6 +44,7 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
   const [backupBusy, setBackupBusy] = useState(false); const backupBusyRef = useRef(false);
   const [online, setOnline] = useState(true); const [reminderClock, setReminderClock] = useState(0);
   const [damaged, setDamaged] = useState(initialDamaged); const [toast, setToast] = useState<{ message: string; error: boolean; breath: boolean } | null>(null);
+  const [lightbox, setLightbox] = useState<{ slides: ChartLightboxSlide[]; index: number } | null>(null);
   const toastTimer = useRef<number | null>(null); const modalCloseTimer = useRef<number | null>(null); const modalLayer = useRef<HTMLDivElement>(null); const mobileClose = useRef<HTMLButtonElement>(null);
 
   const locale: AppLocale = data.settings.locale ?? "en";
@@ -142,14 +144,21 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
     const used = new Set(dataRef.current.trades.flatMap((trade) => (trade.attachments ?? []).map((item) => item.id)));
     await Promise.allSettled(images.filter((item) => !used.has(item.id)).map((item) => removeAttachment(item.id, storage)));
   }
-  async function saveTrade(draft: TradeDraft, files: File[], removed: TradeAttachment[], tradeId?: number) {
+  async function saveTrade(draft: TradeDraft, files: PendingAttachmentFile[], removed: TradeAttachment[], tradeId?: number) {
     const staged: TradeAttachment[] = [];
     try {
       const removedIds = new Set(removed.map((item) => item.id));
       const existingImages = new Map(dataRef.current.trades.flatMap((trade) => (trade.attachments ?? []).filter((image) => trade.id !== tradeId || !removedIds.has(image.id))).map((image) => [image.id, image]));
-      const totalBytes = [...existingImages.values()].reduce((sum, image) => sum + image.size, 0) + files.reduce((sum, file) => sum + file.size, 0);
+      const totalBytes = [...existingImages.values()].reduce((sum, image) => sum + image.size, 0) + files.reduce((sum, entry) => sum + entry.file.size, 0);
       if (totalBytes > MAX_JOURNAL_IMAGE_BYTES) throw new Error(locale === "id" ? "Jurnal dapat menyimpan hingga 30 MB screenshot. Hapus beberapa gambar terlebih dahulu." : "Your journal can store up to 30 MB of screenshots. Remove some images before adding more.");
-      for (const file of files) staged.push(await saveAttachment(file, file.name, storage));
+      for (const pending of files) {
+        const saved = await saveAttachment(pending.file, pending.file.name, storage);
+        staged.push({
+          ...saved,
+          ...(pending.stage ? { stage: pending.stage } : {}),
+          ...(pending.caption?.trim() ? { caption: pending.caption.trim().slice(0, 180) } : {}),
+        });
+      }
       const parsed = parseTradeInput({ ...draft, attachments: [...draft.attachments, ...staged] });
       const current = dataRef.current; const existing = current.trades.find((trade) => trade.id === tradeId);
       const nextTrade: Trade = { ...parsed, id: tradeId ?? Math.max(0, ...current.trades.map((trade) => trade.id)) + 1, isDemo: existing?.isDemo ?? false };
@@ -168,6 +177,21 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
   async function clearSamples() { const current = dataRef.current; const samples = current.trades.filter((trade) => trade.isDemo); const ok = await commit({ ...current, trades: current.trades.filter((trade) => !trade.isDemo) }, locale === "id" ? "Trade contoh dihapus." : "Sample trades cleared."); if (ok) await removeUnusedImages(samples.flatMap((trade) => trade.attachments ?? [])); return ok; }
   function newTrade() { setEditing(null); openModal("trade"); }
   function editTrade(trade: Trade) { setEditing(trade); openModal("trade"); }
+  function openTradeCharts(trade: Trade, startIndex = 0) {
+    const shots = trade.attachments ?? [];
+    if (!shots.length) return;
+    setLightbox({
+      slides: shots.map((att) => ({
+        key: `${trade.id}-${att.id}`,
+        attachment: att,
+        name: att.name,
+        stage: att.stage,
+        caption: att.caption,
+        trade,
+      })),
+      index: startIndex,
+    });
+  }
   function scrollToTop() { window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? "auto" : "smooth" }); }
   function navigate(next: View) { setView(next); setMobileMenu(false); if (next !== "Trade journal") setSelectedDay(""); scrollToTop(); }
   function day(date: string) { setSelectedDay(date); setView("Trade journal"); scrollToTop(); }
@@ -264,6 +288,7 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
     onMarkGoal: markGoal,
     onRiskSettings: () => openSettings("Risk"),
     onAccountsSettings: () => openSettings("Accounts"),
+    onPreviewCharts: openTradeCharts,
     period,
     onPeriod: setPeriod,
   };
@@ -293,9 +318,9 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
         {showTradeControls && <div className="workspace-controls"><div className="account-select-wrap"><span className="account-select-icon">✳</span><label><span>{copy.accountLabel}</span><select aria-label={copy.filterByAccount} value={accountFilter} onChange={(event) => setAccountFilter(event.target.value)}><option value="all">{copy.allAccounts}</option>{accounts.map((account) => <option key={account.id} value={account.id}>{translateAccountName(account.name, locale)}</option>)}</select></label><ChevronDown size={14}/></div><div className="workspace-control-right">{sampleCount > 0 && <button type="button" className={`sample-toggle ${data.settings.includeSamples !== false ? "on" : ""}`} onClick={() => void updateSettings({ includeSamples: data.settings.includeSamples === false }, data.settings.includeSamples === false ? (locale === "id" ? "Trade contoh disertakan." : "Sample trades included.") : (locale === "id" ? "Trade contoh disembunyikan." : "Sample trades hidden."))} aria-pressed={data.settings.includeSamples !== false}><span className="sample-indicator-dot"/> {data.settings.includeSamples === false ? copy.samplesHidden : copy.samplesIncluded}<span className="switch"><i/></span></button>}<span className="save-indicator"><span/>{saving ? copy.saving : storage === "browser" ? copy.savedOnDevice : copy.privateSynced}</span></div></div>}
         <div className="view-motion" data-view={view} key={view}>
         {view === "Overview" && <Overview {...common}/>}
-        {view === "Trade journal" && <JournalView trades={visibleTrades} hidden={hidden} onEditTrade={editTrade} onNewTrade={newTrade} onImport={() => openModal("import")} onExport={exportCsv} selectedDay={selectedDay} clearDay={() => setSelectedDay("")} locale={locale}/>}
+        {view === "Trade journal" && <JournalView trades={visibleTrades} hidden={hidden} mode={storage} onEditTrade={editTrade} onNewTrade={newTrade} onImport={() => openModal("import")} onExport={exportCsv} onPreviewCharts={openTradeCharts} onOpenSlides={(slides, index) => setLightbox({ slides, index })} selectedDay={selectedDay} clearDay={() => setSelectedDay("")} locale={locale}/>}
         {view === "Analytics" && <AnalyticsView trades={visibleTrades} allTrades={data.trades} accountFilter={accountFilter} settings={data.settings} hidden={hidden} period={period} onPeriod={setPeriod} onAccountsSettings={() => openSettings("Accounts")}/>}
-        {view === "Weekly review" && <WeeklyReview trades={visibleTrades} settings={data.settings} hidden={hidden} onMindset={() => navigate("Mindset")} onSettings={() => openSettings("Risk")} onEditTrade={editTrade} onNewTrade={newTrade} onJournal={() => navigate("Trade journal")}/>}
+        {view === "Weekly review" && <WeeklyReview trades={visibleTrades} settings={data.settings} hidden={hidden} onMindset={() => navigate("Mindset")} onSettings={() => openSettings("Risk")} onEditTrade={editTrade} onNewTrade={newTrade} onJournal={() => navigate("Trade journal")} onPreviewCharts={openTradeCharts}/>}
         {view === "Calendar" && <CalendarView trades={visibleTrades} allTrades={data.trades} accountFilter={accountFilter} settings={data.settings} hidden={hidden} onDay={day} onAccountsSettings={() => openSettings("Accounts")}/>}
         {view === "Playbook" && <PlaybookView settings={data.settings} onUpdate={(playbook: PlaybookRule[]) => void updateSettings({ playbook })}/>}
         {view === "Mindset" && <MindsetView settings={data.settings} trades={visibleTrades} onMood={selectMood} onSaveMoodNote={saveMoodNote} onBreath={() => openModal("breathing")} onPatience={() => navigate("Patience")} onSaveReflection={(reflection: WeeklyReflection) => updateSettings({ reflections: [...(dataRef.current.settings.reflections ?? []), reflection] }, locale === "id" ? "Refleksi tersimpan." : "Reflection saved.")} onDeleteReflection={(reflectionId) => { if (window.confirm(locale === "id" ? "Hapus refleksi ini?" : "Delete this reflection?")) void updateSettings({ reflections: (dataRef.current.settings.reflections ?? []).filter((item) => item.id !== reflectionId) }, locale === "id" ? "Refleksi dihapus." : "Reflection removed."); }}/>}
@@ -313,6 +338,18 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
     {modal === "breathing" && <BreathingModal onClose={closeModal} locale={locale}/>}
     {modal === "cassette" && <CassetteDeckModal deck={cassetteDeck} mode={storage} locale={locale} onClose={closeModal}/>}
     </div>}
+    {lightbox && (
+      <ChartLightbox
+        slides={lightbox.slides}
+        index={lightbox.index}
+        onIndexChange={(next) => setLightbox((current) => (current ? { ...current, index: next } : null))}
+        onClose={() => setLightbox(null)}
+        mode={storage}
+        hidden={hidden}
+        locale={locale}
+        onEditTrade={editTrade}
+      />
+    )}
     {toast && <div className={`toast ${toast.error ? "toast-error" : ""}`} role="status">{toast.error ? <CircleAlert size={18}/> : <CheckCircle2 size={18}/>} {toast.message}{toast.breath && <><button type="button" onClick={() => { setToast(null); openModal("breathing"); }}>{copy.takeABreath}</button><button type="button" onClick={() => { setToast(null); navigate("Patience"); }}>Patience</button></>}</div>}
   </div>;
 }

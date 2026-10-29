@@ -357,3 +357,75 @@ test("cassette audio library validates real magic bytes and enforces 5-song & 20
   );
 });
 
+test("chart attachment stage tags, captions, and R-multiple helpers normalize backward-compatibly and survive backups", async () => {
+  const { parseTradeInput } = await import("@/lib/trade-validation");
+  const { formatRMultiple, tradeRMultiple } = await import("@/lib/format");
+  const { translateAttachmentStage } = await import("@/lib/i18n");
+
+  const bytes = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg==",
+    "base64",
+  );
+
+  // R-multiple helper honors positive initialRisk only
+  assert.equal(tradeRMultiple(makeTrade(1, "150", "50")), 3);
+  assert.equal(formatRMultiple(tradeRMultiple(makeTrade(1, "150", "50"))), "+3.00R");
+  assert.equal(formatRMultiple(tradeRMultiple(makeTrade(2, "-75", "50"))), "−1.50R");
+  assert.equal(tradeRMultiple(makeTrade(3, "100", "")), null);
+  assert.equal(tradeRMultiple(makeTrade(4, "100", "0")), null);
+  assert.equal(formatRMultiple(null), "—");
+
+  // Stage translation EN & ID
+  assert.equal(translateAttachmentStage("Before", "en"), "Before");
+  assert.equal(translateAttachmentStage("Before", "id"), "Sebelum");
+  assert.equal(translateAttachmentStage("Entry", "id"), "Entri");
+  assert.equal(translateAttachmentStage("After", "id"), "Sesudah");
+  assert.equal(translateAttachmentStage("HTF", "id"), "HTF");
+
+  // parseTradeInput sanitizes stage and trims/caps caption
+  const parsedTrade = parseTradeInput({
+    symbol: "eurusd",
+    market: "Forex",
+    side: "Long",
+    setup: "London sweep",
+    tradeDate: "2026-04-10",
+    pnl: "180",
+    initialRisk: "60",
+    mood: "Calm",
+    notes: "Clean execution",
+    attachments: [
+      { id: "shot-1", name: "before.png", type: "image/png", size: bytes.length, stage: "Before", caption: "  Sweep of Asia low  " },
+      { id: "shot-2", name: "after.png", type: "image/png", size: bytes.length, stage: "InvalidStage", caption: "   " },
+      { id: "shot-3", name: "htf.png", type: "image/png", size: bytes.length, stage: "HTF", caption: "x".repeat(220) },
+    ],
+  });
+  assert.equal(parsedTrade.attachments[0].stage, "Before");
+  assert.equal(parsedTrade.attachments[0].caption, "Sweep of Asia low");
+  assert.equal(parsedTrade.attachments[1].stage, undefined);
+  assert.equal(parsedTrade.attachments[1].caption, undefined);
+  assert.equal(parsedTrade.attachments[2].stage, "HTF");
+  assert.equal(parsedTrade.attachments[2].caption?.length, 180);
+
+  // Backup v2 preserves stage & caption while legacy untagged attachments remain valid
+  const journal = normalizeJournalData(createDemoData());
+  journal.trades[0].attachments = [
+    { id: "img-before", name: "before.png", type: "image/png", size: bytes.length, stage: "Before", caption: "Pre-entry H1 structure" },
+    { id: "img-legacy", name: "legacy.png", type: "image/png", size: bytes.length },
+  ];
+  const backupJson = JSON.stringify({
+    format: "bloom-journal-backup",
+    version: 2,
+    journal,
+    images: [
+      { id: "img-before", name: "before.png", type: "image/png", size: bytes.length, base64: bytes.toString("base64") },
+      { id: "img-legacy", name: "legacy.png", type: "image/png", size: bytes.length, base64: bytes.toString("base64") },
+    ],
+  });
+  const parsedBackup = await parseBackup(backupJson);
+  assert.equal(parsedBackup.images.length, 2);
+  assert.equal(parsedBackup.journal.trades[0].attachments?.[0].stage, "Before");
+  assert.equal(parsedBackup.journal.trades[0].attachments?.[0].caption, "Pre-entry H1 structure");
+  assert.equal(parsedBackup.journal.trades[0].attachments?.[1].stage, undefined);
+});
+
+

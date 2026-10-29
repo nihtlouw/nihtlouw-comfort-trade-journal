@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DEFAULT_ACCOUNT, MAX_ATTACHMENT_BYTES, MAX_JOURNAL_IMAGE_BYTES, type JournalData } from "@/lib/types";
+import { ATTACHMENT_STAGES, DEFAULT_ACCOUNT, MAX_ATTACHMENT_BYTES, MAX_JOURNAL_IMAGE_BYTES, type JournalData } from "@/lib/types";
 
 export function isDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -12,7 +12,14 @@ const id = z.string().min(1).max(100);
 const numberText = z.string().max(40).refine((value) => value === "" || (Number.isFinite(Number(value)) && Math.abs(Number(value)) <= 99999999999), "Invalid number");
 const optionalNumber = numberText.optional().default("");
 const rule = z.object({ id, text: z.string().max(160), checked: z.boolean(), group: z.enum(["Before trading", "While trading", "After trading"]) });
-const attachment = z.object({ id, name: z.string().min(1).max(200), type: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]), size: z.number().int().min(1).max(MAX_ATTACHMENT_BYTES) });
+const attachment = z.object({
+  id,
+  name: z.string().min(1).max(200),
+  type: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]),
+  size: z.number().int().min(1).max(MAX_ATTACHMENT_BYTES),
+  stage: z.enum(ATTACHMENT_STAGES).optional(),
+  caption: z.string().max(180).optional(),
+});
 const accountSchema = z.object({
   id,
   name: z.string().min(1).max(40),

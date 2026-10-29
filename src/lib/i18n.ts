@@ -1,6 +1,6 @@
 import type { CsvField } from "@/lib/csv";
 import type { Period } from "@/lib/format";
-import type { AppLocale, PlaybookRule } from "@/lib/types";
+import type { AppLocale, AttachmentStage, PlaybookRule } from "@/lib/types";
 
 export const LOCALE_STORAGE_KEY = "bloom-ui-locale:v1";
 
@@ -51,6 +51,17 @@ export function translateSide(side: "Long" | "Short" | string, locale: AppLocale
   if (side === "Long") return "Long (Beli)";
   if (side === "Short") return "Short (Jual)";
   return side;
+}
+
+export function translateAttachmentStage(stage: AttachmentStage, locale: AppLocale): string {
+  if (locale !== "id") return stage;
+  const map: Record<AttachmentStage, string> = {
+    Before: "Sebelum",
+    Entry: "Entri",
+    After: "Sesudah",
+    HTF: "HTF",
+  };
+  return map[stage] ?? stage;
 }
 
 export function translatePlaybookGroup(group: PlaybookRule["group"], locale: AppLocale): string {
@@ -678,6 +689,41 @@ export const UI_COPY = {
     songAddedToast: "Song added to your cassette deck.",
     songRemovedToast: "Song removed.",
 
+    // Visual Chartbook, Lightbox & Screenshot Stage Tags
+    journalViewTable: "Table",
+    journalViewChartbook: "Chartbook",
+    journalViewModeAria: "Journal view mode",
+    stageFilterAria: "Filter by chart stage",
+    allStages: "All stages",
+    untaggedStage: "Untagged",
+    stageSelectorAria: (name: string) => `Chart stage for ${name}`,
+    captionPlaceholder: "Short note on this chart (optional)...",
+    captionAria: (name: string) => `Caption for ${name}`,
+    zoomPreviewAria: (name: string) => `Zoom ${name}`,
+    viewTradeChartsAria: (sym: string, count: number) => `View ${count} chart ${count === 1 ? "screenshot" : "screenshots"} for ${sym}`,
+    chartbookTitle: "Visual chartbook",
+    chartbookCountDesc: (charts: number, tradesCount: number) =>
+      `${charts} ${charts === 1 ? "chart" : "charts"} across ${tradesCount} ${tradesCount === 1 ? "trade" : "trades"}`,
+    chartbookEmptyTitle: "No chart screenshots in this view.",
+    chartbookEmptyBody: "Attach Before, Entry, After, or HTF screenshots when logging a trade—or adjust your filters above.",
+    lightboxDialogLabel: "Chart viewer",
+    lightboxClose: "Close chart viewer",
+    lightboxPrev: "Previous chart",
+    lightboxNext: "Next chart",
+    lightboxZoomAria: "Chart zoom level",
+    lightboxEditTrade: "Edit trade",
+    lightboxTradeContext: "TRADE CONTEXT",
+    lightboxChartNoteLabel: "Chart caption",
+    lightboxNoCaption: "No chart caption recorded.",
+    lightboxTradeNotesLabel: "Trade notes",
+    lightboxNoNotes: "No trade notes recorded.",
+    lightboxCounter: (index: number, total: number) => `${index} of ${total}`,
+    lightboxTradeShots: "Charts on this trade",
+    lightboxRMultiple: "R-multiple",
+    lightboxMoodLabel: "Mood",
+    lightboxTimeframeSession: "Timeframe / session",
+    lightboxKeyboardHint: "← → browse · + / − zoom · Esc close",
+
     // Auth Screen
     authHeroTitle: "Your trading journal.",
     authHeroBody: "Review trades, track your process, and reflect on your decisions.",
@@ -1239,6 +1285,40 @@ export const UI_COPY = {
     removeSongAria: (title: string) => `Hapus lagu ${title}`,
     songAddedToast: "Lagu berhasil ditambahkan ke kaset.",
     songRemovedToast: "Lagu dihapus.",
+
+    // Visual Chartbook, Lightbox & Screenshot Stage Tags
+    journalViewTable: "Tabel",
+    journalViewChartbook: "Galeri Chart",
+    journalViewModeAria: "Mode tampilan jurnal",
+    stageFilterAria: "Saring berdasarkan tahap chart",
+    allStages: "Semua tahap",
+    untaggedStage: "Tanpa label",
+    stageSelectorAria: (name: string) => `Tahap chart untuk ${name}`,
+    captionPlaceholder: "Catatan singkat pada chart ini (opsional)...",
+    captionAria: (name: string) => `Catatan untuk ${name}`,
+    zoomPreviewAria: (name: string) => `Perbesar ${name}`,
+    viewTradeChartsAria: (sym: string, count: number) => `Lihat ${count} screenshot chart untuk ${sym}`,
+    chartbookTitle: "Galeri chart visual",
+    chartbookCountDesc: (charts: number, tradesCount: number) => `${charts} chart dari ${tradesCount} trade`,
+    chartbookEmptyTitle: "Belum ada screenshot chart pada tampilan ini.",
+    chartbookEmptyBody: "Lampirkan screenshot Sebelum, Entri, Sesudah, atau HTF saat mencatat trade—atau sesuaikan filter di atas.",
+    lightboxDialogLabel: "Penampil chart",
+    lightboxClose: "Tutup penampil chart",
+    lightboxPrev: "Chart sebelumnya",
+    lightboxNext: "Chart berikutnya",
+    lightboxZoomAria: "Tingkat perbesaran chart",
+    lightboxEditTrade: "Ubah trade",
+    lightboxTradeContext: "KONTEKS TRADE",
+    lightboxChartNoteLabel: "Catatan chart",
+    lightboxNoCaption: "Belum ada catatan khusus pada chart ini.",
+    lightboxTradeNotesLabel: "Catatan trade",
+    lightboxNoNotes: "Belum ada catatan trade.",
+    lightboxCounter: (index: number, total: number) => `${index} dari ${total}`,
+    lightboxTradeShots: "Chart pada trade ini",
+    lightboxRMultiple: "R-multiple",
+    lightboxMoodLabel: "Suasana hati",
+    lightboxTimeframeSession: "Timeframe / sesi",
+    lightboxKeyboardHint: "← → pindah · + / − zoom · Esc tutup",
 
     // Auth Screen
     authHeroTitle: "Jurnal trading pribadimu.",

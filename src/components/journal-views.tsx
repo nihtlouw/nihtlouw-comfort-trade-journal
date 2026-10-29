@@ -1,13 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowRight, BookHeart, CalendarDays, Check, CheckCircle2, ChevronDown, CirclePlus, Download, Filter, Plus, RotateCcw, Search, Sparkles, Target, Trash2, Upload, Wind, X } from "lucide-react";
+import { ArrowRight, BookHeart, CalendarDays, Check, CheckCircle2, ChevronDown, CirclePlus, Download, Filter, Images, List, Plus, RotateCcw, Search, Sparkles, Target, Trash2, Upload, Wind, X } from "lucide-react";
+import type { StorageMode } from "@/lib/attachments";
 import { groupTrades, maxRealizedDrawdown, previousPeriodTrades } from "@/lib/analytics";
 import { currency, filterTrades, getAccountBalanceSummary, getStats, shortDate, todayString, type Period } from "@/lib/format";
 import { periodLabel, translateAccountName, translateMarket, translateMood, translatePlaybookGroup, translateSide, UI_COPY } from "@/lib/i18n";
 import { DEFAULT_ACCOUNT, MARKETS, MOODS, type AppLocale, type Intention, type JournalSettings, type PlaybookRule, type Trade, type WeeklyReflection } from "@/lib/types";
 import { RiskOverview } from "@/components/journal-review";
 import { AccountBalanceCard, CardTitle, GoalCard, MoodCard, PerformanceChart, StatsCards, TradeTable, TradingCalendar } from "@/components/journal-ui";
+import { ChartbookGallery, type ChartLightboxSlide, type StageFilterValue } from "@/components/chart-lightbox";
 
 export type View = "Overview" | "Trade journal" | "Analytics" | "Calendar" | "Playbook" | "Mindset" | "Patience" | "Goals" | "Weekly review";
 export type CommonProps = {
@@ -24,6 +26,7 @@ export type CommonProps = {
   onMarkGoal: (id: string) => void;
   onRiskSettings: () => void;
   onAccountsSettings: () => void;
+  onPreviewCharts?: (trade: Trade) => void;
   period: Period;
   onPeriod: (period: Period) => void;
 };
@@ -49,29 +52,59 @@ export function Overview(props: CommonProps) {
     <div className="section-heading"><div><h2>{copy.tradingAtAGlance}</h2></div><div className="range-label"><CalendarDays size={15}/> {periodLabel(props.period, locale)}</div></div>
     <StatsCards trades={periodTrades} hidden={props.hidden} locale={locale}/>
     <PerformanceChart trades={periodTrades} period={props.period} onPeriodChange={props.onPeriod} hidden={props.hidden} locale={locale}/>
-    <TradeTable trades={props.trades.slice(0, 5)} hidden={props.hidden} onEdit={props.onEditTrade} onNew={props.onNewTrade} onViewAll={() => props.onView("Trade journal")} compact locale={locale}/>
+    <TradeTable trades={props.trades.slice(0, 5)} hidden={props.hidden} onEdit={props.onEditTrade} onNew={props.onNewTrade} onViewAll={() => props.onView("Trade journal")} onPreviewCharts={props.onPreviewCharts} compact locale={locale}/>
     <TradingCalendar trades={props.trades} hidden={props.hidden} onDay={props.onDay} compact locale={locale}/>
   </div><aside className="overview-side"><MoodCard settings={props.settings} onMood={props.onMood} onOpen={() => props.onView("Mindset")} locale={locale}/><GoalCard settings={props.settings} onMark={props.onMarkGoal} onOpen={() => props.onView("Goals")} locale={locale}/><RiskOverview trades={props.trades} settings={props.settings} hidden={props.hidden} onReview={() => props.onView("Weekly review")} onSettings={props.onRiskSettings}/></aside></div>;
 }
 
-export function JournalView({ trades, hidden, onEditTrade, onNewTrade, onImport, onExport, selectedDay, clearDay, locale = "en" }: { trades: Trade[]; hidden: boolean; onEditTrade: (trade: Trade) => void; onNewTrade: () => void; onImport: () => void; onExport: (trades: Trade[]) => void; selectedDay: string; clearDay: () => void; locale?: AppLocale }) {
+export function JournalView({
+  trades,
+  hidden,
+  mode = "browser",
+  onEditTrade,
+  onNewTrade,
+  onImport,
+  onExport,
+  onPreviewCharts,
+  onOpenSlides,
+  selectedDay,
+  clearDay,
+  locale = "en",
+}: {
+  trades: Trade[];
+  hidden: boolean;
+  mode?: StorageMode;
+  onEditTrade: (trade: Trade) => void;
+  onNewTrade: () => void;
+  onImport: () => void;
+  onExport: (trades: Trade[]) => void;
+  onPreviewCharts?: (trade: Trade) => void;
+  onOpenSlides?: (slides: ChartLightboxSlide[], index: number) => void;
+  selectedDay: string;
+  clearDay: () => void;
+  locale?: AppLocale;
+}) {
   const copy = UI_COPY[locale];
   const [query, setQuery] = useState(""); const [market, setMarket] = useState("All markets"); const [result, setResult] = useState("All results");
   const [side, setSide] = useState("All directions"); const [mood, setMood] = useState("All moods"); const [start, setStart] = useState(""); const [end, setEnd] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"table" | "chartbook">("table");
+  const [stageFilter, setStageFilter] = useState<StageFilterValue>("All");
   const activeFilters = [market !== "All markets", result !== "All results", side !== "All directions", mood !== "All moods", !!start, !!end].filter(Boolean).length;
   function clearFilters() { setMarket("All markets"); setResult("All results"); setSide("All directions"); setMood("All moods"); setStart(""); setEnd(""); }
   const filtered = useMemo(() => trades.filter((trade) => {
     const value = Number(trade.pnl); const q = query.toLowerCase().trim();
     const translatedSearch = `${translateMarket(trade.market, locale)} ${translateSide(trade.side, locale)} ${translateMood(trade.mood, locale)}`.toLowerCase();
-    return (!q || `${trade.symbol} ${trade.market} ${trade.setup} ${trade.notes} ${(trade.tags ?? []).join(" ")} ${translatedSearch}`.toLowerCase().includes(q))
+    const attachmentCaptions = (trade.attachments ?? []).map((att) => `${att.stage ?? ""} ${att.caption ?? ""}`).join(" ");
+    return (!q || `${trade.symbol} ${trade.market} ${trade.setup} ${trade.notes} ${(trade.tags ?? []).join(" ")} ${attachmentCaptions} ${translatedSearch}`.toLowerCase().includes(q))
       && (market === "All markets" || trade.market === market)
       && (side === "All directions" || trade.side === side) && (mood === "All moods" || trade.mood === mood)
       && (result === "All results" || (result === "Wins" && value > 0) || (result === "Losses" && value < 0) || (result === "Breakeven" && value === 0))
       && (!selectedDay || trade.tradeDate === selectedDay) && (!start || trade.tradeDate >= start) && (!end || trade.tradeDate <= end);
   }), [trades, query, market, side, mood, result, selectedDay, start, end, locale]);
+  const chartCount = useMemo(() => filtered.reduce((sum, trade) => sum + (trade.attachments?.length ?? 0), 0), [filtered]);
   return <div className="view-stack">
-    <div className="journal-toolbar card"><div className="toolbar-primary"><label className="search-box"><Search size={17}/><span className="sr-only">{copy.searchTrades}</span><input type="search" enterKeyHint="search" placeholder={copy.searchTrades} value={query} onChange={(event) => setQuery(event.target.value)}/></label><button type="button" className="button-secondary" onClick={onImport}><Upload size={15}/> {copy.importCsv}</button><button type="button" className="button-secondary" onClick={() => onExport(filtered)}><Download size={15}/> {copy.exportCsv}</button></div>
+    <div className="journal-toolbar card"><div className="toolbar-primary"><label className="search-box"><Search size={17}/><span className="sr-only">{copy.searchTrades}</span><input type="search" enterKeyHint="search" placeholder={copy.searchTrades} value={query} onChange={(event) => setQuery(event.target.value)}/></label><div className="segment-control journal-view-switch" role="group" aria-label={copy.journalViewModeAria}><button type="button" className={viewMode === "table" ? "selected" : ""} aria-pressed={viewMode === "table"} onClick={() => setViewMode("table")}><List size={14}/><span>{copy.journalViewTable}</span></button><button type="button" className={viewMode === "chartbook" ? "selected" : ""} aria-pressed={viewMode === "chartbook"} onClick={() => setViewMode("chartbook")}><Images size={14}/><span>{copy.journalViewChartbook}</span>{chartCount > 0 && <b className="chart-switch-count">{chartCount}</b>}</button></div><button type="button" className="button-secondary" onClick={onImport}><Upload size={15}/> {copy.importCsv}</button><button type="button" className="button-secondary" onClick={() => onExport(filtered)}><Download size={15}/> {copy.exportCsv}</button></div>
       <button type="button" className="filters-toggle" aria-expanded={filtersOpen} aria-controls="journal-filters" onClick={() => setFiltersOpen(!filtersOpen)}><span><Filter size={16}/> {copy.filters} {activeFilters > 0 && <b>{activeFilters}</b>}</span><ChevronDown size={17} className={filtersOpen ? "rotated" : ""}/></button>
       <div className={`filter-row ${filtersOpen ? "is-open" : ""}`} id="journal-filters"><span className="filter-label"><Filter size={14}/> {copy.filterBy}</span>
         <select aria-label={copy.filterMarketAria} value={market} onChange={(event) => setMarket(event.target.value)}><option value="All markets">{copy.allMarkets}</option>{MARKETS.map((item) => <option key={item} value={item}>{translateMarket(item, locale)}</option>)}</select>
@@ -82,7 +115,20 @@ export function JournalView({ trades, hidden, onEditTrade, onNewTrade, onImport,
         {activeFilters > 0 && <button type="button" className="clear-filters" onClick={clearFilters}>{copy.clearFilters}</button>}
       </div>{selectedDay && <div className="selected-day"><CalendarDays size={14}/> {copy.showingDay} {shortDate(selectedDay, true, locale)} <button type="button" onClick={clearDay} aria-label={copy.clearSelectedDay}><X size={14}/></button></div>}
     </div>
-    <TradeTable trades={filtered} hidden={hidden} onEdit={onEditTrade} onNew={onNewTrade} locale={locale}/>
+    {viewMode === "table" ? (
+      <TradeTable trades={filtered} hidden={hidden} onEdit={onEditTrade} onNew={onNewTrade} onPreviewCharts={onPreviewCharts} locale={locale}/>
+    ) : (
+      <ChartbookGallery
+        trades={filtered}
+        stageFilter={stageFilter}
+        onStageFilterChange={setStageFilter}
+        mode={mode}
+        hidden={hidden}
+        locale={locale}
+        onOpenSlide={(slides, index) => onOpenSlides?.(slides, index)}
+        onNewTrade={onNewTrade}
+      />
+    )}
   </div>;
 }
 

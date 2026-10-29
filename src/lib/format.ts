@@ -32,6 +32,17 @@ export function formatBytes(bytes: number) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+export function tradeRMultiple(trade: Trade): number | null {
+  const risk = Number(trade.initialRisk);
+  if (!Number.isFinite(risk) || risk <= 0) return null;
+  const pnl = Number(trade.pnl);
+  return Number.isFinite(pnl) ? pnl / risk : null;
+}
+export function formatRMultiple(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "—";
+  const abs = Math.abs(value).toFixed(2);
+  return `${value < 0 ? "−" : value > 0 ? "+" : ""}${abs}R`;
+}
 export function periodStart(period: Period, allTrades: Trade[]) {
   const today = dateFromString(todayString());
   if (period === "ALL") {
