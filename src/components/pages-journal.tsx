@@ -21,7 +21,7 @@ function BrowserJournal() {
     const timer = window.setTimeout(() => setShowLoading(false), LOADING_EXIT_MS);
     return () => window.clearTimeout(timer);
   }, [showLoading]);
-  return <><JournalApp initialData={initial.data} storage="browser" initialDamaged={initial.damaged}/>{showLoading && <JournalLoading leaving reduceMotion={reduced} theme={initial.data.settings.theme}/>}</>;
+  return <><JournalApp initialData={initial.data} storage="browser" initialDamaged={initial.damaged}/>{showLoading && <JournalLoading leaving reduceMotion={reduced} theme={initial.data.settings.theme} locale={initial.data.settings.locale ?? "en"}/>}</>;
 }
 export function PagesJournal() {
   const mounted = useSyncExternalStore(subscribe, clientSnapshot, serverSnapshot);

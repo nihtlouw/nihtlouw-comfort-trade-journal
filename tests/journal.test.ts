@@ -216,3 +216,144 @@ test("backup reminders are periodic, snoozable, and isolated by journal on this 
   const blocked = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } };
   assert.equal(loadBackupReminder(blocked, "browser", start).available, false); assert.equal(writeBackupReminder(blocked, "browser", downloaded), false);
 });
+
+test("account starting balance normalizes cleanly, persists in backups, and computes realized balance excluding sample trades", async () => {
+  const { getAccountBalanceSummary } = await import("@/lib/format");
+  const journal = normalizeJournalData(createDemoData());
+  assert.equal(journal.settings.accounts?.[0]?.startingBalance ?? null, null);
+  assert.equal(journal.settings.locale, "en");
+
+  journal.settings.locale = "id";
+  journal.settings.accounts = [
+    { id: "main", name: "Main account", startingBalance: 10_000.456 },
+    { id: "swing", name: "Swing account", startingBalance: null },
+  ];
+  const normalized = normalizeJournalData(journal);
+  assert.equal(normalized.settings.locale, "id");
+  assert.equal(normalized.settings.accounts?.[0]?.startingBalance, 10_000.46);
+  assert.equal(normalized.settings.accounts?.[1]?.startingBalance, null);
+
+  const trades: Trade[] = [
+    { ...makeTrade(1, "450.25"), accountId: "main", isDemo: false },
+    { ...makeTrade(2, "-150.25"), accountId: "main", isDemo: false },
+    { ...makeTrade(3, "9999"), accountId: "main", isDemo: true }, // sample trade MUST be excluded
+    { ...makeTrade(4, "200"), accountId: "swing", isDemo: false },
+  ];
+
+  const mainSummary = getAccountBalanceSummary(trades, normalized.settings.accounts!, "main");
+  assert.equal(mainSummary.configuredCount, 1);
+  assert.equal(mainSummary.startingBalance, 10_000.46);
+  assert.equal(mainSummary.realizedNet, 300);
+  assert.equal(mainSummary.currentBalance, 10_300.46);
+  assert.equal(mainSummary.realTradeCount, 2);
+  assert.ok(mainSummary.returnPct !== null && Math.abs(mainSummary.returnPct - (300 / 10_000.46) * 100) < 1e-6);
+
+  const swingSummary = getAccountBalanceSummary(trades, normalized.settings.accounts!, "swing");
+  assert.equal(swingSummary.configuredCount, 0);
+  assert.equal(swingSummary.startingBalance, null);
+  assert.equal(swingSummary.currentBalance, null);
+  assert.equal(swingSummary.realizedNet, 200);
+
+  const allPartial = getAccountBalanceSummary(trades, normalized.settings.accounts!, "all");
+  assert.equal(allPartial.configuredCount, 1);
+  assert.equal(allPartial.totalAccounts, 2);
+  assert.equal(allPartial.startingBalance, 10_000.46);
+  assert.equal(allPartial.realizedNet, 300); // only configured accounts summed into combined starting + realized balance
+  assert.equal(allPartial.currentBalance, 10_300.46);
+
+  const zeroBalSummary = getAccountBalanceSummary(trades, [{ id: "main", name: "Main account", startingBalance: 0 }], "main");
+  assert.equal(zeroBalSummary.configuredCount, 1);
+  assert.equal(zeroBalSummary.currentBalance, 300);
+  assert.equal(zeroBalSummary.returnPct, null);
+
+  const backup = await parseBackup(JSON.stringify({ format: "bloom-journal-backup", version: 2, journal: normalized, images: [] }));
+  assert.equal(backup.journal.settings.accounts?.[0]?.startingBalance, 10_000.46);
+  assert.equal(backup.journal.settings.locale, "id");
+  assert.throws(() => normalizeJournalData({ ...normalized, settings: { ...normalized.settings, accounts: [{ id: "main", name: "Main", startingBalance: -5 }] } }));
+});
+
+test("bilingual EN/ID copy maintains key parity and translates canonical enums & dates without mutating stored values", async () => {
+  const { UI_COPY, translateAccountName, translateMarket, translateMood, translatePlaybookGroup, translateSide } = await import("@/lib/i18n");
+  const { shortDate, longToday } = await import("@/lib/format");
+  const { monthTitle } = await import("@/lib/analytics");
+
+  assert.deepEqual(Object.keys(UI_COPY.en).sort(), Object.keys(UI_COPY.id).sort());
+  assert.deepEqual(Object.keys(UI_COPY.en.views).sort(), Object.keys(UI_COPY.id.views).sort());
+  assert.equal(translateMarket("Stocks", "id"), "Saham");
+  assert.equal(translateMarket("Stocks", "en"), "Stocks");
+  assert.equal(translateSide("Long", "id"), "Long (Beli)");
+  assert.equal(translateMood("Calm", "id"), "Tenang");
+  assert.equal(translatePlaybookGroup("Before trading", "id"), "Sebelum trading");
+  assert.equal(translateAccountName("Main account", "id"), "Akun utama");
+  assert.equal(translateAccountName("Custom Prop", "id"), "Custom Prop");
+
+  assert.match(shortDate("2026-10-29", false, "en"), /Oct/i);
+  assert.match(shortDate("2026-10-29", false, "id"), /29/);
+  assert.ok(longToday("en").length > 4 && longToday("id").length > 4);
+  assert.match(monthTitle(2026, 0, "id"), /Januari/i);
+});
+
+test("cassette audio library validates real magic bytes and enforces 5-song & 200 MB limits", async () => {
+  const { cleanTrackTitle, inferAudioMimeType, validateAudioHeader, validateNewAudioTrack } = await import("@/lib/audio");
+  const { MAX_AUDIO_TOTAL_BYTES, MAX_AUDIO_TRACKS } = await import("@/lib/types");
+
+  const mp3Id3 = new Uint8Array([0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+  const mp3Sync = new Uint8Array([0xff, 0xfb, 0x90, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+  const wav = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56, 0x45]);
+  const ogg = new Uint8Array([0x4f, 0x67, 0x67, 0x53, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+  const flac = new Uint8Array([0x66, 0x4c, 0x61, 0x43, 0x00, 0x00, 0x00, 0x22, 0x00, 0x00, 0x00, 0x00]);
+  const m4a = new Uint8Array([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x4d, 0x34, 0x41, 0x20]);
+  const webm = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81, 0x01, 0x42, 0xf7, 0x81]);
+  const fakeHtml = new TextEncoder().encode("<!doctype html><script>alert(1)</script>");
+
+  assert.equal(inferAudioMimeType("track.mp3", ""), "audio/mpeg");
+  assert.equal(inferAudioMimeType("track.m4a", "audio/x-m4a"), "audio/mp4");
+  assert.equal(inferAudioMimeType("script.exe", "application/octet-stream"), null);
+
+  assert.equal(validateAudioHeader(mp3Id3, "audio/mpeg"), true);
+  assert.equal(validateAudioHeader(mp3Sync, "audio/mpeg"), true);
+  assert.equal(validateAudioHeader(wav, "audio/wav"), true);
+  assert.equal(validateAudioHeader(ogg, "audio/ogg"), true);
+  assert.equal(validateAudioHeader(flac, "audio/flac"), true);
+  assert.equal(validateAudioHeader(m4a, "audio/mp4"), true);
+  assert.equal(validateAudioHeader(webm, "audio/webm"), true);
+  assert.equal(validateAudioHeader(fakeHtml, "audio/mpeg"), false);
+
+  assert.equal(cleanTrackTitle("lofi_rain-session.mp3"), "lofi rain session");
+
+  assert.equal(
+    validateNewAudioTrack({ size: 2048, fileName: "calm.wav", rawType: "audio/wav", existingCount: 0, existingBytes: 0, headerBytes: wav, locale: "en" }),
+    "audio/wav",
+  );
+
+  // Reject 6th song in both EN and ID
+  assert.throws(
+    () => validateNewAudioTrack({ size: 2048, fileName: "calm.wav", rawType: "audio/wav", existingCount: MAX_AUDIO_TRACKS, existingBytes: 1024, headerBytes: wav, locale: "en" }),
+    /up to 5 songs/i,
+  );
+  assert.throws(
+    () => validateNewAudioTrack({ size: 2048, fileName: "calm.wav", rawType: "audio/wav", existingCount: MAX_AUDIO_TRACKS, existingBytes: 1024, headerBytes: wav, locale: "id" }),
+    /Maksimal 5 lagu/i,
+  );
+
+  // Allow exact 200 MB total, reject 200 MB + 1 byte in both EN and ID
+  assert.equal(
+    validateNewAudioTrack({ size: 2048, fileName: "calm.wav", rawType: "audio/wav", existingCount: 1, existingBytes: MAX_AUDIO_TOTAL_BYTES - 2048, headerBytes: wav, locale: "en" }),
+    "audio/wav",
+  );
+  assert.throws(
+    () => validateNewAudioTrack({ size: 2048, fileName: "calm.wav", rawType: "audio/wav", existingCount: 1, existingBytes: MAX_AUDIO_TOTAL_BYTES - 2048 + 1, headerBytes: wav, locale: "en" }),
+    /200 MB/i,
+  );
+  assert.throws(
+    () => validateNewAudioTrack({ size: 2048, fileName: "calm.wav", rawType: "audio/wav", existingCount: 1, existingBytes: MAX_AUDIO_TOTAL_BYTES - 2048 + 1, headerBytes: wav, locale: "id" }),
+    /200 MB/i,
+  );
+
+  // Reject non-audio payload disguised with .mp3
+  assert.throws(
+    () => validateNewAudioTrack({ size: fakeHtml.byteLength, fileName: "fake.mp3", rawType: "audio/mpeg", existingCount: 0, existingBytes: 0, headerBytes: fakeHtml, locale: "en" }),
+    /does not match/i,
+  );
+});
+

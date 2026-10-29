@@ -12,17 +12,43 @@ export type TradeAttachment = {
   size: number;
 };
 
+export type AppLocale = "en" | "id";
+export type PatienceLocale = AppLocale;
 export type RuleSnapshot = { id: string; text: string; checked: boolean };
-export type TradingAccount = { id: string; name: string };
+export type TradingAccount = {
+  id: string;
+  name: string;
+  /** Optional starting capital in USD for realized balance tracking. */
+  startingBalance?: number | null;
+};
 export type MoodEntry = { date: string; mood: string; note: string };
 export type Intention = { id: string; text: string; target: number; progress: number; markedDates: string[] };
 export type WeeklyReflection = { id: string; date: string; wentWell: string; learned: string; nextWeek: string };
 /** Informational thresholds, in USD. A null limit is disabled. */
 export type RiskLimits = { perTrade: number | null; dailyLoss: number | null };
 export type BackupReminderDays = 0 | 7 | 14 | 30;
-export type PatienceLocale = "en" | "id";
 export type WalkAwayReason = "lock_profit" | "stop_giveback" | "respect_loss" | "protect_focus";
 export type WalkAwayLog = { id: string; date: string; accountId: string; reason: WalkAwayReason; note: string };
+
+export type AudioMimeType =
+  | "audio/mpeg"
+  | "audio/wav"
+  | "audio/ogg"
+  | "audio/flac"
+  | "audio/mp4"
+  | "audio/aac"
+  | "audio/webm";
+
+export type AudioTrackMeta = {
+  id: string;
+  title: string;
+  fileName: string;
+  mimeType: AudioMimeType;
+  size: number;
+  durationSec: number | null;
+  sortOrder: number;
+  createdAt: string;
+};
 
 export type Trade = {
   id: number;
@@ -67,6 +93,8 @@ export type JournalSettings = {
   moodHistory?: MoodEntry[];
   reflections?: WeeklyReflection[];
   theme?: "light" | "dark";
+  /** App-wide interface language (English or Bahasa Indonesia). */
+  locale?: AppLocale;
   /** Reduce interface motion regardless of the device preference. */
   reduceMotion?: boolean;
   includeSamples?: boolean;
@@ -82,6 +110,9 @@ export type JournalSettings = {
 export type JournalData = { trades: Trade[]; settings: JournalSettings };
 export const MOODS = ["Calm", "Focused", "Anxious", "Tired"] as const;
 export const MARKETS = ["Forex", "Stocks", "Crypto", "Futures", "Commodities"] as const;
-export const DEFAULT_ACCOUNT: TradingAccount = { id: "main", name: "Main account" };
+export const DEFAULT_ACCOUNT: TradingAccount = { id: "main", name: "Main account", startingBalance: null };
 export const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
 export const MAX_JOURNAL_IMAGE_BYTES = 30 * 1024 * 1024;
+export const MAX_AUDIO_TRACKS = 5;
+export const MAX_AUDIO_TOTAL_BYTES = 200 * 1024 * 1024;
+export const AUDIO_CHUNK_BYTES = 2 * 1024 * 1024;

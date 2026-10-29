@@ -1,5 +1,11 @@
-import { bigint, boolean, date, index, integer, jsonb, numeric, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
+import { bigint, boolean, customType, date, doublePrecision, index, integer, jsonb, numeric, pgTable, primaryKey, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
 import type { JournalData, PlaybookRule } from "@/lib/types";
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
 
 export const trades = pgTable("trades", {
   id: serial("id").primaryKey(),
@@ -67,3 +73,25 @@ export const journalImages = pgTable("bloom_journal_images", {
   name: text("name").notNull(), type: text("type").notNull(), size: integer("size").notNull(), data: text("data").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index("bloom_journal_images_user_idx").on(table.userId)]);
+
+export const audioTracks = pgTable("bloom_audio_tracks", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  fileName: text("file_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  size: integer("size").notNull(),
+  durationSec: doublePrecision("duration_sec"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  chunkSize: integer("chunk_size").notNull(),
+  expectedChunks: integer("expected_chunks").notNull(),
+  status: text("status").notNull().default("uploading"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index("bloom_audio_tracks_user_idx").on(table.userId)]);
+
+export const audioChunks = pgTable("bloom_audio_chunks", {
+  trackId: text("track_id").notNull().references(() => audioTracks.id, { onDelete: "cascade" }),
+  chunkIndex: integer("chunk_index").notNull(),
+  size: integer("size").notNull(),
+  data: bytea("data").notNull(),
+}, (table) => [primaryKey({ columns: [table.trackId, table.chunkIndex] })]);

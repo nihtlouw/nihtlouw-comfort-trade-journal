@@ -1,16 +1,20 @@
-import type { Trade } from "@/lib/types";
+import { DEFAULT_ACCOUNT, type AppLocale, type Trade, type TradingAccount } from "@/lib/types";
 
 export type Period = "1W" | "1M" | "3M" | "ALL";
+const intlTag = (locale: AppLocale) => (locale === "id" ? "id-ID" : "en-US");
+
 /** Date-only records use the trader's local calendar day, not UTC midnight. */
 export function todayString() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 export function dateFromString(value: string) { return new Date(`${value}T12:00:00Z`); }
-export function shortDate(value: string, includeYear = false) {
-  return dateFromString(value).toLocaleDateString("en-US", { month: "short", day: "numeric", ...(includeYear ? { year: "numeric" } : {}), timeZone: "UTC" });
+export function shortDate(value: string, includeYear = false, locale: AppLocale = "en") {
+  return dateFromString(value).toLocaleDateString(intlTag(locale), { month: "short", day: "numeric", ...(includeYear ? { year: "numeric" } : {}), timeZone: "UTC" });
 }
-export function longToday() { return new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }); }
+export function longToday(locale: AppLocale = "en") {
+  return new Date().toLocaleDateString(intlTag(locale), { weekday: "long", month: "long", day: "numeric" });
+}
 export function currency(value: number, signed = false, hidden = false) {
   if (hidden) return "••••••";
   const abs = Math.abs(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -22,6 +26,11 @@ export function compactCurrency(value: number, hidden = false) {
   const absolute = Math.abs(value);
   if (absolute >= 1000) return `${sign}$${(absolute / 1000).toFixed(absolute >= 10000 ? 0 : 1).replace(/\.0$/, "")}k`;
   return `${sign}$${Math.round(absolute)}`;
+}
+export function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 export function periodStart(period: Period, allTrades: Trade[]) {
   const today = dateFromString(todayString());
@@ -54,5 +63,80 @@ export function getStats(trades: Trade[]) {
     avgWin: wins.length ? grossWins / wins.length : null, avgLoss: losses.length ? -grossLosses / losses.length : null,
     expectancy: values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null,
     avgR, riskCount: riskTrades.length,
+  };
+}
+
+export type AccountBalanceSummary = {
+  accountName: string | null;
+  configuredCount: number;
+  totalAccounts: number;
+  startingBalance: number | null;
+  realizedNet: number;
+  currentBalance: number | null;
+  returnPct: number | null;
+  realTradeCount: number;
+};
+
+/**
+ * Computes realized account balance using real trades only (`!trade.isDemo`),
+ * so sample trades never distort actual account capital.
+ */
+export function getAccountBalanceSummary(
+  allTrades: Trade[],
+  accounts: TradingAccount[],
+  accountFilter: string,
+): AccountBalanceSummary {
+  const list = accounts.length ? accounts : [DEFAULT_ACCOUNT];
+  const realTrades = allTrades.filter((trade) => !trade.isDemo);
+
+  if (accountFilter !== "all") {
+    const selected = list.find((item) => item.id === accountFilter) ?? list[0];
+    const scopedTrades = realTrades.filter((trade) => (trade.accountId ?? DEFAULT_ACCOUNT.id) === selected.id);
+    const realizedNet = scopedTrades.reduce((sum, trade) => sum + Number(trade.pnl), 0);
+    const startingBalance = selected.startingBalance ?? null;
+    const currentBalance = startingBalance !== null ? startingBalance + realizedNet : null;
+    const returnPct = startingBalance !== null && startingBalance > 0 ? (realizedNet / startingBalance) * 100 : null;
+    return {
+      accountName: selected.name,
+      configuredCount: startingBalance !== null ? 1 : 0,
+      totalAccounts: 1,
+      startingBalance,
+      realizedNet,
+      currentBalance,
+      returnPct,
+      realTradeCount: scopedTrades.length,
+    };
+  }
+
+  const configured = list.filter((item) => item.startingBalance !== null && item.startingBalance !== undefined);
+  if (!configured.length) {
+    const realizedNet = realTrades.reduce((sum, trade) => sum + Number(trade.pnl), 0);
+    return {
+      accountName: null,
+      configuredCount: 0,
+      totalAccounts: list.length,
+      startingBalance: null,
+      realizedNet,
+      currentBalance: null,
+      returnPct: null,
+      realTradeCount: realTrades.length,
+    };
+  }
+
+  const configuredIds = new Set(configured.map((item) => item.id));
+  const scopedTrades = realTrades.filter((trade) => configuredIds.has(trade.accountId ?? DEFAULT_ACCOUNT.id));
+  const startingBalance = configured.reduce((sum, item) => sum + (item.startingBalance ?? 0), 0);
+  const realizedNet = scopedTrades.reduce((sum, trade) => sum + Number(trade.pnl), 0);
+  const currentBalance = startingBalance + realizedNet;
+  const returnPct = startingBalance > 0 ? (realizedNet / startingBalance) * 100 : null;
+  return {
+    accountName: configured.length === 1 && list.length === 1 ? configured[0].name : null,
+    configuredCount: configured.length,
+    totalAccounts: list.length,
+    startingBalance,
+    realizedNet,
+    currentBalance,
+    returnPct,
+    realTradeCount: scopedTrades.length,
   };
 }
