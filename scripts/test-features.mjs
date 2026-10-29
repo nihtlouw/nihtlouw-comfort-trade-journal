@@ -374,6 +374,63 @@ try {
   assert.equal(await page.locator(".chartbook-card").count(), 1, "After stage preserved across backup restore");
   assert.match(await page.locator(".chartbook-card").innerText(), /Target hit cleanly at HTF resistance/);
   console.log("PASS: Visual Chartbook, In-App Zoom Lightbox, Before/After stage tags & captions, and backup/restore metadata preservation work offline.");
+
+  // Exercise Tahap B: Smart Entry Chips, 1-Click Plan Adherence, Good Loss vs Bad Win Matrix & Session/Tag/Playbook Breakdown.
+  // 1) Log a Bad Win (+90, risk 45 -> +2.00R) using quick-pick symbol chip, Off-plan pill, M15, New York, and #fomo + #early-exit tag chips
+  await page.getByRole("button", { name: "Log a trade", exact: true }).first().click();
+  await page.getByRole("group", { name: "Recent tickers" }).getByRole("button", { name: "CHART-PAIR", exact: true }).click();
+  assert.equal(await page.getByLabel("Asset / symbol").inputValue(), "CHART-PAIR");
+  await page.getByLabel("Net P&L (USD)").fill("90");
+  await page.getByRole("group", { name: "Did this trade follow your plan?" }).getByRole("button", { name: "Off-plan", exact: true }).click();
+  await page.getByRole("button", { name: /OPTIONAL DETAILS/ }).click();
+  await page.getByLabel("Initial risk (USD)").fill("45");
+  await page.getByRole("group", { name: "Chart intervals" }).getByRole("button", { name: "M15", exact: true }).click();
+  await page.getByRole("group", { name: "Market hours" }).getByRole("button", { name: "New York", exact: true }).click();
+  await page.getByRole("group", { name: "Keyword chips" }).getByRole("button", { name: "#fomo", exact: true }).click();
+  await page.getByRole("group", { name: "Keyword chips" }).getByRole("button", { name: "#early-exit", exact: true }).click();
+  assert.match(await page.getByLabel("Tags").inputValue(), /fomo.*early-exit/);
+  await page.getByRole("button", { name: "Save trade", exact: true }).click();
+  await page.locator(".modal").waitFor({ state: "detached" });
+
+  // 2) Log a Good Loss (-50, risk 50 -> -1.00R) using Playbook Checklist "Check all" helper & London session
+  await page.getByRole("button", { name: "Log a trade", exact: true }).first().click();
+  await page.getByLabel("Asset / symbol").fill("GOOD-LOSS-ONE");
+  await page.getByLabel("Net P&L (USD)").fill("-50");
+  await page.getByRole("button", { name: /OPTIONAL DETAILS/ }).click();
+  await page.getByLabel("Initial risk (USD)").fill("50");
+  await page.getByRole("group", { name: "Market hours" }).getByRole("button", { name: "London", exact: true }).click();
+  await page.getByRole("button", { name: "Check all", exact: true }).click();
+  assert.match(await page.locator(".checklist-live-count").innerText(), /\(7\/7\)/);
+  await page.getByRole("button", { name: "Save trade", exact: true }).click();
+  await page.locator(".modal").waitFor({ state: "detached" });
+
+  // 3) Inspect Analytics: Good Loss vs Bad Win 2x2 matrix + Session / Tag / Playbook breakdown tabs + 360px fit + Privacy
+  await navigate("Analytics");
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Analytics with 2x2 Matrix & 7 breakdown tabs fits 360px");
+  assert.match(await page.locator(".process-score-pill").innerText(), /50% plan followed/);
+  assert.match(await page.locator(".process-quadrant.good-loss").innerText(), /[−-]\$50\.00/);
+  assert.match(await page.locator(".process-quadrant.good-loss").innerText(), /[−-]1\.00R avg/);
+  assert.match(await page.locator(".process-quadrant.bad-win").innerText(), /\+\$90\.00/);
+  assert.match(await page.locator(".process-quadrant.bad-win").innerText(), /\+2\.00R avg/);
+
+  await page.locator(".breakdown-tabs").getByRole("button", { name: "Session", exact: true }).click();
+  assert.match(await page.locator(".breakdown-list").innerText(), /New York/);
+  assert.match(await page.locator(".breakdown-list").innerText(), /London/);
+
+  await page.locator(".breakdown-tabs").getByRole("button", { name: "Tag", exact: true }).click();
+  assert.match(await page.locator(".breakdown-list").innerText(), /#fomo/);
+  assert.match(await page.locator(".breakdown-list").innerText(), /#early-exit/);
+
+  await page.locator(".breakdown-tabs").getByRole("button", { name: "Playbook", exact: true }).click();
+  assert.match(await page.locator(".breakdown-list").innerText(), /Followed plan/);
+  assert.match(await page.locator(".breakdown-list").innerText(), /Off-plan/);
+
+  await page.getByLabel("Hide amounts").click();
+  assert.doesNotMatch(await page.locator(".process-matrix-card").innerText(), /\$50\.00|\$90\.00/);
+  assert.match(await page.locator(".process-matrix-card").innerText(), /••••••/);
+  assert.match(await page.locator(".process-matrix-card").innerText(), /\+2\.00R avg/);
+  await page.getByLabel("Show amounts").click();
+  console.log("PASS: Smart Entry Chips, 1-Click Plan Adherence, Good Loss vs Bad Win 2x2 Matrix, and Session/Tag/Playbook analytics work offline.");
   if (!external) {
     const didFetch = await page.evaluate((url) => fetch(url).then(() => true).catch(() => false), new URL("api/private-test", base).href); assert.equal(didFetch, false, "API responses must not be cached");
   }

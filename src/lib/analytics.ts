@@ -1,7 +1,21 @@
 import type { AppLocale, Trade } from "@/lib/types";
-import { dateFromString, periodStart, shortDate, todayString, type Period } from "@/lib/format";
+import { dateFromString, periodStart, shortDate, todayString, tradeRMultiple, type Period } from "@/lib/format";
 
 export type ChartPoint = { date: string; time: number; label: string; pnl: number; daily: number; trades: number; drawdown: number };
+export type TradeGroupRow = {
+  name: string;
+  count: number;
+  pnl: number;
+  wins: number;
+  losses: number;
+  avgR: number | null;
+};
+
+function computeAvgR(rows: Trade[]): number | null {
+  const rValues = rows.map(tradeRMultiple).filter((v): v is number => v !== null);
+  if (!rValues.length) return null;
+  return rValues.reduce((sum, v) => sum + v, 0) / rValues.length;
+}
 
 /** Daily realized P&L, rebased to zero for the selected period. */
 export function performanceSeries(trades: Trade[], period: Period): ChartPoint[] {
@@ -33,14 +47,215 @@ export function maxRealizedDrawdown(trades: Trade[]) {
   return maxDrawdown;
 }
 
-export function groupTrades(trades: Trade[], key: (trade: Trade) => string, fallbackLabel = "Not specified") {
+export function groupTrades(trades: Trade[], key: (trade: Trade) => string, fallbackLabel = "Not specified"): TradeGroupRow[] {
   const groups = new Map<string, Trade[]>();
-  trades.forEach((trade) => { const value = key(trade) || fallbackLabel; const existing = groups.get(value); if (existing) existing.push(trade); else groups.set(value, [trade]); });
+  trades.forEach((trade) => { const value = key(trade).trim() || fallbackLabel; const existing = groups.get(value); if (existing) existing.push(trade); else groups.set(value, [trade]); });
   return [...groups.entries()].map(([name, rows]) => ({
-    name, count: rows.length, pnl: rows.reduce((sum, trade) => sum + Number(trade.pnl), 0),
+    name,
+    count: rows.length,
+    pnl: rows.reduce((sum, trade) => sum + Number(trade.pnl), 0),
     wins: rows.filter((trade) => Number(trade.pnl) > 0).length,
     losses: rows.filter((trade) => Number(trade.pnl) < 0).length,
+    avgR: computeAvgR(rows),
   })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+/** Multi-label breakdown: a trade with multiple tags is counted under each tag it carries. */
+export function groupTradesByTag(trades: Trade[], untaggedLabel = "No tags"): TradeGroupRow[] {
+  const displayNames = new Map<string, string>();
+  const groups = new Map<string, Trade[]>();
+  for (const trade of trades) {
+    const rawTags = (trade.tags ?? []).map((t) => t.trim()).filter(Boolean);
+    if (!rawTags.length) {
+      const bucket = groups.get("__untagged__") ?? [];
+      bucket.push(trade);
+      groups.set("__untagged__", bucket);
+      continue;
+    }
+    const seenOnTrade = new Set<string>();
+    for (const tag of rawTags) {
+      const norm = tag.toLowerCase();
+      if (seenOnTrade.has(norm)) continue;
+      seenOnTrade.add(norm);
+      if (!displayNames.has(norm)) displayNames.set(norm, `#${tag}`);
+      const bucket = groups.get(norm) ?? [];
+      bucket.push(trade);
+      groups.set(norm, bucket);
+    }
+  }
+  return [...groups.entries()]
+    .map(([normKey, rows]) => ({
+      name: normKey === "__untagged__" ? untaggedLabel : displayNames.get(normKey)!,
+      count: rows.length,
+      pnl: rows.reduce((sum, trade) => sum + Number(trade.pnl), 0),
+      wins: rows.filter((trade) => Number(trade.pnl) > 0).length,
+      losses: rows.filter((trade) => Number(trade.pnl) < 0).length,
+      avgR: computeAvgR(rows),
+    }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+export type ProcessStatus = "followed" | "broken" | "unrated";
+
+/**
+ * Evaluates whether a trade followed the trader's plan:
+ * 1. Explicit `followedPlan` boolean wins (`true` -> followed, `false` -> broken).
+ * 2. Otherwise, if at least one playbook rule was checked on the trade, >=70% checked -> followed, <70% -> broken.
+ * 3. Trades with no explicit rating and 0 checked rules remain honestly `"unrated"`.
+ */
+export function evaluateTradeProcess(trade: Trade): {
+  status: ProcessStatus;
+  checked: number;
+  total: number;
+  ratio: number | null;
+} {
+  const total = trade.checklist?.length ?? 0;
+  const checked = trade.checklist?.filter((rule) => rule.checked).length ?? 0;
+  if (typeof trade.followedPlan === "boolean") {
+    return {
+      status: trade.followedPlan ? "followed" : "broken",
+      checked,
+      total,
+      ratio: total > 0 ? checked / total : null,
+    };
+  }
+  if (total > 0 && checked > 0) {
+    const ratio = checked / total;
+    return {
+      status: ratio >= 0.7 ? "followed" : "broken",
+      checked,
+      total,
+      ratio,
+    };
+  }
+  return { status: "unrated", checked, total, ratio: null };
+}
+
+export type ProcessQuadrantStats = {
+  count: number;
+  pnl: number;
+  avgR: number | null;
+};
+
+export type ProcessMatrixSummary = {
+  modelWin: ProcessQuadrantStats;
+  goodLoss: ProcessQuadrantStats;
+  badWin: ProcessQuadrantStats;
+  unforcedLoss: ProcessQuadrantStats;
+  ratedBreakevens: number;
+  unratedCount: number;
+  ratedCount: number;
+  followedCount: number;
+  processScorePct: number | null;
+};
+
+function summarizeQuadrant(rows: Trade[]): ProcessQuadrantStats {
+  return {
+    count: rows.length,
+    pnl: rows.reduce((sum, trade) => sum + Number(trade.pnl), 0),
+    avgR: computeAvgR(rows),
+  };
+}
+
+export function getProcessMatrix(trades: Trade[]): ProcessMatrixSummary {
+  const modelWin: Trade[] = [];
+  const goodLoss: Trade[] = [];
+  const badWin: Trade[] = [];
+  const unforcedLoss: Trade[] = [];
+  let ratedBreakevens = 0;
+  let unratedCount = 0;
+  let followedCount = 0;
+
+  for (const trade of trades) {
+    const { status } = evaluateTradeProcess(trade);
+    if (status === "unrated") {
+      unratedCount++;
+      continue;
+    }
+    if (status === "followed") followedCount++;
+    const pnl = Number(trade.pnl);
+    if (pnl === 0) {
+      ratedBreakevens++;
+    } else if (status === "followed" && pnl > 0) {
+      modelWin.push(trade);
+    } else if (status === "followed" && pnl < 0) {
+      goodLoss.push(trade);
+    } else if (status === "broken" && pnl > 0) {
+      badWin.push(trade);
+    } else {
+      unforcedLoss.push(trade);
+    }
+  }
+
+  const ratedCount = trades.length - unratedCount;
+  return {
+    modelWin: summarizeQuadrant(modelWin),
+    goodLoss: summarizeQuadrant(goodLoss),
+    badWin: summarizeQuadrant(badWin),
+    unforcedLoss: summarizeQuadrant(unforcedLoss),
+    ratedBreakevens,
+    unratedCount,
+    ratedCount,
+    followedCount,
+    processScorePct: ratedCount > 0 ? Math.round((followedCount / ratedCount) * 100) : null,
+  };
+}
+
+const STARTER_TAGS = ["A+", "patient", "breakout", "pullback", "fomo", "early-exit", "revenge"] as const;
+export const PRESET_TIMEFRAMES = ["M1", "M5", "M15", "H1", "H4", "D1"] as const;
+export const PRESET_SESSIONS = ["Asia", "London", "New York", "Overlap"] as const;
+
+export function getSmartEntrySuggestions(trades: Trade[]): {
+  symbols: string[];
+  setups: string[];
+  tags: string[];
+} {
+  const realTrades = trades.filter((t) => !t.isDemo);
+  const demoTrades = trades.filter((t) => t.isDemo);
+
+  const rankUnique = (realVals: string[], demoVals: string[], maxLen: number, limit: number) => {
+    const pick = (values: string[]) => {
+      const counts = new Map<string, { display: string; count: number; firstIdx: number }>();
+      values.forEach((raw, idx) => {
+        const trimmed = raw.trim();
+        if (!trimmed || trimmed.length > maxLen) return;
+        const norm = trimmed.toLowerCase();
+        const prev = counts.get(norm);
+        if (prev) prev.count++;
+        else counts.set(norm, { display: trimmed, count: 1, firstIdx: idx });
+      });
+      return [...counts.values()]
+        .sort((a, b) => b.count - a.count || a.firstIdx - b.firstIdx)
+        .map((item) => item.display);
+    };
+    const primary = pick(realVals);
+    const seen = new Set(primary.map((v) => v.toLowerCase()));
+    const combined = [...primary];
+    for (const item of pick(demoVals)) {
+      if (combined.length >= limit) break;
+      if (!seen.has(item.toLowerCase())) {
+        seen.add(item.toLowerCase());
+        combined.push(item);
+      }
+    }
+    return combined.slice(0, limit);
+  };
+
+  const symbols = rankUnique(realTrades.map((t) => t.symbol), demoTrades.map((t) => t.symbol), 16, 5);
+  const setups = rankUnique(realTrades.map((t) => t.setup), demoTrades.map((t) => t.setup), 28, 4);
+
+  const userTags = rankUnique(realTrades.flatMap((t) => t.tags ?? []), demoTrades.flatMap((t) => t.tags ?? []), 24, 8);
+  const seenTagNorms = new Set(userTags.map((t) => t.toLowerCase()));
+  const mergedTags = [...userTags];
+  for (const starter of STARTER_TAGS) {
+    if (mergedTags.length >= 9) break;
+    if (!seenTagNorms.has(starter.toLowerCase())) {
+      seenTagNorms.add(starter.toLowerCase());
+      mergedTags.push(starter);
+    }
+  }
+
+  return { symbols, setups, tags: mergedTags };
 }
 
 export function monthGrid(year: number, month: number) {

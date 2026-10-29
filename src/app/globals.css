@@ -1852,4 +1852,308 @@ input:not([type="checkbox"]):not([type="file"]), select, textarea { min-width: 0
   .chart-nav-arrow.next { right: 8px; }
 }
 
+/* ============================================================================
+   Tahap B: Process vs Outcome Matrix, Expanded Breakdown & Smart Entry Chips
+   ============================================================================ */
+.breakdown-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  gap: 3px;
+}
+.breakdown-tabs button {
+  min-width: 0;
+  padding: 6px 10px;
+}
+
+.process-matrix-card {
+  padding: 21px;
+}
+.process-matrix-card .card-title {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.process-score-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 11px;
+  border: 1px solid #cce0cf;
+  border-radius: 999px;
+  color: var(--accent-dark);
+  background: var(--accent-pale);
+  font-size: 10.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.process-score-pill.is-empty {
+  border-color: var(--line);
+  color: var(--muted);
+  background: var(--surface-alt);
+  font-weight: 600;
+}
+.app-shell[data-theme="dark"] .process-score-pill:not(.is-empty) {
+  border-color: #4b644e;
+  color: #c8e3cc;
+  background: #253127;
+}
+
+.process-matrix-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.process-quadrant {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 15px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-alt);
+}
+.process-quadrant.model-win {
+  border-color: #d3e5d5;
+  background: #f3f9f2;
+}
+.process-quadrant.good-loss {
+  border-color: #d2e1eb;
+  background: #f2f7fa;
+}
+.process-quadrant.bad-win {
+  border-color: #e8d6b7;
+  background: #fcf6ec;
+}
+.process-quadrant.unforced-loss {
+  border-color: #ebd1c7;
+  background: #fcf3ef;
+}
+.app-shell[data-theme="dark"] .process-quadrant.model-win {
+  border-color: #3d4f3f;
+  background: #212922;
+}
+.app-shell[data-theme="dark"] .process-quadrant.good-loss {
+  border-color: #374651;
+  background: #1f262b;
+}
+.app-shell[data-theme="dark"] .process-quadrant.bad-win {
+  border-color: #52432e;
+  background: #2b251c;
+}
+.app-shell[data-theme="dark"] .process-quadrant.unforced-loss {
+  border-color: #533a33;
+  background: #2b211e;
+}
+.process-quadrant-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.process-quadrant-top > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.process-quadrant-top strong {
+  color: var(--heading);
+  font-size: 13px;
+}
+.process-quadrant-top small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+.process-quadrant-count {
+  display: inline-grid;
+  flex-shrink: 0;
+  place-items: center;
+  min-width: 28px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--heading);
+  background: var(--surface);
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.process-quadrant-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.process-quadrant-stats b {
+  font-size: 18px;
+  color: var(--heading);
+}
+.process-quadrant-r {
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 10px;
+  font-weight: 700;
+}
+.process-quadrant p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* TradeModal Smart Entry Chips & Plan Adherence */
+.field-with-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+.smart-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.smart-chip {
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.smart-chip:hover {
+  color: var(--ink);
+  border-color: var(--soft);
+}
+.smart-chip.selected {
+  border-color: #9ac2a2;
+  color: var(--accent-dark);
+  background: var(--accent-pale);
+}
+.app-shell[data-theme="dark"] .smart-chip.selected {
+  border-color: #4f6953;
+  color: #cbe3ce;
+  background: #253127;
+}
+
+.plan-adherence-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-alt);
+}
+.plan-adherence-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.plan-adherence-head strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+.plan-adherence-head small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.plan-adherence-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.plan-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.plan-pill:hover {
+  color: var(--ink);
+  border-color: var(--soft);
+}
+.plan-pill.followed.selected {
+  border-color: #97c1a0;
+  color: #3f6e4c;
+  background: #e7f4e8;
+}
+.plan-pill.broken.selected {
+  border-color: #dfc39c;
+  color: #875e2c;
+  background: #fbf1e2;
+}
+.app-shell[data-theme="dark"] .plan-pill.followed.selected {
+  border-color: #4d6a51;
+  color: #c6e2c9;
+  background: #243126;
+}
+.app-shell[data-theme="dark"] .plan-pill.broken.selected {
+  border-color: #5b4932;
+  color: #ebd0a3;
+  background: #332a1e;
+}
+
+.checklist-live-count {
+  font-style: normal;
+  color: var(--accent-dark);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.checklist-sub-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.checklist-quick-btn {
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--accent-dark);
+  background: var(--surface-alt);
+  font-size: 10px;
+  font-weight: 700;
+}
+.checklist-quick-btn:hover {
+  border-color: #9ec4a5;
+  background: var(--accent-pale);
+}
+
+@media (max-width: 650px) {
+  .process-matrix-card {
+    padding: 15px;
+  }
+  .process-matrix-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .plan-adherence-field {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .plan-adherence-pills .plan-pill {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+
 
