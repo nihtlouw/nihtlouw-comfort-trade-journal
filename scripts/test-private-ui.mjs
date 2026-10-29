@@ -23,7 +23,7 @@ try {
   await page.getByRole("button", { name: "Create account", exact: true }).click(); await page.locator(".app-shell").waitFor();
   await page.getByRole("button", { name: "Log a trade", exact: true }).first().click();
   await page.getByLabel("Asset / symbol").fill("CLOUD-UI"); await page.getByLabel("Net P&L (USD)").fill("99");
-  await page.getByRole("button", { name: /TRADE DETAILS & REFLECTION/ }).click();
+  await page.getByRole("button", { name: /OPTIONAL DETAILS/ }).click();
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg==", "base64");
   await page.locator(".upload-image input").setInputFiles({ name: "chart.png", mimeType: "image/png", buffer: png });
   await page.getByRole("button", { name: "Save trade", exact: true }).click(); await page.locator(".modal").waitFor({ state: "detached" });
@@ -39,10 +39,31 @@ try {
   await page.getByLabel("Open settings").click(); await page.getByRole("button", { name: "Reduce motion: Off", exact: true }).click();
   await page.waitForFunction(() => document.querySelector(".app-shell")?.getAttribute("data-motion") === "reduced");
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
-  await page.getByRole("heading", { name: "Welcome back." }).waitFor();
+  await page.getByRole("heading", { name: "Sign in", exact: true }).waitFor();
   await page.getByLabel("Email address").fill(email); await page.getByLabel("Password").fill("test-password-not-for-production");
   await page.getByRole("button", { name: "Sign in", exact: true }).click(); await page.getByLabel("Edit CLOUD-UI trade").waitFor();
   assert.equal(await page.locator(".app-shell").getAttribute("data-motion"), "reduced");
-  assert.deepEqual(errors, []);
   console.log("PASS: private UI signup, screenshot persistence, backup/restore, motion preference, signout and sign-in.");
+
+  // The private account boundary and its forms must also work on a narrow phone.
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.getByLabel("Open settings").click();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await page.getByRole("heading", { name: "Sign in", exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 320);
+  assert.equal(await page.getByLabel("Email address").evaluate((el) => getComputedStyle(el).fontSize), "16px");
+  assert.match(await page.locator('meta[name="viewport"]').getAttribute("content"), /viewport-fit=cover/);
+  await page.getByRole("button", { name: "Create an account", exact: true }).click();
+  await page.getByRole("heading", { name: "Create account", exact: true }).waitFor();
+  assert.ok(await page.getByText(/Password recovery is not configured/).isVisible());
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByLabel("Email address").fill(email); await page.getByLabel("Password").fill("test-password-not-for-production");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByLabel("Edit CLOUD-UI trade").waitFor();
+  await page.getByLabel("Edit CLOUD-UI trade").click();
+  assert.equal(await page.locator(".attachment-thumb").count(), 1);
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 320);
+  assert.deepEqual(errors, []);
+  console.log("PASS: private sign-in, sign-up form, synced trade and screenshots at 320px.");
 } finally { if (browser) await browser.close().catch(() => {}); rmSync(temp, { recursive: true, force: true }); }

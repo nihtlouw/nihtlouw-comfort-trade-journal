@@ -12,6 +12,5 @@ export function JournalLoading({ leaving = false, reduceMotion = false, theme = 
       <p className="loading-message" role="status">Opening your journal…</p>
       <noscript>Please enable JavaScript to use this journal.</noscript>
     </div>
-    <div className="loading-footnote" aria-hidden="true"><span>✳</span> A LITTLE SPACE TO GROW</div>
   </main>;
 }
