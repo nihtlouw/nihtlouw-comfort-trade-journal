@@ -110,7 +110,36 @@ try {
   await page.getByLabel("Open settings").click(); await page.getByRole("button", { name: "☾ Dark mode", exact: true }).click();
   assert.equal(await page.locator(".app-shell").getAttribute("data-theme"), "dark"); await page.getByRole("button", { name: "Close", exact: true }).click(); await page.reload({ waitUntil: "networkidle" });
   assert.equal(await page.locator(".app-shell").getAttribute("data-theme"), "dark");
-  console.log("PASS: full backup restores trades and images; theme persists.");
+  const darkPalette = await page.evaluate(() => {
+    const parseRgb = (value) => (value.match(/\d+/g) || []).slice(0, 3).map(Number);
+    const channel = (c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+    const luminance = ([r, g, b]) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+    const contrast = (fg, bg) => { const [l1, l2] = [luminance(fg), luminance(bg)].sort((a, b) => b - a); return (l1 + 0.05) / (l2 + 0.05); };
+    const shell = getComputedStyle(document.querySelector(".app-shell"));
+    const card = getComputedStyle(document.querySelector(".card"));
+    const sidebar = getComputedStyle(document.querySelector(".sidebar"));
+    const statIcon = document.querySelector(".stat-icon");
+    const resultPill = document.querySelector(".result-pill");
+    const progressTrack = document.querySelector(".progress-track");
+    const shellBg = parseRgb(shell.backgroundColor);
+    const cardBg = parseRgb(card.backgroundColor);
+    const ink = parseRgb(shell.color);
+    return {
+      htmlBg: getComputedStyle(document.documentElement).backgroundColor,
+      shellBg,
+      cardBg,
+      sidebarBg: parseRgb(sidebar.backgroundColor),
+      inkOnCardContrast: contrast(ink, cardBg),
+      statIconLum: statIcon ? luminance(parseRgb(getComputedStyle(statIcon).backgroundColor)) : 0,
+      resultPillLum: resultPill ? luminance(parseRgb(getComputedStyle(resultPill).backgroundColor)) : 0,
+      progressTrackLum: progressTrack ? luminance(parseRgb(getComputedStyle(progressTrack).backgroundColor)) : 0,
+    };
+  });
+  assert.equal(darkPalette.htmlBg, "rgb(20, 18, 16)", "dark root background uses warm espresso");
+  assert.ok(darkPalette.shellBg[0] >= darkPalette.shellBg[1] && darkPalette.cardBg[0] >= darkPalette.cardBg[1], "dark canvas and cards are warm espresso/stone rather than green-tinted");
+  assert.ok(darkPalette.inkOnCardContrast >= 10, `expected comfortable AA/AAA body contrast on dark cards, got ${darkPalette.inkOnCardContrast.toFixed(2)}`);
+  assert.ok(darkPalette.statIconLum < 0.08 && darkPalette.resultPillLum < 0.08 && darkPalette.progressTrackLum < 0.08, "dark badges, icons, and tracks avoid chalky light-mode pastels");
+  console.log("PASS: full backup restores trades and images; warm espresso dark theme persists with high contrast.");
 
   await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(350);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390, "no page-wide mobile overflow");
