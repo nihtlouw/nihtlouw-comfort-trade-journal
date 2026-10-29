@@ -931,12 +931,12 @@ export function PatienceView({
             <AreaChart data={sim.points} margin={{ top: 10, right: 8, left: -12, bottom: 0 }}>
               <defs>
                 <linearGradient id="patience-patient-fill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#6ea884" stopOpacity={0.28}/>
-                  <stop offset="95%" stopColor="#6ea884" stopOpacity={0.02}/>
+                  <stop offset="0%" stopColor="var(--chart-line)" stopOpacity={0.28}/>
+                  <stop offset="95%" stopColor="var(--chart-line)" stopOpacity={0.02}/>
                 </linearGradient>
                 <linearGradient id="patience-revenge-fill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#c57b68" stopOpacity={0.18}/>
-                  <stop offset="95%" stopColor="#c57b68" stopOpacity={0.01}/>
+                  <stop offset="0%" stopColor="var(--loss)" stopOpacity={0.18}/>
+                  <stop offset="95%" stopColor="var(--loss)" stopOpacity={0.01}/>
                 </linearGradient>
               </defs>
               <CartesianGrid vertical={false} stroke="var(--chart-grid)" strokeDasharray="3 5" />
@@ -972,9 +972,10 @@ export function PatienceView({
               <Area
                 type="monotone"
                 dataKey="patient"
-                stroke="#58946e"
+                stroke="var(--chart-line)"
                 strokeWidth={2.5}
                 fill="url(#patience-patient-fill)"
+                activeDot={{ r: 5, fill: "var(--chart-line)", stroke: "var(--surface)", strokeWidth: 3 }}
                 isAnimationActive={false}
               />
               <Area
@@ -984,6 +985,7 @@ export function PatienceView({
                 strokeWidth={2}
                 strokeDasharray="5 4"
                 fill="url(#patience-revenge-fill)"
+                activeDot={{ r: 4, fill: "var(--loss)", stroke: "var(--surface)", strokeWidth: 2 }}
                 isAnimationActive={false}
               />
             </AreaChart>

@@ -51,7 +51,7 @@ export function PerformanceChart({ trades, period, onPeriodChange, hidden, compa
           const point = payload[0].payload as { date: string; pnl: number; daily: number; trades: number };
           return <div className="chart-tooltip"><strong>{shortDate(point.date, true)}</strong><span>Cumulative {currency(point.pnl, point.pnl > 0, hidden)}</span><small>{point.trades} {point.trades === 1 ? "trade" : "trades"} · {currency(point.daily, point.daily > 0, hidden)} on day</small></div>;
         }} />
-        <Area type="stepAfter" dataKey="pnl" stroke="var(--chart-line)" strokeWidth={2.5} fill="url(#pnl-gradient)" activeDot={{ r: 5, fill: "var(--chart-line)", stroke: "#fff", strokeWidth: 3 }} isAnimationActive={false}/>
+        <Area type="stepAfter" dataKey="pnl" stroke="var(--chart-line)" strokeWidth={2.5} fill="url(#pnl-gradient)" activeDot={{ r: 5, fill: "var(--chart-line)", stroke: "var(--surface)", strokeWidth: 3 }} isAnimationActive={false}/>
       </AreaChart></ResponsiveContainer>
     </div> : <div className="chart-empty"><span><TrendingUp size={20}/></span><strong>No chart data yet.</strong><p>Log a trade to see performance over time.</p></div>}
     {trades.length > 0 && <details className="chart-data"><summary>View chart data as a table</summary><p>Most recent 60 dates; the chart starts at zero for this period.</p><div><table><thead><tr><th>Date</th><th>Trades</th><th>Daily net P&L</th><th>Cumulative</th></tr></thead><tbody>{data.slice(-60).map((point) => <tr key={point.date}><td>{shortDate(point.date, true)}</td><td>{point.trades}</td><td>{currency(point.daily, point.daily > 0, hidden)}</td><td>{currency(point.pnl, point.pnl > 0, hidden)}</td></tr>)}</tbody></table></div></details>}
