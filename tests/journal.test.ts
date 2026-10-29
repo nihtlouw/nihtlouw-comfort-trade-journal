@@ -9,6 +9,7 @@ import { groupTrades, maxRealizedDrawdown, monthGrid, performanceSeries, previou
 import { csvRowsToTrades, exportTradesCsv, parseCsv } from "@/lib/csv";
 import { parseBackup } from "@/lib/backup";
 import { validateImage } from "@/lib/attachments";
+import { buildRecapSummary } from "@/lib/recap-card";
 import type { Trade } from "@/lib/types";
 
 const makeTrade = (id: number, pnl: string, initialRisk = ""): Trade => ({ id, pnl, initialRisk, symbol: `TEST${id}`, market: "Stocks", side: "Long", setup: "Breakout", tradeDate: `2026-01-0${id}`, mood: "Calm", notes: "", isDemo: false });
@@ -641,6 +642,63 @@ test("ambient presets, calendar intentional no-trade day notes, and setup bluepr
     }),
   );
 });
+
+test("Tahap D: buildRecapSummary guarantees zero $ leakage in r_only and process_only modes while preserving exact full P&L", () => {
+  const trades: Trade[] = [
+    { ...makeTrade(1, "300", "100"), tradeDate: "2026-10-27", setup: "ORB", followedPlan: true },
+    { ...makeTrade(2, "-80", "80"), tradeDate: "2026-10-28", setup: "ORB", followedPlan: true },
+    { ...makeTrade(3, "120", "60"), tradeDate: "2026-10-29", setup: "Pullback", followedPlan: false },
+  ];
+  const dayJournals = [
+    { date: "2026-10-30", intentionalNoTrade: true, preMarketPlan: "Choppy day", postSessionNote: "Stayed flat" },
+  ];
+
+  const rOnly = buildRecapSummary({
+    trades,
+    dayJournals,
+    range: "week",
+    weekStart: "2026-10-26",
+    privacyMode: "r_only",
+    locale: "en",
+  });
+  assert.equal(rOnly.headlineValue, "+4.00R");
+  assert.ok(!rOnly.headlineValue.includes("$"), "r_only headline must never leak $");
+  for (const tile of rOnly.tiles) {
+    assert.ok(!tile.value.includes("$"), `r_only tile ${tile.label} must never leak $`);
+  }
+  assert.equal(rOnly.winRate, 67);
+  assert.equal(rOnly.processScorePct, 67);
+  assert.equal(rOnly.modelWins, 1);
+  assert.equal(rOnly.goodLosses, 1);
+  assert.equal(rOnly.restDays, 1);
+  assert.equal(rOnly.topSetup, "ORB");
+
+  const processOnly = buildRecapSummary({
+    trades,
+    dayJournals,
+    range: "week",
+    weekStart: "2026-10-26",
+    privacyMode: "process_only",
+    locale: "id",
+  });
+  assert.equal(processOnly.headlineValue, "67%");
+  assert.ok(!processOnly.headlineValue.includes("$"));
+  for (const tile of processOnly.tiles) {
+    assert.ok(!tile.value.includes("$"));
+  }
+
+  const full = buildRecapSummary({
+    trades,
+    dayJournals,
+    range: "week",
+    weekStart: "2026-10-26",
+    privacyMode: "full",
+    locale: "en",
+  });
+  assert.equal(full.headlineValue, "+$340.00");
+  assert.equal(full.netPnl, 340);
+});
+
 
 
 

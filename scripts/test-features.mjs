@@ -501,6 +501,62 @@ try {
   assert.match(await page.locator(".selected-day-journal").innerText(), /Intentional no-trade day/);
   assert.match(await page.locator(".selected-day-journal").innerText(), /Protected capital cleanly/);
   console.log("PASS: 0 MB Web Audio Ambient Soundscapes, Setup Blueprints, and Calendar Intentional No-Trade Day & Session Notes work offline.");
+
+  // =========================================================================
+  // Tahap D (#6 & #12): Ctrl/Cmd+K Command Palette, Zen Mode & PNG Recap Card
+  // =========================================================================
+  await page.keyboard.press("Control+k");
+  await page.locator(".cmd-palette").waitFor();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Command palette fits 360px cleanly");
+  await page.locator(".cmd-search-bar input").fill("Weekly review");
+  await page.keyboard.press("Enter");
+  await page.locator(".modal").waitFor({ state: "detached" });
+  await page.locator(".weekly-review").waitFor();
+
+  // Open Botanical PNG Recap Card from Weekly Review
+  await page.getByRole("button", { name: "Recap card", exact: true }).click();
+  await page.locator(".recap-preview-canvas").waitFor();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Recap Card modal fits 360px cleanly");
+
+  const defaultAria = await page.locator(".recap-preview-canvas").getAttribute("aria-label");
+  assert.ok(defaultAria && !defaultAria.includes("$"), "Default R-only Recap Card hides $ amounts");
+
+  const canvasCheck = await page.evaluate(() => {
+    const c = document.querySelector(".recap-preview-canvas");
+    if (!(c instanceof HTMLCanvasElement)) return null;
+    const url = c.toDataURL("image/png");
+    return { w: c.width, h: c.height, prefix: url.slice(0, 22), len: url.length };
+  });
+  assert.equal(canvasCheck?.w, 1200);
+  assert.equal(canvasCheck?.h, 630);
+  assert.equal(canvasCheck?.prefix, "data:image/png;base64,");
+  assert.ok((canvasCheck?.len ?? 0) > 5000, "Canvas renders crisp non-empty 1200x630 PNG");
+
+  await page.getByRole("group", { name: "Recap time range" }).getByRole("button", { name: "All-time", exact: true }).click();
+  await page.getByRole("group", { name: "Recap privacy mode" }).getByRole("button", { name: "Show $ amounts", exact: true }).click();
+  const fullAria = await page.locator(".recap-preview-canvas").getAttribute("aria-label");
+  assert.match(fullAria ?? "", /\$/, "Full mode shows realized $ P&L when explicitly selected");
+
+  await page.getByRole("group", { name: "Card palette" }).getByRole("button", { name: "Warm Espresso", exact: true }).click();
+  const pngDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download PNG", exact: true }).click();
+  const pngDownload = await pngDownloadPromise;
+  assert.match(pngDownload.suggestedFilename(), /^bloom-recap-.*\.png$/);
+  await page.locator(".modal").getByRole("button", { name: "Close", exact: true }).first().click();
+  await page.locator(".modal").waitFor({ state: "detached" });
+
+  // Toggle Zen Review Mode via mobile sidebar tools & exit via floating bar
+  await page.getByLabel("Open navigation").click();
+  await page.locator("#primary-sidebar.mobile-open").waitFor();
+  await page.locator(".sidebar-mobile-tools").getByRole("button", { name: "Zen mode", exact: true }).click();
+  assert.equal(await page.locator(".app-shell").getAttribute("data-zen"), "true");
+  await page.locator(".zen-floating-bar").waitFor();
+  assert.equal(await page.locator(".topbar").isVisible(), false, "Topbar hides in Zen review mode");
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Zen mode fits 360px cleanly");
+  await page.locator(".zen-bar-exit").click();
+  assert.equal(await page.locator(".app-shell").getAttribute("data-zen"), null);
+  assert.equal(await page.locator(".topbar").isVisible(), true, "Topbar restores cleanly on exiting Zen mode");
+  console.log("PASS: Command Palette (Ctrl/Cmd+K), Zen Review Mode, and 1200x630 Privacy-Safe PNG Recap Card work offline.");
   if (!external) {
     const didFetch = await page.evaluate((url) => fetch(url).then(() => true).catch(() => false), new URL("api/private-test", base).href); assert.equal(didFetch, false, "API responses must not be cached");
   }

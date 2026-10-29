@@ -2760,6 +2760,449 @@ input:not([type="checkbox"]):not([type="file"]), select, textarea { min-width: 0
   }
 }
 
+/* ==========================================================================
+   Tahap D (#6 & #12): Botanical PNG Recap Card, Command Palette & Zen Mode
+   ========================================================================== */
+
+.review-intro-controls {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.recap-open-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 0 13px;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+/* Topbar triggers (desktop > 900px) & Sidebar tools (mobile <= 900px) */
+.cmd-trigger-btn,
+.zen-top-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 33px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--surface-alt);
+  font-size: 11px;
+  font-weight: 600;
+  transition: border-color 180ms ease, background 180ms ease, color 180ms ease;
+}
+
+.cmd-trigger-btn:hover,
+.zen-top-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent-dark);
+}
+
+.cmd-trigger-btn kbd {
+  padding: 2px 5px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--muted);
+  background: var(--surface);
+  font-family: inherit;
+  font-size: 9.5px;
+  font-weight: 700;
+}
+
+.zen-top-btn.active {
+  border-color: var(--accent);
+  color: var(--accent-dark);
+  background: var(--accent-pale);
+}
+
+.sidebar-mobile-tools {
+  display: none;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.sidebar-tool-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--ink);
+  background: var(--surface-alt);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.sidebar-tool-btn.active {
+  border-color: var(--accent);
+  color: var(--accent-dark);
+  background: var(--accent-pale);
+}
+
+/* Zen Review Mode */
+.app-shell[data-zen="true"] .sidebar,
+.app-shell[data-zen="true"] .topbar,
+.app-shell[data-zen="true"] .mobile-bottom-nav,
+.app-shell[data-zen="true"] .local-pwa-status,
+.app-shell[data-zen="true"] .backup-reminder {
+  display: none !important;
+}
+
+.app-shell[data-zen="true"] .main-shell {
+  margin-left: 0;
+  width: 100%;
+}
+
+.app-shell[data-zen="true"] .page-content {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding-top: 34px;
+  padding-bottom: 104px;
+}
+
+.zen-floating-bar {
+  position: fixed;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  z-index: 45;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 24px);
+  padding: 6px 8px 6px 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 32px rgba(27, 45, 33, 0.14);
+}
+
+.zen-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--accent-dark);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.zen-bar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  background: var(--surface-alt);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.zen-bar-exit {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Command Palette Modal */
+.cmd-palette {
+  display: flex;
+  flex-direction: column;
+  max-height: min(560px, 80vh);
+}
+
+.cmd-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.cmd-search-bar input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  color: var(--heading);
+  background: transparent;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.cmd-results {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px;
+}
+
+.cmd-group + .cmd-group {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.cmd-group-label {
+  display: block;
+  padding: 2px 10px 6px;
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.cmd-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 42px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--ink);
+  background: transparent;
+  text-align: left;
+  transition: background 140ms ease;
+}
+
+.cmd-item.selected,
+.cmd-item:hover {
+  background: var(--accent-pale);
+}
+
+.cmd-item-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  color: var(--accent-dark);
+  background: var(--surface-alt);
+}
+
+.cmd-item.selected .cmd-item-icon {
+  background: var(--surface);
+}
+
+.cmd-item-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.cmd-item-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--heading);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.cmd-item-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.cmd-item-badge {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.cmd-empty {
+  padding: 28px 14px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.cmd-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 16px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  background: var(--surface-alt);
+  font-size: 10.5px;
+}
+
+.cmd-footer kbd {
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* Recap Card Modal */
+.recap-modal-body {
+  display: grid;
+  gap: 14px;
+}
+
+.recap-controls-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.recap-control-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.recap-control-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.recap-segments {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.recap-mantra-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.recap-canvas-frame {
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--surface-alt);
+}
+
+.recap-preview-canvas {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 295px;
+  height: auto;
+  aspect-ratio: 1200 / 630;
+  border-radius: 10px;
+}
+
+.recap-actions {
+  flex-wrap: wrap;
+}
+
+/* Warm Espresso Dark Palette Overrides */
+.app-shell[data-theme="dark"] .zen-floating-bar {
+  border-color: #3d362e;
+  background: rgba(34, 30, 26, 0.92);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
+}
+
+.app-shell[data-theme="dark"] .cmd-trigger-btn,
+.app-shell[data-theme="dark"] .zen-top-btn,
+.app-shell[data-theme="dark"] .sidebar-tool-btn,
+.app-shell[data-theme="dark"] .zen-bar-btn {
+  border-color: #3a332b;
+  color: #e6dccf;
+  background: #27221d;
+}
+
+.app-shell[data-theme="dark"] .zen-top-btn.active,
+.app-shell[data-theme="dark"] .sidebar-tool-btn.active,
+.app-shell[data-theme="dark"] .cmd-item.selected,
+.app-shell[data-theme="dark"] .cmd-item:hover {
+  border-color: #536e56;
+  color: #b7d8ba;
+  background: #283127;
+}
+
+.app-shell[data-theme="dark"] .cmd-footer,
+.app-shell[data-theme="dark"] .recap-canvas-frame {
+  border-color: #383129;
+  background: #211d19;
+}
+
+@media (max-width: 1180px) {
+  .zen-top-btn span,
+  .cmd-trigger-btn span {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .cmd-trigger-btn,
+  .zen-top-btn {
+    display: none;
+  }
+  .sidebar-mobile-tools {
+    display: grid;
+  }
+}
+
+@media (max-width: 650px) {
+  .recap-open-btn,
+  .zen-bar-btn,
+  .zen-bar-exit {
+    min-height: 44px;
+  }
+  .zen-bar-btn span {
+    display: none;
+  }
+  .cmd-footer {
+    flex-wrap: wrap;
+  }
+}
+
+
 
 
 
