@@ -1,5 +1,5 @@
 {
-  "name": "nextjs-postgresql-template",
+  "name": "bloom-trading-journal",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -8,28 +8,47 @@
     "test:pages": "node scripts/test-pages.mjs",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "export:legacy": "node scripts/export-legacy.mjs",
+    "test": "tsx --test tests/*.test.ts",
+    "test:private": "node scripts/test-private.mjs",
+    "db:migrate:private": "node scripts/migrate-private.mjs",
+    "test:private:ui": "node scripts/test-private-ui.mjs"
   },
   "dependencies": {
+    "@fontsource/dm-sans": "^5.3.0",
+    "@fontsource/dm-serif-display": "^5.3.0",
+    "better-auth": "^1.7.14",
     "dotenv": "17.3.1",
     "drizzle-orm": "0.45.2",
     "lucide-react": "^1.61.0",
-    "next": "16.2.6",
+    "next": "16.4.3",
+    "papaparse": "^5.7.0",
     "pg": "8.20.0",
     "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "react-dom": "19.2.6",
+    "recharts": "^3.10.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.1.17",
     "@types/node": "22.19.15",
+    "@types/papaparse": "^5.5.2",
     "@types/pg": "8.18.0",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
-    "drizzle-kit": "0.31.10",
+    "drizzle-kit": "^0.31.11",
     "eslint": "9.39.4",
-    "eslint-config-next": "16.2.6",
-    "postcss": "8.5.8",
+    "eslint-config-next": "16.4.3",
+    "playwright-core": "^1.64.1",
+    "postcss": "8.5.32",
     "tailwindcss": "4.1.17",
+    "tsx": "^4.23.15",
     "typescript": "5.9.3"
+  },
+  "overrides": {
+    "@esbuild-kit/core-utils": {
+      "esbuild": "^0.25.4"
+    }
   }
 }
