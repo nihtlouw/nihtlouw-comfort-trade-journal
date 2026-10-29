@@ -69,6 +69,23 @@ const settings = z.object({
     reason: z.enum(["lock_profit", "stop_giveback", "respect_loss", "protect_focus"]),
     note: z.string().max(240),
   })).max(3660).optional(),
+  dayJournals: z.array(z.object({
+    date,
+    intentionalNoTrade: z.boolean(),
+    preMarketPlan: z.string().max(600),
+    postSessionNote: z.string().max(1000),
+  })).max(3660).optional(),
+  setupBlueprints: z.array(z.object({
+    id,
+    name: z.string().min(1).max(80),
+    market: z.string().max(24).optional().default("All"),
+    timeframe: z.string().max(40).optional().default(""),
+    session: z.string().max(40).optional().default(""),
+    entryTrigger: z.string().max(280).optional().default(""),
+    invalidation: z.string().max(280).optional().default(""),
+    targetPlan: z.string().max(280).optional().default(""),
+    notes: z.string().max(400).optional().default(""),
+  })).max(30).optional(),
 });
 const journal = z.object({ trades: z.array(trade).max(10000), settings }).superRefine((value, ctx) => {
   const ids = value.trades.map((item) => item.id);
@@ -80,6 +97,10 @@ const journal = z.object({ trades: z.array(trade).max(10000), settings }).superR
   if (new Set(goalIds).size !== goalIds.length) ctx.addIssue({ code: "custom", message: "Duplicate intention IDs" });
   const walkAwayIds = value.settings.walkAwayLogs?.map((item) => item.id) ?? [];
   if (new Set(walkAwayIds).size !== walkAwayIds.length) ctx.addIssue({ code: "custom", message: "Duplicate walk-away log IDs" });
+  const dayJournalDates = value.settings.dayJournals?.map((item) => item.date) ?? [];
+  if (new Set(dayJournalDates).size !== dayJournalDates.length) ctx.addIssue({ code: "custom", message: "Duplicate day journal dates" });
+  const blueprintIds = value.settings.setupBlueprints?.map((item) => item.id) ?? [];
+  if (new Set(blueprintIds).size !== blueprintIds.length) ctx.addIssue({ code: "custom", message: "Duplicate setup blueprint IDs" });
   const images = new Map<string, { name: string; type: string; size: number }>();
   for (const item of value.trades.flatMap((entry) => entry.attachments)) {
     const existing = images.get(item.id);
@@ -118,6 +139,8 @@ export function normalizeJournalData(input: unknown): JournalData {
       patienceLocale: data.settings.patienceLocale ?? resolvedLocale,
       patienceMaxTrades: data.settings.patienceMaxTrades ?? 3,
       walkAwayLogs: data.settings.walkAwayLogs ?? [],
+      dayJournals: data.settings.dayJournals ?? [],
+      setupBlueprints: data.settings.setupBlueprints ?? [],
     },
   };
 }

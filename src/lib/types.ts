@@ -35,6 +35,25 @@ export type BackupReminderDays = 0 | 7 | 14 | 30;
 export type WalkAwayReason = "lock_profit" | "stop_giveback" | "respect_loss" | "protect_focus";
 export type WalkAwayLog = { id: string; date: string; accountId: string; reason: WalkAwayReason; note: string };
 
+export type DayJournalEntry = {
+  date: string;
+  intentionalNoTrade: boolean;
+  preMarketPlan: string;
+  postSessionNote: string;
+};
+
+export type SetupBlueprint = {
+  id: string;
+  name: string;
+  market: string;
+  timeframe: string;
+  session: string;
+  entryTrigger: string;
+  invalidation: string;
+  targetPlan: string;
+  notes: string;
+};
+
 export type AudioMimeType =
   | "audio/mpeg"
   | "audio/wav"
@@ -111,6 +130,8 @@ export type JournalSettings = {
   /** Reference daily trade cap used only inside the Patience mirror (1–20). */
   patienceMaxTrades?: number;
   walkAwayLogs?: WalkAwayLog[];
+  dayJournals?: DayJournalEntry[];
+  setupBlueprints?: SetupBlueprint[];
 };
 
 export type JournalData = { trades: Trade[]; settings: JournalSettings };

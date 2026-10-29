@@ -431,6 +431,76 @@ try {
   assert.match(await page.locator(".process-matrix-card").innerText(), /\+2\.00R avg/);
   await page.getByLabel("Show amounts").click();
   console.log("PASS: Smart Entry Chips, 1-Click Plan Adherence, Good Loss vs Bad Win 2x2 Matrix, and Session/Tag/Playbook analytics work offline.");
+
+  // Exercise Tahap C (#5 + #9 + #10):
+  // 1) #5 Built-in 0 MB Ambient Soundscape in Cassette Deck
+  await page.locator(".cassette-top-btn").click();
+  await page.getByRole("group", { name: "Built-in ambient soundscapes" }).getByRole("button", { name: "Soft Rain", exact: true }).click();
+  await page.locator(".cassette-shell.status-playing").waitFor();
+  assert.equal(await page.locator(".cassette-reel-svg.is-spinning").count(), 2, "0 MB Ambient preset spins cassette reels");
+  assert.equal(await page.locator(".cassette-slot-counter").innerText(), "AMBIENT");
+  assert.equal(await page.locator(".cassette-timeline > span").last().innerText(), "∞");
+  await page.locator(".modal-close").click();
+  await page.locator(".modal").waitFor({ state: "detached" });
+  await navigate("Playbook");
+  assert.equal(await page.locator(".cassette-top-btn.is-playing").count(), 1, "Ambient soundscape persists across views");
+  await page.locator(".cassette-top-btn").click();
+  await page.locator(".modal").getByLabel("Stop", { exact: true }).click();
+  assert.equal(await page.locator(".cassette-reel-svg.is-spinning").count(), 0);
+  assert.equal(await page.locator(".cassette-timeline > span").first().innerText(), "0:00");
+  await page.locator(".modal-close").click();
+  await page.locator(".modal").waitFor({ state: "detached" });
+
+  // 2) #10 Visual Setup Blueprints in Playbook + auto-link to Smart Entry Chips & live stats
+  await page.getByRole("button", { name: "New blueprint", exact: true }).first().click();
+  await page.getByLabel("Setup name").fill("London Sweep");
+  await page.getByLabel("Timeframe").fill("M15 / H1");
+  await page.getByLabel("Best session").fill("London");
+  await page.getByLabel("Entry trigger").fill("Sweep of Asia low + displacement close");
+  await page.getByLabel("Invalidation & stop rule").fill("Hard stop 2 pips below sweep low");
+  await page.getByLabel("Target & management").fill("Scale at +2R, hold runner to Asia high");
+  await page.getByRole("button", { name: "Save blueprint", exact: true }).click();
+  await page.locator(".blueprint-card").waitFor();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Playbook blueprints fit 360px cleanly");
+
+  // Open Log a trade -> verify "London Sweep" automatically appears in Strategy presets chip!
+  await page.getByRole("button", { name: "Log a trade", exact: true }).first().click();
+  await page.getByRole("group", { name: "Strategy presets" }).getByRole("button", { name: "London Sweep", exact: true }).click();
+  assert.equal(await page.locator(".modal").getByLabel("Setup", { exact: true }).inputValue(), "London Sweep");
+  await page.getByLabel("Asset / symbol").fill("GBP/JPY");
+  await page.getByLabel("Net P&L (USD)").fill("160");
+  await page.getByRole("button", { name: /OPTIONAL DETAILS/ }).click();
+  await page.getByLabel("Initial risk (USD)").fill("80");
+  await page.getByRole("button", { name: "Save trade", exact: true }).click();
+  await page.locator(".modal").waitFor({ state: "detached" });
+
+  assert.match(await page.locator(".blueprint-card").innerText(), /100%/);
+  assert.match(await page.locator(".blueprint-card").innerText(), /\+2\.50R/);
+  assert.match(await page.locator(".blueprint-card").innerText(), /\+\$340\.00/);
+  await page.getByLabel("Hide amounts").click();
+  assert.doesNotMatch(await page.locator(".blueprint-card").innerText(), /\$340\.00/);
+  assert.match(await page.locator(".blueprint-card").innerText(), /••••••/);
+  await page.getByLabel("Show amounts").click();
+
+  // 3) #9 Calendar Intentional No-Trade Day (🌿) & Daily Session Notes
+  await navigate("Calendar");
+  const nowIso = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const emptyDayText = await page.locator(".calendar-day:not(.day-win):not(.day-loss):not(.day-even) > span").first().innerText();
+  const restDate = `${nowIso}-${String(Number(emptyDayText)).padStart(2, "0")}`;
+  await page.getByLabel("Session note date").fill(restDate);
+  await page.locator(".no-trade-toggle").click();
+  await page.getByLabel("Pre-market plan").fill("Choppy NFP range—only A+ sweep allowed.");
+  await page.getByLabel("Post-session reflection").fill("Protected capital cleanly by staying flat.");
+  await page.getByRole("button", { name: "Save day note", exact: true }).click();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Calendar with Day Journal fits 360px cleanly");
+  assert.ok(await page.locator(".calendar-day.day-rest").count() >= 1, "Calendar highlights intentional no-trade day");
+
+  // Drill down into that rest day on Trade journal and confirm session note banner surfaces
+  await page.locator(".calendar-day.day-rest").first().click();
+  await page.locator(".selected-day-journal").waitFor();
+  assert.match(await page.locator(".selected-day-journal").innerText(), /Intentional no-trade day/);
+  assert.match(await page.locator(".selected-day-journal").innerText(), /Protected capital cleanly/);
+  console.log("PASS: 0 MB Web Audio Ambient Soundscapes, Setup Blueprints, and Calendar Intentional No-Trade Day & Session Notes work offline.");
   if (!external) {
     const didFetch = await page.evaluate((url) => fetch(url).then(() => true).catch(() => false), new URL("api/private-test", base).href); assert.equal(didFetch, false, "API responses must not be cached");
   }

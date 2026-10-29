@@ -1,4 +1,4 @@
-import type { AppLocale, Trade } from "@/lib/types";
+import type { AppLocale, DayJournalEntry, SetupBlueprint, Trade } from "@/lib/types";
 import { dateFromString, periodStart, shortDate, todayString, tradeRMultiple, type Period } from "@/lib/format";
 
 export type ChartPoint = { date: string; time: number; label: string; pnl: number; daily: number; trades: number; drawdown: number };
@@ -205,7 +205,10 @@ const STARTER_TAGS = ["A+", "patient", "breakout", "pullback", "fomo", "early-ex
 export const PRESET_TIMEFRAMES = ["M1", "M5", "M15", "H1", "H4", "D1"] as const;
 export const PRESET_SESSIONS = ["Asia", "London", "New York", "Overlap"] as const;
 
-export function getSmartEntrySuggestions(trades: Trade[]): {
+export function getSmartEntrySuggestions(
+  trades: Trade[],
+  blueprints: SetupBlueprint[] = [],
+): {
   symbols: string[];
   setups: string[];
   tags: string[];
@@ -242,7 +245,13 @@ export function getSmartEntrySuggestions(trades: Trade[]): {
   };
 
   const symbols = rankUnique(realTrades.map((t) => t.symbol), demoTrades.map((t) => t.symbol), 16, 5);
-  const setups = rankUnique(realTrades.map((t) => t.setup), demoTrades.map((t) => t.setup), 28, 4);
+  const blueprintNames = blueprints.map((b) => b.name.trim()).filter((n) => n && n.length <= 28);
+  const setups = rankUnique(
+    [...blueprintNames, ...realTrades.map((t) => t.setup)],
+    demoTrades.map((t) => t.setup),
+    28,
+    5,
+  );
 
   const userTags = rankUnique(realTrades.flatMap((t) => t.tags ?? []), demoTrades.flatMap((t) => t.tags ?? []), 24, 8);
   const seenTagNorms = new Set(userTags.map((t) => t.toLowerCase()));
@@ -256,6 +265,55 @@ export function getSmartEntrySuggestions(trades: Trade[]): {
   }
 
   return { symbols, setups, tags: mergedTags };
+}
+
+export type SetupBlueprintMetrics = {
+  count: number;
+  wins: number;
+  losses: number;
+  winRate: number | null;
+  net: number;
+  avgR: number | null;
+};
+
+export function getSetupBlueprintStats(trades: Trade[], setupName: string): SetupBlueprintMetrics {
+  const norm = setupName.trim().toLowerCase();
+  if (!norm) return { count: 0, wins: 0, losses: 0, winRate: null, net: 0, avgR: null };
+  const matched = trades.filter((t) => t.setup.trim().toLowerCase() === norm);
+  let wins = 0;
+  let losses = 0;
+  let net = 0;
+  for (const trade of matched) {
+    const pnl = Number(trade.pnl);
+    net += pnl;
+    if (pnl > 0) wins++;
+    else if (pnl < 0) losses++;
+  }
+  const decisive = wins + losses;
+  return {
+    count: matched.length,
+    wins,
+    losses,
+    winRate: decisive > 0 ? Math.round((wins / decisive) * 100) : null,
+    net,
+    avgR: computeAvgR(matched),
+  };
+}
+
+export function upsertDayJournal(
+  entries: DayJournalEntry[],
+  patch: DayJournalEntry,
+): DayJournalEntry[] {
+  const cleaned: DayJournalEntry = {
+    date: patch.date,
+    intentionalNoTrade: Boolean(patch.intentionalNoTrade),
+    preMarketPlan: patch.preMarketPlan.trim().slice(0, 600),
+    postSessionNote: patch.postSessionNote.trim().slice(0, 1000),
+  };
+  const rest = entries.filter((item) => item.date !== cleaned.date);
+  const isEmpty = !cleaned.intentionalNoTrade && !cleaned.preMarketPlan && !cleaned.postSessionNote;
+  const next = isEmpty ? rest : [...rest, cleaned];
+  return next.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3660);
 }
 
 export function monthGrid(year: number, month: number) {

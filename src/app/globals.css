@@ -2020,6 +2020,9 @@ input:not([type="checkbox"]):not([type="file"]), select, textarea { min-width: 0
   gap: 5px;
 }
 .smart-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 3px 8px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -2154,6 +2157,609 @@ input:not([type="checkbox"]):not([type="file"]), select, textarea { min-width: 0
     justify-content: center;
   }
 }
+
+/* ============================================================================
+   Tahap C: 0 MB Ambient Soundscapes, Calendar Rest Days & Day Journal,
+   and Visual Setup Blueprints
+   ============================================================================ */
+
+/* #5 Built-in 0 MB Ambient Focus Tapes in Cassette Deck */
+.cassette-ambient-section {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-alt);
+}
+.cassette-ambient-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+.cassette-ambient-head strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink);
+  font-size: 11px;
+}
+.cassette-ambient-head strong svg {
+  color: var(--accent);
+}
+.cassette-ambient-head small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.cassette-ambient-pills {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.cassette-ambient-pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--surface);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+}
+.cassette-ambient-pill span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cassette-ambient-pill:hover {
+  border-color: var(--soft);
+}
+.cassette-ambient-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--soft);
+}
+.cassette-ambient-pill.selected {
+  border-color: #98c2a0;
+  color: var(--accent-dark);
+  background: var(--accent-pale);
+}
+.cassette-ambient-pill.selected .cassette-ambient-dot {
+  background: var(--accent-dark);
+}
+.cassette-ambient-pill.is-playing .cassette-ambient-dot {
+  box-shadow: 0 0 0 3px rgba(105, 158, 121, 0.22);
+}
+.app-shell[data-theme="dark"] .cassette-ambient-pill.selected {
+  border-color: #4d6a51;
+  color: #cbe3ce;
+  background: #253127;
+}
+.app-shell[data-theme="dark"] .cassette-ambient-pill.selected .cassette-ambient-dot {
+  background: #9bc8a3;
+}
+
+/* #9 Calendar Intentional No-Trade Day & Daily Session Notes */
+.calendar-foot {
+  flex-wrap: wrap;
+}
+.calendar-day {
+  position: relative;
+}
+.calendar-note-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.calendar-day.day-rest {
+  color: #4f7b58;
+  border-color: #cfe4d1;
+  background: #f1f8f0;
+}
+.calendar-rest-tag {
+  color: #4f7b58;
+  font-weight: 600 !important;
+}
+.calendar-rest-tag .calendar-value-full {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.summary-rest-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.summary-rest-label svg {
+  color: var(--accent);
+}
+.day-journal-eyebrow-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.legend-square.rest {
+  background: #a8cfa9;
+  border: 1px dashed #699870;
+}
+.app-shell[data-theme="dark"] .calendar-day.day-rest {
+  color: #b7d8bc;
+  border-color: #3d5140;
+  background: #202821;
+}
+.app-shell[data-theme="dark"] .calendar-rest-tag {
+  color: #b7d8bc;
+}
+.app-shell[data-theme="dark"] .legend-square.rest {
+  background: #3d5140;
+  border-color: #7da883;
+}
+
+.calendar-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.day-journal-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+}
+.day-journal-card h2 {
+  margin: 2px 0 0;
+  color: var(--heading);
+  font-size: 16px;
+  letter-spacing: -0.3px;
+}
+.day-journal-card > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.day-journal-date-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.day-journal-date-bar input[type="date"] {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--surface-alt);
+  font-size: 11px;
+}
+.day-journal-today-btn {
+  min-height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--accent-dark);
+  background: var(--surface-alt);
+  font-size: 10px;
+  font-weight: 700;
+}
+.day-journal-today-btn:hover {
+  background: var(--accent-pale);
+}
+
+.no-trade-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  background: var(--surface-alt);
+  text-align: left;
+}
+.no-trade-toggle:hover {
+  border-color: #9ec4a5;
+}
+.no-trade-leaf {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: #5b8964;
+  background: #e8f4e7;
+}
+.no-trade-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.no-trade-copy strong {
+  font-size: 11.5px;
+  color: var(--heading);
+}
+.no-trade-copy small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+.no-trade-check {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: #fff;
+  background: var(--surface);
+}
+.no-trade-toggle.selected {
+  border-color: #94bfa0;
+  background: #eef7ed;
+}
+.no-trade-toggle.selected .no-trade-check {
+  border-color: #5d8d68;
+  background: #5d8d68;
+}
+.app-shell[data-theme="dark"] .no-trade-leaf {
+  color: #b7d9bc;
+  background: #253127;
+}
+.app-shell[data-theme="dark"] .no-trade-toggle.selected {
+  border-color: #4b654e;
+  background: #212a22;
+}
+.app-shell[data-theme="dark"] .no-trade-toggle.selected .no-trade-check {
+  border-color: #6b9974;
+  background: #6b9974;
+}
+
+.day-journal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.day-journal-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+}
+.day-journal-form textarea {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--surface-alt);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.45;
+  resize: vertical;
+}
+.day-journal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.day-journal-recent {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.day-journal-recent > small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.selected-day-journal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-alt);
+  font-size: 11px;
+}
+.selected-day-journal p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.selected-day-journal p strong {
+  color: var(--ink);
+}
+.rest-day-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border: 1px solid #cce0cf;
+  border-radius: 999px;
+  color: var(--accent-dark);
+  background: var(--accent-pale);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.app-shell[data-theme="dark"] .rest-day-pill {
+  border-color: #4b644e;
+  color: #c8e3cc;
+  background: #253127;
+}
+
+/* #10 Visual Setup Blueprints in Playbook */
+.setup-blueprints-section {
+  padding: 22px;
+}
+.setup-blueprints-section .card-title {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.blueprint-form {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-alt);
+}
+.blueprint-form-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.blueprint-rules-inputs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.blueprint-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+}
+.blueprint-form input,
+.blueprint-form select,
+.blueprint-form textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--surface);
+  font-family: inherit;
+  font-size: 11px;
+}
+.blueprint-form textarea {
+  line-height: 1.45;
+  resize: vertical;
+}
+.blueprint-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.blueprint-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+.blueprint-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 0;
+  padding: 17px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-alt);
+}
+.blueprint-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.blueprint-card-head h3 {
+  margin: 0;
+  color: var(--heading);
+  font-family: "DM Serif Display", Georgia, serif;
+  font-size: 19px;
+  font-weight: 400;
+  line-height: 1.2;
+}
+.blueprint-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+.blueprint-tags span {
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 10px;
+  font-weight: 600;
+}
+.blueprint-card-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+}
+.blueprint-criteria {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.bp-criterion {
+  padding: 9px 11px;
+  border-left: 3px solid var(--line);
+  border-radius: 0 8px 8px 0;
+  background: var(--surface);
+}
+.bp-criterion.entry {
+  border-left-color: #76a680;
+}
+.bp-criterion.invalidation {
+  border-left-color: #cf9679;
+}
+.bp-criterion.target {
+  border-left-color: #7ca2be;
+}
+.bp-criterion small {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+.bp-criterion p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.48;
+}
+.bp-cue {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-style: italic;
+}
+
+.blueprint-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+.blueprint-metrics > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.blueprint-metrics small {
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 600;
+}
+.blueprint-metrics strong {
+  color: var(--heading);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.blueprint-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 28px 16px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: var(--surface-alt);
+  text-align: center;
+}
+.blueprint-empty strong {
+  margin-top: 4px;
+  color: var(--heading);
+  font-size: 13px;
+}
+.blueprint-empty p {
+  max-width: 420px;
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.blueprint-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+@media (max-width: 980px) {
+  .blueprint-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .blueprint-rules-inputs,
+  .blueprint-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 650px) {
+  .cassette-ambient-pills {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .day-journal-card,
+  .setup-blueprints-section {
+    padding: 15px;
+  }
+  .blueprint-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .blueprint-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .calendar-note-dot {
+    top: 3px;
+    right: 3px;
+    width: 4px;
+    height: 4px;
+  }
+}
+
 
 
 

@@ -11,6 +11,7 @@ import {
   Repeat1,
   SkipBack,
   SkipForward,
+  Sparkles,
   Square,
   Trash2,
   Volume2,
@@ -18,6 +19,11 @@ import {
   X,
 } from "lucide-react";
 import type { StorageMode } from "@/lib/attachments";
+import {
+  AmbientSynthController,
+  getAmbientPresets,
+  type AmbientPresetId,
+} from "@/lib/ambient-synth";
 import {
   getAudioPlayableUrl,
   listAudioTracks,
@@ -92,9 +98,13 @@ export function useCassetteDeck({
   onNotify: (message: string, error?: boolean) => void;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const synthRef = useRef<AmbientSynthController | null>(null);
   const activeUrlRef = useRef<{ trackId: string; url: string; revoke: boolean } | null>(null);
   const [tracks, setTracks] = useState<AudioTrackMeta[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [activeAmbientId, setActiveAmbientId] = useState<AmbientPresetId | null>(null);
+  const activeAmbientRef = useRef<AmbientPresetId | null>(null);
+  const [ambientElapsed, setAmbientElapsed] = useState(0);
   const [status, setStatus] = useState<PlaybackStatus>("stopped");
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -106,6 +116,16 @@ export function useCassetteDeck({
   const [deckError, setDeckError] = useState("");
 
   const copy = UI_COPY[locale];
+  const ambientPresets = useMemo(() => getAmbientPresets(locale), [locale]);
+  const activeAmbient = useMemo(
+    () => (activeAmbientId ? ambientPresets.find((p) => p.id === activeAmbientId) ?? null : null),
+    [activeAmbientId, ambientPresets],
+  );
+
+  const ensureSynth = useCallback(() => {
+    if (!synthRef.current) synthRef.current = new AmbientSynthController();
+    return synthRef.current;
+  }, []);
 
   const releaseActiveUrl = useCallback(() => {
     if (activeUrlRef.current?.revoke) {
@@ -132,16 +152,28 @@ export function useCassetteDeck({
         initialAudio.pause();
         initialAudio.removeAttribute("src");
       }
+      synthRef.current?.dispose();
+      synthRef.current = null;
       releaseActiveUrl();
     };
   }, [mode, releaseActiveUrl]);
 
   useEffect(() => {
     const el = audioRef.current;
-    if (!el) return;
-    el.volume = volume;
-    el.muted = muted;
+    if (el) {
+      el.volume = volume;
+      el.muted = muted;
+    }
+    synthRef.current?.setVolume(volume, muted);
   }, [volume, muted]);
+
+  useEffect(() => {
+    if (!activeAmbientId || status !== "playing") return;
+    const timer = window.setInterval(() => {
+      setAmbientElapsed((prev) => prev + 1);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [activeAmbientId, status]);
 
   const activeTrack = tracks[activeIndex] ?? tracks[0] ?? null;
   const totalBytes = useMemo(() => tracks.reduce((sum, item) => sum + item.size, 0), [tracks]);
@@ -152,6 +184,10 @@ export function useCassetteDeck({
       if (!el) return;
       try {
         setDeckError("");
+        synthRef.current?.stop();
+        activeAmbientRef.current = null;
+        setActiveAmbientId(null);
+        setAmbientElapsed(0);
         if (activeUrlRef.current?.trackId !== track.id) {
           el.pause();
           releaseActiveUrl();
@@ -177,7 +213,44 @@ export function useCassetteDeck({
     [mode, releaseActiveUrl],
   );
 
+  const selectAmbient = useCallback(
+    async (presetId: AmbientPresetId) => {
+      setDeckError("");
+      const el = audioRef.current;
+      if (el && !el.paused) el.pause();
+
+      const synth = ensureSynth();
+      synth.setVolume(volume, muted);
+
+      if (activeAmbientId === presetId && status === "playing") {
+        synth.pause();
+        setStatus("paused");
+        return;
+      }
+      if (activeAmbientId !== presetId) {
+        setAmbientElapsed(0);
+      }
+      activeAmbientRef.current = presetId;
+      setActiveAmbientId(presetId);
+      const started = await synth.start(presetId);
+      setStatus(started ? "playing" : "stopped");
+    },
+    [activeAmbientId, ensureSynth, muted, status, volume],
+  );
+
   const togglePlay = useCallback(async () => {
+    if (activeAmbientId) {
+      const synth = ensureSynth();
+      synth.setVolume(volume, muted);
+      if (status === "playing") {
+        synth.pause();
+        setStatus("paused");
+        return;
+      }
+      const started = await synth.start(activeAmbientId);
+      if (started) setStatus("playing");
+      return;
+    }
     if (!activeTrack) return;
     const el = audioRef.current;
     if (!el) return;
@@ -187,9 +260,15 @@ export function useCassetteDeck({
       return;
     }
     await loadAndPlayTrack(activeTrack, true);
-  }, [activeTrack, loadAndPlayTrack, status]);
+  }, [activeAmbientId, activeTrack, ensureSynth, loadAndPlayTrack, muted, status, volume]);
 
   const stop = useCallback(() => {
+    if (activeAmbientId) {
+      synthRef.current?.stop();
+      setAmbientElapsed(0);
+      setStatus("stopped");
+      return;
+    }
     const el = audioRef.current;
     if (el) {
       el.pause();
@@ -201,7 +280,7 @@ export function useCassetteDeck({
     }
     setCurrentTime(0);
     setStatus("stopped");
-  }, []);
+  }, [activeAmbientId]);
 
   const selectTrack = useCallback(
     async (index: number, autoPlay = true) => {
@@ -378,20 +457,29 @@ export function useCassetteDeck({
       }}
       onEnded={handleEnded}
       onPause={() => {
-        setStatus((prev) => (prev === "playing" ? "paused" : prev));
+        if (!activeAmbientRef.current) {
+          setStatus((prev) => (prev === "playing" ? "paused" : prev));
+        }
       }}
-      onPlay={() => setStatus("playing")}
+      onPlay={() => {
+        if (!activeAmbientRef.current) setStatus("playing");
+      }}
     />
   );
+
+  const effectiveCurrentTime = activeAmbient ? ambientElapsed : currentTime;
+  const effectiveDuration = activeAmbient ? 0 : duration || activeTrack?.durationSec || 0;
 
   return {
     audioElement,
     tracks,
     activeTrack,
     activeIndex,
+    ambientPresets,
+    activeAmbient,
     status,
-    currentTime,
-    duration: duration || activeTrack?.durationSec || 0,
+    currentTime: effectiveCurrentTime,
+    duration: effectiveDuration,
     loopMode,
     volume,
     muted,
@@ -404,6 +492,7 @@ export function useCassetteDeck({
     togglePlay,
     stop,
     selectTrack,
+    selectAmbient,
     prevTrack,
     nextTrack,
     seek,
@@ -428,14 +517,22 @@ export function CassetteSidebarMini({
 }) {
   const copy = UI_COPY[locale];
   const spinning = deck.status === "playing" && !deck.reduceMotion;
+  const displayTitle = deck.activeAmbient
+    ? deck.activeAmbient.title
+    : deck.activeTrack
+      ? deck.activeTrack.title
+      : copy.cassetteMiniEmpty;
+  const hasSource = Boolean(deck.activeAmbient || deck.activeTrack);
   const statusLabel =
     deck.status === "playing"
       ? copy.cassettePlaying
       : deck.status === "paused"
         ? copy.cassettePaused
-        : deck.tracks.length
-          ? `${deck.activeIndex + 1}/${deck.tracks.length}`
-          : copy.cassetteMiniReady;
+        : deck.activeAmbient
+          ? copy.ambientSlotBadge
+          : deck.tracks.length
+            ? `${deck.activeIndex + 1}/${deck.tracks.length}`
+            : copy.cassetteMiniReady;
 
   return (
     <div className={`cassette-mini ${deck.status === "playing" ? "is-playing" : ""}`}>
@@ -451,11 +548,11 @@ export function CassetteSidebarMini({
           <span className={`cassette-mini-reel ${spinning ? "is-spinning" : ""}`} />
         </span>
         <span className="cassette-mini-meta">
-          <strong>{deck.activeTrack ? deck.activeTrack.title : copy.cassetteMiniEmpty}</strong>
+          <strong>{displayTitle}</strong>
           <small>{statusLabel}</small>
         </span>
       </button>
-      {deck.activeTrack && (
+      {hasSource && (
         <div className="cassette-mini-controls">
           <button
             type="button"
@@ -560,21 +657,33 @@ export function CassetteDeckModal({
                 {copy.cassetteLabel}
               </span>
               <span className="cassette-slot-counter">
-                {deck.tracks.length ? `${String(deck.activeIndex + 1).padStart(2, "0")} / 0${MAX_AUDIO_TRACKS}` : `00 / 0${MAX_AUDIO_TRACKS}`}
+                {deck.activeAmbient
+                  ? copy.ambientSlotBadge
+                  : deck.tracks.length
+                    ? `${String(deck.activeIndex + 1).padStart(2, "0")} / 0${MAX_AUDIO_TRACKS}`
+                    : `00 / 0${MAX_AUDIO_TRACKS}`}
               </span>
             </div>
 
             <div className="cassette-track-marquee">
-              <strong>{deck.activeTrack ? deck.activeTrack.title : copy.cassetteMiniEmpty}</strong>
+              <strong>
+                {deck.activeAmbient
+                  ? deck.activeAmbient.title
+                  : deck.activeTrack
+                    ? deck.activeTrack.title
+                    : copy.cassetteMiniEmpty}
+              </strong>
               <small>
-                {deck.activeTrack
-                  ? `${deck.activeTrack.mimeType.replace("audio/", "").toUpperCase()} · ${formatBytes(deck.activeTrack.size)}`
-                  : copy.emptyTapeHint}
+                {deck.activeAmbient
+                  ? deck.activeAmbient.subtitle
+                  : deck.activeTrack
+                    ? `${deck.activeTrack.mimeType.replace("audio/", "").toUpperCase()} · ${formatBytes(deck.activeTrack.size)}`
+                    : copy.emptyTapeHint}
               </small>
             </div>
 
             <div className="cassette-window">
-              <CassetteReelSvg tapeRadius={leftRadius} spinning={spinning} />
+              <CassetteReelSvg tapeRadius={deck.activeAmbient ? 21 : leftRadius} spinning={spinning} />
               <div className="cassette-sight-gauge" aria-hidden="true">
                 <div className="cassette-sight-marks">
                   <span />
@@ -591,7 +700,7 @@ export function CassetteDeckModal({
                       : copy.cassetteStopped}
                 </small>
               </div>
-              <CassetteReelSvg tapeRadius={rightRadius} spinning={spinning} />
+              <CassetteReelSvg tapeRadius={deck.activeAmbient ? 21 : rightRadius} spinning={spinning} />
             </div>
           </div>
 
@@ -609,12 +718,12 @@ export function CassetteDeckModal({
             min={0}
             max={deck.duration > 0 ? deck.duration : 1}
             step={0.1}
-            value={Math.min(deck.currentTime, deck.duration > 0 ? deck.duration : 0)}
-            disabled={!deck.activeTrack || !(deck.duration > 0)}
+            value={deck.activeAmbient ? 0.5 : Math.min(deck.currentTime, deck.duration > 0 ? deck.duration : 0)}
+            disabled={Boolean(deck.activeAmbient) || !deck.activeTrack || !(deck.duration > 0)}
             aria-label={copy.seekAria}
             onChange={(event) => deck.seek(Number(event.target.value))}
           />
-          <span>{formatClock(deck.duration)}</span>
+          <span>{deck.activeAmbient ? "∞" : formatClock(deck.duration)}</span>
         </div>
 
         {/* Deck Transport Controls */}
@@ -634,7 +743,7 @@ export function CassetteDeckModal({
               type="button"
               className="button-primary cassette-play-btn"
               onClick={() => void deck.togglePlay()}
-              disabled={!deck.activeTrack}
+              disabled={!deck.activeAmbient && !deck.activeTrack}
               aria-label={deck.status === "playing" ? copy.pause : copy.play}
             >
               {deck.status === "playing" ? <Pause size={16} /> : <Play size={16} />}
@@ -644,7 +753,7 @@ export function CassetteDeckModal({
               type="button"
               className="button-secondary cassette-transport-btn"
               onClick={deck.stop}
-              disabled={!deck.activeTrack || (deck.status === "stopped" && deck.currentTime === 0)}
+              disabled={(!deck.activeAmbient && !deck.activeTrack) || (deck.status === "stopped" && deck.currentTime === 0)}
               aria-label={copy.stop}
               title={copy.stop}
             >
@@ -697,6 +806,34 @@ export function CassetteDeckModal({
                 }}
               />
             </div>
+          </div>
+        </div>
+
+        {/* Built-in 0 MB Ambient Soundscapes */}
+        <div className="cassette-ambient-section">
+          <div className="cassette-ambient-head">
+            <strong>
+              <Sparkles size={13} /> {copy.ambientSectionLabel}
+            </strong>
+            <small>{copy.ambientSectionHint}</small>
+          </div>
+          <div className="cassette-ambient-pills" role="group" aria-label={copy.ambientGroupAria}>
+            {deck.ambientPresets.map((preset) => {
+              const isSelected = deck.activeAmbient?.id === preset.id;
+              const isPlayingPreset = isSelected && deck.status === "playing";
+              return (
+                <button
+                  type="button"
+                  key={preset.id}
+                  className={`cassette-ambient-pill ${isSelected ? "selected" : ""} ${isPlayingPreset ? "is-playing" : ""}`}
+                  aria-pressed={isSelected}
+                  onClick={() => void deck.selectAmbient(preset.id)}
+                >
+                  <i className="cassette-ambient-dot" aria-hidden="true" />
+                  <span>{preset.title}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
