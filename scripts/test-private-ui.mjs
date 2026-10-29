@@ -1,0 +1,45 @@
+// End-to-end smoke test: ONLY use a disposable local database and server with signup enabled.
+import assert from "node:assert/strict";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { chromium } from "playwright-core";
+const base = process.env.BLOOM_TEST_URL;
+if (!base || !["localhost", "127.0.0.1"].includes(new URL(base).hostname)) throw new Error("Set BLOOM_TEST_URL to a local test server backed by a disposable database.");
+const browserPath = process.env.CHROME_PATH ?? ["/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/google-chrome"].find(existsSync);
+assert.ok(browserPath && existsSync(browserPath), "Set CHROME_PATH to an installed Chrome/Chromium executable.");
+const temp = mkdtempSync(join(tmpdir(), "bloom-private-ui-"));
+let browser;
+try {
+  browser = await chromium.launch({ executablePath: browserPath, headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage", "--no-zygote", "--single-process"] });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, acceptDownloads: true });
+  const errors = []; page.on("pageerror", (error) => errors.push(error.message)); page.on("dialog", (dialog) => dialog.accept());
+  await page.goto(new URL(base).origin, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Create an account" }).click();
+  const email = `browser-${Date.now()}@example.test`;
+  await page.getByLabel("Your name").fill("Browser Cloud Test");
+  await page.getByLabel("Email address").fill(email);
+  await page.getByLabel("Password").fill("test-password-not-for-production");
+  await page.getByRole("button", { name: "Create account", exact: true }).click(); await page.locator(".app-shell").waitFor();
+  await page.getByRole("button", { name: "Log a trade", exact: true }).first().click();
+  await page.getByLabel("Asset / symbol").fill("CLOUD-UI"); await page.getByLabel("Net P&L (USD)").fill("99");
+  await page.getByRole("button", { name: /TRADE DETAILS & REFLECTION/ }).click();
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg==", "base64");
+  await page.locator(".upload-image input").setInputFiles({ name: "chart.png", mimeType: "image/png", buffer: png });
+  await page.getByRole("button", { name: "Save trade", exact: true }).click(); await page.locator(".modal").waitFor({ state: "detached" });
+  await page.reload({ waitUntil: "networkidle" }); await page.getByLabel("Edit CLOUD-UI trade").click();
+  assert.equal(await page.locator(".attachment-thumb").count(), 1); await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByLabel("Open settings").click(); await page.getByRole("button", { name: "Data", exact: true }).click();
+  const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Download", exact: true }).click()]);
+  const backupFile = join(temp, "cloud-backup.json"); await download.saveAs(backupFile);
+  assert.equal(JSON.parse(readFileSync(backupFile, "utf8")).images.length, 1);
+  await page.locator(".file-button input").setInputFiles(backupFile); await page.locator(".modal").waitFor({ state: "detached" });
+  await page.reload({ waitUntil: "networkidle" }); await page.getByLabel("Edit CLOUD-UI trade").click();
+  assert.equal(await page.locator(".attachment-thumb").count(), 1); await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByLabel("Open settings").click(); await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await page.getByRole("heading", { name: "Welcome back." }).waitFor();
+  await page.getByLabel("Email address").fill(email); await page.getByLabel("Password").fill("test-password-not-for-production");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click(); await page.getByLabel("Edit CLOUD-UI trade").waitFor();
+  assert.deepEqual(errors, []);
+  console.log("PASS: private UI signup, screenshot persistence, backup/restore, signout and sign-in.");
+} finally { if (browser) await browser.close().catch(() => {}); rmSync(temp, { recursive: true, force: true }); }
