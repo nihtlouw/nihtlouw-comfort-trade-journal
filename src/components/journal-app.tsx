@@ -10,9 +10,20 @@ import type { JournalData, JournalSettings, PlaybookRule, Trade } from "@/lib/ty
 import { currency, filterTrades, getStats, longToday, todayString, type Period } from "@/lib/format";
 import { GoalCard, MiniInsight, MoodCard, ProgressChart, ReminderCard, REMINDERS, StatsRow, TradesTable } from "@/components/journal-parts";
 import { BreathingModal, GoalModal, SettingsModal, TradeModal, type TradeDraft } from "@/components/journal-modals";
+import { saveBrowserJournal } from "@/lib/browser-journal";
+import { parseTradeInput } from "@/lib/trade-validation";
 
 type View = "Overview" | "Trade journal" | "Analytics" | "Playbook" | "Mindset" | "Goals";
 type Modal = "trade" | "goal" | "settings" | "breathing" | null;
+
+function saveStaticData(trades: Trade[], settings: JournalSettings) {
+  try {
+    saveBrowserJournal(window.localStorage, { trades, settings });
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Couldn't save")) throw error;
+    throw new Error("Couldn't save in this browser. Allow site storage, then try again.");
+  }
+}
 
 const workspaceNav: { label: View; icon: ElementType }[] = [
   { label: "Overview", icon: LayoutDashboard },
@@ -34,7 +45,8 @@ function sortedTrades(trades: Trade[]) {
   return [...trades].sort((a, b) => b.tradeDate.localeCompare(a.tradeDate) || b.id - a.id);
 }
 
-export function JournalApp({ initialData }: { initialData: JournalData }) {
+export function JournalApp({ initialData, storage = "server" }: { initialData: JournalData; storage?: "server" | "browser" }) {
+  const isStaticExport = storage === "browser";
   const [trades, setTrades] = useState(initialData.trades);
   const [settings, setSettings] = useState(initialData.settings);
   const [view, setView] = useState<View>("Overview");
@@ -54,8 +66,14 @@ export function JournalApp({ initialData }: { initialData: JournalData }) {
 
   async function updateSettings(patch: Partial<JournalSettings>): Promise<boolean> {
     const previous = settings;
-    setSettings((current) => ({ ...current, ...patch }));
+    const nextSettings = { ...settings, ...patch };
+    setSettings(nextSettings);
     try {
+      if (isStaticExport) {
+        saveStaticData(trades, nextSettings);
+        notify("Saved in this browser. Keep growing!");
+        return true;
+      }
       const response = await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Couldn't save your changes.");
@@ -70,6 +88,18 @@ export function JournalApp({ initialData }: { initialData: JournalData }) {
 
   async function saveTrade(draft: TradeDraft, id?: number): Promise<boolean> {
     try {
+      if (isStaticExport) {
+        const nextTrade: Trade = {
+          ...parseTradeInput(draft),
+          id: id ?? Math.max(0, ...trades.map((trade) => trade.id)) + 1,
+          isDemo: id ? trades.find((trade) => trade.id === id)?.isDemo ?? false : false,
+        };
+        const nextTrades = sortedTrades(id ? trades.map((trade) => trade.id === id ? nextTrade : trade) : [nextTrade, ...trades]);
+        saveStaticData(nextTrades, settings);
+        setTrades(nextTrades);
+        notify(id ? "Trade updated. Keep growing!" : "Trade saved. Proud of you for showing up!");
+        return true;
+      }
       const response = await fetch(id ? `/api/trades/${id}` : "/api/trades", { method: id ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draft) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Couldn't save this trade.");
@@ -83,6 +113,13 @@ export function JournalApp({ initialData }: { initialData: JournalData }) {
 
   async function deleteTrade(id: number): Promise<boolean> {
     try {
+      if (isStaticExport) {
+        const nextTrades = trades.filter((trade) => trade.id !== id);
+        saveStaticData(nextTrades, settings);
+        setTrades(nextTrades);
+        notify("Trade removed from your journal.");
+        return true;
+      }
       const response = await fetch(`/api/trades/${id}`, { method: "DELETE" });
       if (!response.ok) throw new Error("Couldn't delete this trade.");
       setTrades((current) => current.filter((trade) => trade.id !== id));
@@ -92,6 +129,13 @@ export function JournalApp({ initialData }: { initialData: JournalData }) {
 
   async function clearSamples(): Promise<boolean> {
     try {
+      if (isStaticExport) {
+        const nextTrades = trades.filter((trade) => !trade.isDemo);
+        saveStaticData(nextTrades, settings);
+        setTrades(nextTrades);
+        notify("Sample trades cleared. This space is yours.");
+        return true;
+      }
       const response = await fetch("/api/trades", { method: "DELETE" });
       if (!response.ok) throw new Error("Couldn't clear sample trades.");
       setTrades((current) => current.filter((trade) => !trade.isDemo));
@@ -142,7 +186,7 @@ export function JournalApp({ initialData }: { initialData: JournalData }) {
         {view === "Playbook" && <div className="single-view"><div className="view-intro"><div><h2>Trade with intention.</h2><p>Your playbook is a promise to yourself, not a demand for perfection.</p></div><button type="button" className="button-secondary" onClick={() => void updateSettings({ playbook: settings.playbook.map((rule) => ({ ...rule, checked: false })) })}><RotateCcw size={15} /> Reset checks</button></div><div className="playbook-grid">{(["Before trading", "While trading", "After trading"] as PlaybookRule["group"][]).map((group, groupIndex) => { const rules = settings.playbook.filter((rule) => rule.group === group); return <section className="card playbook-card" key={group}><div className="playbook-card-top"><span className={`playbook-icon playbook-${groupIndex}`}><span>{["01", "02", "03"][groupIndex]}</span></span><span>{rules.filter((rule) => rule.checked).length}/{rules.length} COMPLETE</span></div><h2>{group}</h2><p>{["Set yourself up for a thoughtful start.", "Stay present, patient, and true to your plan.", "Reflect, learn, and give yourself room to rest."][groupIndex]}</p><div className="rule-list">{rules.map((rule) => <div className="rule-row" key={rule.id}><button type="button" className={`rule-toggle ${rule.checked ? "checked" : ""}`} onClick={() => toggleRule(rule.id)} aria-pressed={rule.checked}><span className="rule-checkbox">{rule.checked && <Check size={13} />}</span><span>{rule.text}</span></button><button type="button" className="remove-rule" onClick={() => removeRule(rule.id)} aria-label={`Remove ${rule.text}`}><X size={14} /></button></div>)}</div><button type="button" className="add-rule" onClick={() => addRule(group)}><Plus size={15} /> Add a rule</button></section>; })}</div><div className="gentle-banner"><Sparkles size={19} /><div><strong>Consistency over perfection, always.</strong><p>It&apos;s okay to begin again as many times as you need.</p></div></div></div>}
         {view === "Mindset" && <div className="single-view"><div className="mindset-hero"><div><span><Sparkles size={14} /> YOUR MIND MATTERS</span><h2>A good trade starts<br />with a gentle pause.</h2><p>You don&apos;t need to have it all figured out. Take this moment to slow down and come back to yourself.</p><button type="button" className="button-primary" onClick={() => setModal("breathing")}><Wind size={17} /> Take a breathing break</button></div><div className="mindset-orbit"><span>✳</span></div></div><div className="wellbeing-grid">{moodCard}{reminderCard}<div className="card wellbeing-note"><span className="side-icon green"><Leaf size={16} /></span><h2>Permission to pause.</h2><p>The market will be there tomorrow. Your wellbeing matters more than any opportunity.</p><button type="button" className="text-link" onClick={() => setView("Playbook")}>Visit your playbook <ArrowRight size={14} /></button></div></div></div>}
         {view === "Goals" && <div className="single-view"><div className="goals-layout">{goalCard}<div className="card goals-explanation"><span className="side-icon green"><Sprout size={18} /></span><h2>Small intentions.<br />Meaningful growth.</h2><p>Instead of chasing an outcome, celebrate the habits that support you. Mark a day whenever you feel you showed up for your intention.</p><div className="goal-tip"><Sparkles size={16} /><span>Progress is personal. There&apos;s no perfect pace.</span></div><button type="button" className="button-secondary" onClick={() => setModal("goal")}>Make this intention yours <ArrowRight size={15} /></button></div></div><div className="gentle-banner"><Heart size={19} /><div><strong>You are more than your results.</strong><p>Keep choosing the process, and be kind to yourself along the way.</p></div></div></div>}
-      </div><footer className="app-footer"><span>Made with care for your trading journey <span>♥</span></span><span>Progress looks good on you.</span></footer>
+      </div><footer className="app-footer"><span>Made with care for your trading journey <span>♥</span></span><span>{isStaticExport ? "Browser-only journal · Saved on this device, not synced to Neon." : "Progress looks good on you."}</span></footer>
     </main>
     {modal === "trade" && <TradeModal key={editingTrade?.id ?? "new"} trade={editingTrade} onClose={closeModal} onSave={saveTrade} onDelete={deleteTrade} />}
     {modal === "goal" && <GoalModal settings={settings} onClose={closeModal} onSave={updateSettings} />}
