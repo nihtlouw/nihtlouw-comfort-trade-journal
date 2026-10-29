@@ -30,6 +30,16 @@ let browser;
 try {
   browser = await chromium.launch({ executablePath: browserPath, headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage", "--no-zygote", "--single-process"] });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
+  const staticContext = await browser.newContext({ viewport: { width: 1440, height: 900 }, javaScriptEnabled: false });
+  const staticLoading = await staticContext.newPage(); await staticLoading.goto(url);
+  assert.equal(await staticLoading.locator(".loading-screen").count(), 1);
+  assert.equal(await staticLoading.getByRole("status").innerText(), "Opening your journal…");
+  assert.equal(await staticLoading.locator(".loading-content noscript").textContent(), "Please enable JavaScript to use this journal.");
+  assert.equal(await staticLoading.getByRole("progressbar").count(), 0, "loading must not claim a made-up percentage");
+  // Keep this context open until browser shutdown; single-process Chromium can
+  // otherwise terminate when the first page is closed.
+  console.log("PASS: an honest, accessible branded loading state is server-rendered.");
+
   const page = await context.newPage(); const errors = []; const apiRequests = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("request", (request) => { if (new URL(request.url()).pathname.includes("/api/")) apiRequests.push(request.url()); });
@@ -112,40 +122,104 @@ try {
   const motionContext = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "no-preference" });
   const motion = await motionContext.newPage(); motion.on("pageerror", (error) => errors.push(error.message));
   motion.on("request", (request) => { if (new URL(request.url()).pathname.includes("/api/")) apiRequests.push(request.url()); });
+  // Observe the brief hydration transition without making readiness depend on a test delay.
+  await motion.addInitScript(() => {
+    window.bloomIntro = null;
+    const observer = new MutationObserver(() => {
+      const intro = document.querySelector(".loading-screen.is-leaving");
+      if (!intro || window.bloomIntro) return;
+      const target = document.querySelector(".sidebar-nav button");
+      const rect = target.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+      const style = getComputedStyle(intro);
+      window.bloomIntro = {
+        name: style.animationName, duration: style.animationDuration, pointerEvents: style.pointerEvents,
+        mark: getComputedStyle(intro.querySelector(".loading-emblem > span")).animationName,
+        progress: getComputedStyle(intro.querySelector(".loading-track > span")).animationName,
+        hidden: intro.getAttribute("aria-hidden"), targetReceivesPointer: hit?.closest("button") === target,
+      };
+    });
+    observer.observe(document, { childList: true, subtree: true });
+  });
   await motion.goto(url, { waitUntil: "networkidle" }); await motion.locator(".app-shell").waitFor();
+  const intro = await motion.evaluate(() => window.bloomIntro);
+  assert.deepEqual(intro, { name: "bloom-loading-exit", duration: "1.25s", pointerEvents: "none", mark: "bloom-loading-mark", progress: "bloom-loading-progress", hidden: "true", targetReceivesPointer: true });
   await motion.evaluate(() => { window.bloomScrollBehavior = ""; window.scrollTo = (options) => { window.bloomScrollBehavior = options.behavior; }; });
+  const viewAnimations = new Set();
   for (const view of ["Trade journal", "Analytics", "Calendar", "Playbook", "Mindset", "Goals", "Overview"]) {
     await motion.locator(".sidebar-nav").getByRole("button", { name: view, exact: true }).click();
     assert.equal(await motion.locator(".view-motion").getAttribute("data-view"), view);
     const animated = motion.locator(".view-motion .view-stack > *, .view-motion .overview-main > *, .view-motion .calendar-layout > *, .view-motion .goals-page > *").first();
-    assert.equal(await animated.evaluate((element) => getComputedStyle(element).animationName), "bloom-rise");
+    const style = await animated.evaluate((element) => ({ name: getComputedStyle(element).animationName, duration: getComputedStyle(element).animationDuration }));
+    assert.ok(style.name.startsWith("bloom-")); assert.ok(parseFloat(style.duration) >= .7, `${view} has a slower entrance`);
+    viewAnimations.add(style.name);
   }
+  assert.ok(viewAnimations.size >= 2, "different types of views should not all use one animation");
+  assert.equal(await motion.locator(".page-heading-copy").evaluate((element) => getComputedStyle(element).animationName), "bloom-heading-in");
+  assert.equal(await motion.locator(".welcome-banner").evaluate((element) => getComputedStyle(element).animationName), "bloom-hero-in");
+  assert.equal(await motion.locator(".stat-card").first().evaluate((element) => getComputedStyle(element).animationName), "bloom-card-in");
+  assert.ok(parseFloat(await motion.locator(".progress-track > span").first().evaluate((element) => getComputedStyle(element).transitionDuration)) >= 1);
+  assert.ok(parseFloat(await motion.locator(".switch i").evaluate((element) => getComputedStyle(element).transitionDuration)) >= .4);
   assert.equal(await motion.evaluate(() => window.bloomScrollBehavior), "smooth");
-  assert.ok(parseFloat(await motion.locator(".progress-track > span").first().evaluate((element) => getComputedStyle(element).transitionDuration)) > 0);
   const oldChart = await motion.locator(".chart-wrap").elementHandle();
   await motion.locator(".period-control").getByRole("button", { name: "1W", exact: true }).click();
   assert.equal(await oldChart.evaluate((element) => element.isConnected), false);
-  assert.equal(await motion.locator(".chart-wrap").evaluate((element) => getComputedStyle(element).animationName), "bloom-fade-in");
+  assert.equal(await motion.locator(".chart-wrap").evaluate((element) => getComputedStyle(element).animationName), "bloom-chart-in");
   await motion.locator(".sidebar-nav").getByRole("button", { name: "Calendar", exact: true }).click();
   const oldGrid = await motion.locator(".calendar-grid").elementHandle();
   await motion.getByRole("button", { name: "Previous month" }).click();
   assert.equal(await oldGrid.evaluate((element) => element.isConnected), false);
-  assert.equal(await motion.locator(".calendar-grid").evaluate((element) => getComputedStyle(element).animationName), "bloom-rise");
+  assert.equal(await motion.locator(".calendar-grid").getAttribute("data-direction"), "previous");
+  assert.equal(await motion.locator(".calendar-grid").evaluate((element) => getComputedStyle(element).animationName), "bloom-calendar-previous");
+  await motion.getByRole("button", { name: "Next month" }).click();
+  assert.equal(await motion.locator(".calendar-grid").getAttribute("data-direction"), "next");
+  assert.equal(await motion.locator(".calendar-grid").evaluate((element) => getComputedStyle(element).animationName), "bloom-calendar-next");
+  const twoMonthsAhead = await motion.evaluate(() => { const now = new Date(); return new Date(Date.UTC(now.getFullYear(), now.getMonth() + 2, 1)).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" }); });
+  await motion.evaluate(() => { const next = document.querySelector('button[aria-label="Next month"]'); next.click(); next.click(); });
+  await motion.waitForFunction((expected) => document.querySelector(".calendar-nav strong")?.textContent === expected, twoMonthsAhead);
+  // The breathing hold must retain the inhale size while all three phases remain four seconds.
+  const breathScales = await motion.evaluate(() => {
+    const probe = document.createElement("div"); probe.style.transition = "none"; document.querySelector(".app-shell").appendChild(probe);
+    const read = (phase) => { probe.className = `breathing-orb running phase-${phase}`; return getComputedStyle(probe).transform; };
+    const result = [read(0), read(1), read(2)]; probe.remove(); return result;
+  });
+  assert.equal(breathScales[0], breathScales[1]); assert.notEqual(breathScales[1], breathScales[2]);
   await motion.getByLabel("Open settings").click();
   assert.equal(await motion.locator(".modal").evaluate((element) => getComputedStyle(element).animationName), "bloom-dialog-in");
+  assert.ok(parseFloat(await motion.locator(".modal").evaluate((element) => getComputedStyle(element).animationDuration)) >= .7);
   const exitAnimation = await motion.evaluate(() => new Promise((resolve) => {
-    const layer = document.querySelector(".modal-layer");
-    const observer = new MutationObserver(() => { if (layer.classList.contains("is-closing")) { observer.disconnect(); resolve(getComputedStyle(layer.querySelector(".modal")).animationName); } });
+    const layer = document.querySelector(".modal-layer"), panel = layer.querySelector(".modal"), backdrop = layer.querySelector(".modal-backdrop");
+    // Freeze the entrance partway through to simulate a quick Escape or close.
+    for (const element of [panel, backdrop]) { const animation = element.getAnimations()[0]; animation.pause(); animation.currentTime = 100; }
+    const before = { panel: getComputedStyle(panel).opacity, backdrop: getComputedStyle(backdrop).opacity, transform: getComputedStyle(panel).transform };
+    const observer = new MutationObserver(() => { if (layer.classList.contains("is-closing")) {
+      observer.disconnect(); const style = getComputedStyle(panel);
+      const themeButton = [...panel.querySelectorAll("button")].find((button) => /(?:Light|Dark) mode/.test(button.textContent));
+      const clickAllowed = themeButton.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      const submitAllowed = panel.querySelector("form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      resolve({ name: style.animationName, duration: style.animationDuration, panel: style.opacity, backdrop: getComputedStyle(backdrop).opacity, transform: style.transform, before, clickAllowed, submitAllowed });
+    } });
     observer.observe(layer, { attributes: true, attributeFilter: ["class"] });
     document.querySelector(".modal-close").click();
     setTimeout(() => { observer.disconnect(); resolve("not observed"); }, 1000);
   }));
-  assert.equal(exitAnimation, "bloom-dialog-out"); await motion.locator(".modal").waitFor({ state: "detached" });
+  assert.equal(exitAnimation.name, "bloom-dialog-out"); assert.equal(exitAnimation.duration, "0.42s");
+  assert.ok(Math.abs(Number(exitAnimation.panel) - Number(exitAnimation.before.panel)) < .03, "dialog exit starts from its interrupted frame");
+  assert.ok(Math.abs(Number(exitAnimation.backdrop) - Number(exitAnimation.before.backdrop)) < .03, "backdrop exit starts from its interrupted frame");
+  assert.equal(exitAnimation.transform, exitAnimation.before.transform);
+  assert.equal(exitAnimation.clickAllowed, false, "closing dialogs cannot activate controls again");
+  assert.equal(exitAnimation.submitAllowed, false, "closing dialogs cannot submit a form again");
+  await motion.locator(".modal").waitFor({ state: "detached" });
   assert.equal(await motion.getByLabel("Open settings").evaluate((element) => document.activeElement === element), true, "focus returns after closing the dialog");
   await motion.getByLabel("Open settings").click(); await motion.getByRole("button", { name: "Reduce motion: Off", exact: true }).click();
   assert.equal(await motion.locator(".app-shell").getAttribute("data-motion"), "reduced");
   assert.equal(await motion.getByRole("button", { name: "Reduce motion: On", exact: true }).getAttribute("aria-pressed"), "true");
   assert.ok(parseFloat(await motion.locator(".modal").evaluate((element) => getComputedStyle(element).animationDuration)) < .01);
+  const introHiddenWhenReduced = await motion.evaluate(() => {
+    const probe = document.createElement("div"); probe.className = "loading-screen is-leaving"; probe.dataset.motion = "system";
+    document.querySelector(".app-shell").after(probe); const display = getComputedStyle(probe).display; probe.remove(); return display;
+  });
+  assert.equal(introHiddenWhenReduced, "none", "enabling reduced motion during the crossfade reveals the app");
   await motion.getByRole("button", { name: "Close", exact: true }).click(); await motion.locator(".modal").waitFor({ state: "detached" });
   await motion.locator(".calendar-day").first().hover();
   assert.equal(await motion.locator(".calendar-day").first().evaluate((element) => getComputedStyle(element).transform), "none");
@@ -156,10 +230,41 @@ try {
   await motion.locator(".sidebar-nav").getByRole("button", { name: "Analytics", exact: true }).click();
   assert.equal(await motion.evaluate(() => window.bloomScrollBehavior), "auto");
   await motion.reload({ waitUntil: "networkidle" }); assert.equal(await motion.locator(".app-shell").getAttribute("data-motion"), "reduced");
+  assert.equal(await motion.evaluate(() => window.bloomIntro), null, "persisted reduce motion skips the loading transition");
+
+  const mobileMotionContext = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: "no-preference" });
+  const mobileMotion = await mobileMotionContext.newPage(); mobileMotion.on("pageerror", (error) => errors.push(error.message));
+  // Some single-process Chromium builds share localStorage across test contexts.
+  await mobileMotion.addInitScript(() => localStorage.removeItem("nihtlouw-comfort-trade-journal:v1"));
+  await mobileMotion.goto(url, { waitUntil: "networkidle" });
+  const mobileMore = mobileMotion.getByRole("button", { name: "More", exact: true }); await mobileMore.click();
+  const drawerDuration = await mobileMotion.locator(".sidebar").evaluate((element) => getComputedStyle(element).transitionDuration);
+  assert.ok(parseFloat(drawerDuration) >= .55, `drawer transition was ${drawerDuration}`);
+  await mobileMotion.waitForFunction(() => document.activeElement === document.querySelector(".mobile-close"));
+  await mobileMotion.keyboard.press("Escape");
+  assert.equal(await mobileMore.getAttribute("aria-expanded"), "false");
+  assert.equal(await mobileMore.evaluate((element) => document.activeElement === element), true, "drawer returns focus");
+  await mobileMotion.waitForFunction(() => getComputedStyle(document.querySelector(".sidebar")).visibility === "hidden");
+  assert.equal(await mobileMotion.locator(".mobile-scrim").evaluate((element) => getComputedStyle(element).visibility), "hidden");
+  await mobileMotion.getByRole("button", { name: "Log a trade", exact: true }).first().click();
+  assert.equal(await mobileMotion.locator(".modal").evaluate((element) => getComputedStyle(element).animationName), "bloom-sheet-in");
+  const sheetExit = await mobileMotion.evaluate(() => new Promise((resolve) => {
+    const layer = document.querySelector(".modal-layer");
+    const observer = new MutationObserver(() => { if (layer.classList.contains("is-closing")) { observer.disconnect(); resolve(getComputedStyle(layer.querySelector(".modal")).animationName); } });
+    observer.observe(layer, { attributes: true, attributeFilter: ["class"] }); document.querySelector(".modal-close").click();
+    setTimeout(() => { observer.disconnect(); resolve("not observed"); }, 1000);
+  }));
+  assert.equal(sheetExit, "bloom-sheet-out"); await mobileMotion.locator(".modal").waitFor({ state: "detached" });
+  assert.equal(await mobileMotion.evaluate(() => document.documentElement.scrollWidth), 390);
 
   const systemMotionContext = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" });
   const systemMotion = await systemMotionContext.newPage(); systemMotion.on("pageerror", (error) => errors.push(error.message));
   await systemMotion.goto(url, { waitUntil: "networkidle" }); await systemMotion.locator(".app-shell").waitFor();
+  const introHiddenBySystem = await systemMotion.evaluate(() => {
+    const probe = document.createElement("div"); probe.className = "loading-screen is-leaving";
+    document.querySelector(".app-shell").after(probe); const display = getComputedStyle(probe).display; probe.remove(); return display;
+  });
+  assert.equal(introHiddenBySystem, "none", "the system setting can stop an in-flight loading transition");
   assert.equal(await systemMotion.locator(".sidebar").evaluate((element) => getComputedStyle(element).visibility), "hidden");
   const more = systemMotion.getByRole("button", { name: "More", exact: true }); await more.click();
   assert.equal(await more.getAttribute("aria-expanded"), "true");
@@ -175,7 +280,7 @@ try {
   await systemMotion.locator(".mobile-bottom-nav").getByRole("button", { name: "Calendar", exact: true }).click();
   assert.equal(await systemMotion.evaluate(() => window.bloomScrollBehavior), "auto");
   assert.equal(await systemMotion.evaluate(() => document.documentElement.scrollWidth), 390);
-  console.log("PASS: view and dialog motion, focus return, and both reduced-motion preferences work.");
+  console.log("PASS: varied, slower loading, view, chart, calendar, dialog and mobile motion; focus and both reduced-motion preferences work.");
 
   const recoveryContext = await browser.newContext(); const recovery = await recoveryContext.newPage(); recovery.on("dialog", (dialog) => dialog.accept());
   await recovery.goto(url, { waitUntil: "networkidle" }); await recovery.evaluate(() => localStorage.setItem("nihtlouw-comfort-trade-journal:v1", "{broken")); await recovery.reload({ waitUntil: "networkidle" });

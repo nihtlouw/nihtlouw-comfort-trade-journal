@@ -111,19 +111,24 @@ export function TradeTable({ trades, hidden, onEdit, onNew, onViewAll, compact =
 
 export function TradingCalendar({ trades, hidden, onDay, compact = false }: { trades: Trade[]; hidden: boolean; onDay: (date: string) => void; compact?: boolean }) {
   const now = new Date();
-  const [month, setMonth] = useState({ year: now.getFullYear(), month: now.getMonth() });
+  const [month, setMonth] = useState({ year: now.getFullYear(), month: now.getMonth(), direction: 0 });
   const days = monthGrid(month.year, month.month);
   const byDay = useMemo(() => {
     const map = new Map<string, { pnl: number; count: number }>();
     trades.forEach((trade) => { const item = map.get(trade.tradeDate) ?? { pnl: 0, count: 0 }; item.pnl += Number(trade.pnl); item.count++; map.set(trade.tradeDate, item); });
     return map;
   }, [trades]);
-  function shift(amount: number) { const date = new Date(Date.UTC(month.year, month.month + amount, 1)); setMonth({ year: date.getUTCFullYear(), month: date.getUTCMonth() }); }
+  function shift(amount: number) {
+    setMonth((current) => {
+      const date = new Date(Date.UTC(current.year, current.month + amount, 1));
+      return { year: date.getUTCFullYear(), month: date.getUTCMonth(), direction: amount };
+    });
+  }
   const monthTrades = trades.filter((trade) => trade.tradeDate.startsWith(`${month.year}-${String(month.month + 1).padStart(2, "0")}`));
   return <section className={`card calendar-card ${compact ? "calendar-compact" : ""}`}>
     <CardTitle eyebrow="ONE DAY AT A TIME" title={compact ? "Trading activity" : "Trading calendar"} description={compact ? "A little look at your journey." : "Select a day to see its trades."} action={<div className="calendar-nav"><button type="button" onClick={() => shift(-1)} aria-label="Previous month"><ChevronLeft size={16}/></button><strong>{monthTitle(month.year, month.month)}</strong><button type="button" onClick={() => shift(1)} aria-label="Next month"><ChevronRight size={16}/></button></div>}/>
     <div className="calendar-weekdays">{["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => <span key={day}>{day}</span>)}</div>
-    <div className="calendar-grid" key={`${month.year}-${month.month}`}>{days.map((day, index) => { if (!day) return <span className="calendar-blank" key={`blank-${index}`}/>;
+    <div className="calendar-grid" data-direction={month.direction < 0 ? "previous" : month.direction > 0 ? "next" : "initial"} key={`${month.year}-${month.month}`}>{days.map((day, index) => { if (!day) return <span className="calendar-blank" key={`blank-${index}`}/>;
       const result = byDay.get(day); const value = result?.pnl ?? 0; const state = result ? value > 0 ? "day-win" : value < 0 ? "day-loss" : "day-even" : "";
       return <button type="button" key={day} className={`calendar-day ${state} ${day === todayString() ? "today" : ""}`} onClick={() => onDay(day)} aria-label={`${shortDate(day, true)}: ${result ? `${result.count} trades, ${hidden ? "amount hidden" : currency(value)}` : "no trades"}`}><span>{Number(day.slice(-2))}</span>{result && <small>{compact ? <i/> : currency(value, value > 0, hidden)}</small>}</button>;
     })}</div>
