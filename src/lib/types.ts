@@ -79,6 +79,7 @@ export type Trade = {
   timeframe?: string;
   session?: string;
   tags?: string[];
+  followedPlan?: boolean | null;
   checklist?: RuleSnapshot[];
   attachments?: TradeAttachment[];
 };

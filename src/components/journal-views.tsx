@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import { ArrowRight, BookHeart, CalendarDays, Check, CheckCircle2, ChevronDown, CirclePlus, Download, Filter, Images, List, Plus, RotateCcw, Search, Sparkles, Target, Trash2, Upload, Wind, X } from "lucide-react";
 import type { StorageMode } from "@/lib/attachments";
-import { groupTrades, maxRealizedDrawdown, previousPeriodTrades } from "@/lib/analytics";
-import { currency, filterTrades, getAccountBalanceSummary, getStats, shortDate, todayString, type Period } from "@/lib/format";
+import { evaluateTradeProcess, getProcessMatrix, groupTrades, groupTradesByTag, maxRealizedDrawdown, previousPeriodTrades } from "@/lib/analytics";
+import { currency, filterTrades, formatRMultiple, getAccountBalanceSummary, getStats, shortDate, todayString, type Period } from "@/lib/format";
 import { periodLabel, translateAccountName, translateMarket, translateMood, translatePlaybookGroup, translateSide, UI_COPY } from "@/lib/i18n";
 import { DEFAULT_ACCOUNT, MARKETS, MOODS, type AppLocale, type Intention, type JournalSettings, type PlaybookRule, type Trade, type WeeklyReflection } from "@/lib/types";
 import { RiskOverview } from "@/components/journal-review";
@@ -132,10 +132,13 @@ export function JournalView({
   </div>;
 }
 
+const BREAKDOWN_TABS = ["Market", "Setup", "Session", "Tag", "Playbook", "Mood", "Day"] as const;
+type BreakdownGroup = (typeof BREAKDOWN_TABS)[number];
+
 export function AnalyticsView({ trades, allTrades, accountFilter, settings, hidden, period, onPeriod, onAccountsSettings }: { trades: Trade[]; allTrades: Trade[]; accountFilter: string; settings: JournalSettings; hidden: boolean; period: Period; onPeriod: (period: Period) => void; onAccountsSettings: () => void }) {
   const locale = settings.locale ?? "en";
   const copy = UI_COPY[locale];
-  const selected = filterTrades(trades, period); const stats = getStats(selected); const previous = getStats(previousPeriodTrades(trades, period)); const [group, setGroup] = useState<"Market" | "Setup" | "Mood" | "Day">("Market");
+  const selected = filterTrades(trades, period); const stats = getStats(selected); const previous = getStats(previousPeriodTrades(trades, period)); const [group, setGroup] = useState<BreakdownGroup>("Market");
   const intlTag = locale === "id" ? "id-ID" : "en-US";
   const accounts = (settings.accounts ?? [DEFAULT_ACCOUNT]).map((item) => ({
     ...item,
@@ -145,18 +148,41 @@ export function AnalyticsView({ trades, allTrades, accountFilter, settings, hidd
     () => getAccountBalanceSummary(allTrades, accounts, accountFilter),
     [allTrades, accounts, accountFilter],
   );
-  const groups = groupTrades(
-    selected,
-    (trade) =>
-      group === "Market"
-        ? translateMarket(trade.market, locale)
-        : group === "Setup"
-          ? trade.setup
-          : group === "Mood"
-            ? translateMood(trade.mood, locale)
-            : new Date(`${trade.tradeDate}T12:00:00Z`).toLocaleDateString(intlTag, { weekday: "long", timeZone: "UTC" }),
-    copy.notSpecified,
-  );
+  const processMatrix = getProcessMatrix(selected);
+  const groups =
+    group === "Tag"
+      ? groupTradesByTag(selected, copy.noTagsBucket)
+      : group === "Playbook"
+        ? groupTrades(
+            selected,
+            (trade) => {
+              const status = evaluateTradeProcess(trade).status;
+              if (status === "followed") return copy.complianceFollowed;
+              if (status === "broken") return copy.complianceBroken;
+              return copy.complianceUnrated;
+            },
+            copy.complianceUnrated,
+          )
+        : groupTrades(
+            selected,
+            (trade) =>
+              group === "Market"
+                ? translateMarket(trade.market, locale)
+                : group === "Setup"
+                  ? trade.setup
+                  : group === "Session"
+                    ? trade.session ?? ""
+                    : group === "Mood"
+                      ? translateMood(trade.mood, locale)
+                      : new Date(`${trade.tradeDate}T12:00:00Z`).toLocaleDateString(intlTag, { weekday: "long", timeZone: "UTC" }),
+            copy.notSpecified,
+          );
+  const quadrants = [
+    { key: "model-win", title: copy.quadModelWinTitle, sub: copy.quadModelWinSub, hint: copy.quadModelWinHint, data: processMatrix.modelWin, signed: true },
+    { key: "good-loss", title: copy.quadGoodLossTitle, sub: copy.quadGoodLossSub, hint: copy.quadGoodLossHint, data: processMatrix.goodLoss, signed: false },
+    { key: "bad-win", title: copy.quadBadWinTitle, sub: copy.quadBadWinSub, hint: copy.quadBadWinHint, data: processMatrix.badWin, signed: true },
+    { key: "unforced-loss", title: copy.quadUnforcedLossTitle, sub: copy.quadUnforcedLossSub, hint: copy.quadUnforcedLossHint, data: processMatrix.unforcedLoss, signed: false },
+  ] as const;
   const metrics = [
     { name: copy.expectancy, value: stats.expectancy === null ? "—" : currency(stats.expectancy, stats.expectancy > 0, hidden), note: copy.expectancyNote },
     { name: copy.avgWinner, value: stats.avgWin === null ? "—" : currency(stats.avgWin, true, hidden), note: copy.winningTradesNote(stats.wins) },
@@ -168,8 +194,48 @@ export function AnalyticsView({ trades, allTrades, accountFilter, settings, hidd
   return <div className="view-stack"><AccountBalanceCard summary={balanceSummary} hidden={hidden} locale={locale} onOpenAccounts={onAccountsSettings}/><StatsCards trades={selected} hidden={hidden} locale={locale}/><PerformanceChart trades={selected} period={period} onPeriodChange={onPeriod} hidden={hidden} locale={locale}/>
     <section className="card comparison-card"><div><span className="card-eyebrow">{copy.periodComparisonEyebrow}</span><h2>{copy.comparedPrevTitle}</h2><p>{period === "ALL" ? copy.chooseRangeCompare : previous.count ? copy.precedingDaysCount(previous.count, period === "1W" ? "7" : period === "1M" ? "30" : "90") : copy.noTradesPrevPeriod}</p></div>{period !== "ALL" && previous.count > 0 && <div className="comparison-metrics"><div><small>{copy.netPnlChange}</small><strong>{currency(stats.net - previous.net, stats.net - previous.net > 0, hidden)}</strong></div><div><small>{copy.winRateChange}</small><strong>{stats.wins + stats.losses && previous.wins + previous.losses ? `${stats.winRate - previous.winRate > 0 ? "+" : ""}${stats.winRate - previous.winRate} pts` : "—"}</strong></div><div><small>{copy.tradesChange}</small><strong>{stats.count - previous.count > 0 ? "+" : ""}{stats.count - previous.count}</strong></div></div>}</section>
     <div className="insight-grid">{metrics.map((item) => <div className="card insight-card" key={item.name}><span>{item.name}</span><strong>{item.value}</strong><small>{item.note}</small></div>)}</div>
-    <div className="analytics-grid"><section className="card breakdown-card"><CardTitle eyebrow={copy.groupByEyebrow} title={copy.perfBreakdownTitle} description={copy.perfBreakdownDesc}/><div className="segment-control">{(["Market", "Setup", "Mood", "Day"] as const).map((item) => <button type="button" className={group === item ? "selected" : ""} aria-pressed={group === item} key={item} onClick={() => setGroup(item)}>{copy.groupTabs[item]}</button>)}</div>
-      {groups.length ? <div className="breakdown-list">{groups.map((item) => <div className="breakdown-row" key={item.name}><div className="breakdown-line"><div><strong>{item.name}</strong><small>{copy.breakdownSub(item.count, item.wins + item.losses ? `${Math.round(item.wins / (item.wins + item.losses) * 100)}%` : "—")}</small></div><b className={item.pnl < 0 ? "loss-text" : "positive-text"}>{currency(item.pnl, item.pnl > 0, hidden)}</b></div><div className="breakdown-track"><span style={{ width: `${item.count / Math.max(...groups.map((value) => value.count)) * 100}%` }}/></div></div>)}</div> : <div className="simple-empty">{copy.breakdownEmpty}</div>}
+    <section className="card process-matrix-card">
+      <CardTitle
+        eyebrow={copy.processMatrixEyebrow}
+        title={copy.processMatrixTitle}
+        description={copy.processMatrixDesc}
+        action={
+          processMatrix.processScorePct !== null ? (
+            <span className="process-score-pill">{copy.processScoreBadge(processMatrix.processScorePct)}</span>
+          ) : (
+            <span className="process-score-pill is-empty">{copy.processScoreEmpty}</span>
+          )
+        }
+      />
+      <div className="process-matrix-grid">
+        {quadrants.map((quad) => (
+          <article className={`process-quadrant ${quad.key}`} key={quad.key}>
+            <div className="process-quadrant-top">
+              <div>
+                <strong>{quad.title}</strong>
+                <small>{quad.sub}</small>
+              </div>
+              <span className="process-quadrant-count">{quad.data.count}</span>
+            </div>
+            <div className="process-quadrant-stats">
+              <b className={quad.data.pnl > 0 ? "positive-text" : quad.data.pnl < 0 ? "loss-text" : ""}>
+                {quad.data.count ? currency(quad.data.pnl, quad.signed && quad.data.pnl > 0, hidden) : "—"}
+              </b>
+              {quad.data.avgR !== null && (
+                <span className="process-quadrant-r">{formatRMultiple(quad.data.avgR)} avg</span>
+              )}
+            </div>
+            <p>{quad.hint}</p>
+          </article>
+        ))}
+      </div>
+      <p className="metric-disclaimer">
+        {copy.processMatrixFootnote(processMatrix.unratedCount, processMatrix.ratedBreakevens)}
+      </p>
+    </section>
+    <div className="analytics-grid"><section className="card breakdown-card"><CardTitle eyebrow={copy.groupByEyebrow} title={copy.perfBreakdownTitle} description={copy.perfBreakdownDesc}/><div className="segment-control breakdown-tabs">{BREAKDOWN_TABS.map((item) => <button type="button" className={group === item ? "selected" : ""} aria-pressed={group === item} key={item} onClick={() => setGroup(item)}>{copy.groupTabs[item]}</button>)}</div>
+      {groups.length ? <div className="breakdown-list">{groups.map((item) => <div className="breakdown-row" key={item.name}><div className="breakdown-line"><div><strong>{item.name}</strong><small>{copy.breakdownSub(item.count, item.wins + item.losses ? `${Math.round(item.wins / (item.wins + item.losses) * 100)}%` : "—")}{item.avgR !== null ? ` · ${formatRMultiple(item.avgR)}` : ""}</small></div><b className={item.pnl < 0 ? "loss-text" : item.pnl > 0 ? "positive-text" : ""}>{currency(item.pnl, item.pnl > 0, hidden)}</b></div><div className="breakdown-track"><span style={{ width: `${item.count / Math.max(...groups.map((value) => value.count)) * 100}%` }}/></div></div>)}</div> : <div className="simple-empty">{copy.breakdownEmpty}</div>}
+      {group === "Tag" && <p className="metric-disclaimer">{copy.tagMultiNote}</p>}
       <p className="metric-disclaimer">{copy.patternDisclaimer}</p></section>
       <section className="card methodology-card"><div className="widget-icon green"><BookHeart size={18}/></div><span className="card-eyebrow">{copy.calcNotesEyebrow}</span><h2>{copy.howNumbersWork}</h2><p>{copy.howNumbersBody}</p><div className="method-item"><CheckCircle2 size={16}/><span>{copy.method1}</span></div><div className="method-item"><CheckCircle2 size={16}/><span>{copy.method2}</span></div><div className="method-item"><CheckCircle2 size={16}/><span>{copy.method3}</span></div><div className="method-sparkle">✳</div></section></div>
   </div>;

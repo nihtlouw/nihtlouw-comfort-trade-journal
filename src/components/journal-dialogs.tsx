@@ -25,6 +25,7 @@ import {
 } from "@/lib/types";
 import { parseTradeInput } from "@/lib/trade-validation";
 import { getDraftRiskAlerts } from "@/lib/risk";
+import { getSmartEntrySuggestions, PRESET_SESSIONS, PRESET_TIMEFRAMES } from "@/lib/analytics";
 import type { BackupReminderState } from "@/lib/backup-reminder";
 import { ChartLightbox, type ChartLightboxSlide } from "@/components/chart-lightbox";
 
@@ -181,6 +182,7 @@ function AttachmentEditorCard({
 type TradeForm = {
   symbol: string; market: string; side: "Long" | "Short"; tradeDate: string; pnl: string; setup: string; mood: string; notes: string; accountId: string;
   entryPrice: string; exitPrice: string; positionSize: string; stopLoss: string; takeProfit: string; fees: string; initialRisk: string; timeframe: string; session: string; tags: string;
+  followedPlan: boolean | null;
   checklist: { id: string; text: string; checked: boolean }[]; attachments: TradeAttachment[];
 };
 export type TradeDraft = Omit<TradeForm, "tags"> & { tags: string[] };
@@ -191,11 +193,28 @@ export function TradeModal({ trade, trades, limits, hidden, accounts, playbook, 
     symbol: trade?.symbol ?? "", market: trade?.market ?? "Forex", side: trade?.side ?? "Long", tradeDate: trade?.tradeDate ?? todayString(), pnl: trade?.pnl ?? "",
     setup: trade?.setup ?? "", mood: trade?.mood ?? "Calm", notes: trade?.notes ?? "", accountId: trade?.accountId ?? defaultAccount,
     entryPrice: trade?.entryPrice ?? "", exitPrice: trade?.exitPrice ?? "", positionSize: trade?.positionSize ?? "", stopLoss: trade?.stopLoss ?? "", takeProfit: trade?.takeProfit ?? "", fees: trade?.fees ?? "", initialRisk: trade?.initialRisk ?? "", timeframe: trade?.timeframe ?? "", session: trade?.session ?? "", tags: (trade?.tags ?? []).join(", "),
+    followedPlan: typeof trade?.followedPlan === "boolean" ? trade.followedPlan : null,
     checklist: trade?.checklist?.length ? trade.checklist.map((rule) => ({ ...rule })) : playbook.map(({ id, text }) => ({ id, text, checked: false })), attachments: (trade?.attachments ?? []).map((item) => ({ ...item })),
   }));
-  const [files, setFiles] = useState<PendingAttachmentFile[]>([]); const [saving, setSaving] = useState(false); const [error, setError] = useState(""); const [advanced, setAdvanced] = useState(!!trade && !!(trade.entryPrice || trade.initialRisk || trade.tags?.length || trade.attachments?.length || trade.checklist?.some((rule) => rule.checked)));
+  const [files, setFiles] = useState<PendingAttachmentFile[]>([]); const [saving, setSaving] = useState(false); const [error, setError] = useState(""); const [advanced, setAdvanced] = useState(!!trade && !!(trade.entryPrice || trade.initialRisk || trade.timeframe || trade.session || trade.tags?.length || trade.attachments?.length || trade.checklist?.some((rule) => rule.checked)));
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const update = <K extends keyof TradeForm>(key: K, value: TradeForm[K]) => setForm((current) => ({ ...current, [key]: value }));
+  const suggestions = useMemo(() => getSmartEntrySuggestions(trades), [trades]);
+  const activeTagNorms = useMemo(
+    () => new Set(form.tags.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean)),
+    [form.tags],
+  );
+  function toggleTagChip(chip: string) {
+    const currentList = form.tags.split(",").map((t) => t.trim()).filter(Boolean);
+    const norm = chip.toLowerCase();
+    const exists = currentList.some((t) => t.toLowerCase() === norm);
+    const next = exists
+      ? currentList.filter((t) => t.toLowerCase() !== norm)
+      : [...currentList, chip].slice(0, 20);
+    update("tags", next.join(", "));
+  }
+  const checkedCount = form.checklist.filter((item) => item.checked).length;
+  const allRulesChecked = form.checklist.length > 0 && checkedCount === form.checklist.length;
   const draftAlerts = getDraftRiskAlerts(trades, { ...form, tags: [], id: trade?.id ?? 0, isDemo: trade?.isDemo ?? false }, limits, trade?.id);
   const modalSlides = useMemo<ChartLightboxSlide[]>(() => [
     ...form.attachments.map((att) => ({ key: `saved-${att.id}`, attachment: att, name: att.name, stage: att.stage, caption: att.caption })),
@@ -211,19 +230,161 @@ export function TradeModal({ trade, trades, limits, hidden, accounts, playbook, 
   function chooseFiles(event: React.ChangeEvent<HTMLInputElement>) { const chosen = Array.from(event.target.files ?? []); event.target.value = ""; if (chosen.some((file) => file.size > MAX_ATTACHMENT_BYTES)) { setError(locale === "id" ? "Setiap gambar maksimal berukuran 2 MB." : "Each screenshot must be 2 MB or less."); return; } if (form.attachments.length + files.length + chosen.length > 8) { setError(locale === "id" ? "Maksimal 8 screenshot per trade." : "Add up to 8 screenshots per trade."); return; } setError(""); setFiles((current) => [...current, ...chosen.map((file) => ({ id: crypto.randomUUID(), file }))]); }
   return <ModalShell onClose={onClose} label="trade-modal-title" wide><ModalHeader id="trade-modal-title" title={trade ? copy.editTradeTitle : copy.logTradeTitle} description={copy.tradeModalDesc} onClose={onClose} closeLabel={copy.close}/>
     <form className="modal-form" onSubmit={submit}><div className="form-section-label">{copy.tradeDetailsSection}</div><div className="form-grid">
-      <label>{copy.assetSymbolLabel}<input required maxLength={24} placeholder="e.g. EUR/USD" value={form.symbol} onChange={(event) => update("symbol", event.target.value)}/></label>
+      <div className="field-with-chips">
+        <label>{copy.assetSymbolLabel}<input required maxLength={24} placeholder="e.g. EUR/USD" value={form.symbol} onChange={(event) => update("symbol", event.target.value)}/></label>
+        {suggestions.symbols.length > 0 && (
+          <div className="smart-chips" role="group" aria-label={copy.recentSymbolsAria}>
+            {suggestions.symbols.map((sym) => {
+              const active = form.symbol.trim().toUpperCase() === sym.toUpperCase();
+              return (
+                <button
+                  type="button"
+                  key={sym}
+                  className={`smart-chip ${active ? "selected" : ""}`}
+                  aria-pressed={active}
+                  onClick={() => update("symbol", sym)}
+                >
+                  {sym}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
       <label>{copy.marketLabel}<select value={form.market} onChange={(event) => update("market", event.target.value)}>{MARKETS.map((market) => <option key={market} value={market}>{translateMarket(market, locale)}</option>)}</select></label>
       <label>{copy.directionLabel}<select value={form.side} onChange={(event) => update("side", event.target.value as "Long" | "Short")}><option value="Long">{translateSide("Long", locale)}</option><option value="Short">{translateSide("Short", locale)}</option></select></label>
       <label>{copy.tradeDateLabel}<input type="date" required value={form.tradeDate} onChange={(event) => update("tradeDate", event.target.value)}/></label>
       <label>{copy.netPnlLabel}<input type="number" step="0.01" required placeholder="e.g. 125 or -50" value={form.pnl} onChange={(event) => update("pnl", event.target.value)}/><small>{copy.netPnlHint}</small></label>
       <label>{copy.tradingAccountLabel}<select value={form.accountId} onChange={(event) => update("accountId", event.target.value)}>{accounts.map((account) => <option value={account.id} key={account.id}>{translateAccountName(account.name, locale)}</option>)}</select></label>
-      <label>{copy.setupLabel}<input maxLength={80} placeholder={copy.setupPlaceholder} value={form.setup} onChange={(event) => update("setup", event.target.value)}/></label>
+      <div className="field-with-chips">
+        <label>{copy.setupLabel}<input maxLength={80} placeholder={copy.setupPlaceholder} value={form.setup} onChange={(event) => update("setup", event.target.value)}/></label>
+        {suggestions.setups.length > 0 && (
+          <div className="smart-chips" role="group" aria-label={copy.recentSetupsAria}>
+            {suggestions.setups.map((item) => {
+              const active = form.setup.trim().toLowerCase() === item.toLowerCase();
+              return (
+                <button
+                  type="button"
+                  key={item}
+                  className={`smart-chip ${active ? "selected" : ""}`}
+                  aria-pressed={active}
+                  onClick={() => update("setup", item)}
+                >
+                  {item}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
       <label>{copy.howFeelLabel}<select value={form.mood} onChange={(event) => update("mood", event.target.value)}>{MOODS.map((mood) => <option key={mood} value={mood}>{translateMood(mood, locale)}</option>)}</select></label>
+      <div className="form-full plan-adherence-field">
+        <div className="plan-adherence-head">
+          <strong>{copy.planAdherenceLabel}</strong>
+          <small>{copy.planAdherenceHint}</small>
+        </div>
+        <div className="plan-adherence-pills" role="group" aria-label={copy.planAdherenceAria}>
+          <button
+            type="button"
+            className={`plan-pill followed ${form.followedPlan === true ? "selected" : ""}`}
+            aria-pressed={form.followedPlan === true}
+            onClick={() => update("followedPlan", form.followedPlan === true ? null : true)}
+          >
+            <Check size={13} /> {copy.planFollowedPill}
+          </button>
+          <button
+            type="button"
+            className={`plan-pill broken ${form.followedPlan === false ? "selected" : ""}`}
+            aria-pressed={form.followedPlan === false}
+            onClick={() => update("followedPlan", form.followedPlan === false ? null : false)}
+          >
+            {copy.planBrokenPill}
+          </button>
+        </div>
+      </div>
       <label className="form-full">{copy.notesLabel}<textarea maxLength={5000} rows={3} placeholder={copy.notesPlaceholder} value={form.notes} onChange={(event) => update("notes", event.target.value)}/></label>
     </div>
     <button type="button" className="advanced-toggle" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}><span>{copy.optionalDetails}</span><ChevronDown size={17} className={advanced ? "rotated" : ""}/></button>
-    {advanced && <div className="advanced-content"><div className="form-grid"><label>{copy.entryPriceLabel}<input type="number" min="0" step="any" value={form.entryPrice} onChange={(event) => update("entryPrice", event.target.value)} placeholder={copy.optionalPlaceholder}/></label><label>{copy.exitPriceLabel}<input type="number" min="0" step="any" value={form.exitPrice} onChange={(event) => update("exitPrice", event.target.value)} placeholder={copy.optionalPlaceholder}/></label><label>{copy.positionSizeLabel}<input type="number" min="0" step="any" value={form.positionSize} onChange={(event) => update("positionSize", event.target.value)} placeholder={copy.optionalPlaceholder}/></label><label>{copy.initialRiskLabel}<input type="number" min="0" step="any" value={form.initialRisk} onChange={(event) => update("initialRisk", event.target.value)} placeholder="e.g. 100"/><small>{copy.initialRiskHint}</small></label><label>{copy.stopLossLabel}<input type="number" min="0" step="any" value={form.stopLoss} onChange={(event) => update("stopLoss", event.target.value)} placeholder={copy.optionalPlaceholder}/></label><label>{copy.takeProfitLabel}<input type="number" min="0" step="any" value={form.takeProfit} onChange={(event) => update("takeProfit", event.target.value)} placeholder={copy.optionalPlaceholder}/></label><label>{copy.feesLabel}<input type="number" min="0" step="any" value={form.fees} onChange={(event) => update("fees", event.target.value)} placeholder={copy.optionalPlaceholder}/><small>{copy.feesHint}</small></label><label>{copy.timeframeLabel}<input maxLength={40} value={form.timeframe} onChange={(event) => update("timeframe", event.target.value)} placeholder={copy.timeframePlaceholder}/></label><label>{copy.sessionLabel}<input maxLength={40} value={form.session} onChange={(event) => update("session", event.target.value)} placeholder="e.g. London"/></label><label>{copy.tagsLabel}<input value={form.tags} onChange={(event) => update("tags", event.target.value)} placeholder="breakout, patient, A+"/><small>{copy.tagsHint}</small></label></div>
-      <div className="form-subheading"><strong>{copy.playbookChecklistTitle}</strong><span>{copy.playbookChecklistSub}</span></div><div className="trade-checklist">{form.checklist.map((rule) => <label key={rule.id}><input type="checkbox" checked={rule.checked} onChange={(event) => update("checklist", form.checklist.map((item) => item.id === rule.id ? { ...item, checked: event.target.checked } : item))}/><span>{rule.text}</span></label>)}{!form.checklist.length && <p>{copy.emptyChecklistHint}</p>}</div>
+    {advanced && <div className="advanced-content"><div className="form-grid"><label>{copy.entryPriceLabel}<input type="number" min="0" step="any" value={form.entryPrice} onChange={(event) => update("entryPrice", event.target.value)} placeholder={copy.optionalPlaceholder}/></label><label>{copy.exitPriceLabel}<input type="number" min="0" step="any" value={form.exitPrice} onChange={(event) => update("exitPrice", event.target.value)} placeholder={copy.optionalPlaceholder}/></label><label>{copy.positionSizeLabel}<input type="number" min="0" step="any" value={form.positionSize} onChange={(event) => update("positionSize", event.target.value)} placeholder={copy.optionalPlaceholder}/></label><label>{copy.initialRiskLabel}<input type="number" min="0" step="any" value={form.initialRisk} onChange={(event) => update("initialRisk", event.target.value)} placeholder="e.g. 100"/><small>{copy.initialRiskHint}</small></label><label>{copy.stopLossLabel}<input type="number" min="0" step="any" value={form.stopLoss} onChange={(event) => update("stopLoss", event.target.value)} placeholder={copy.optionalPlaceholder}/></label><label>{copy.takeProfitLabel}<input type="number" min="0" step="any" value={form.takeProfit} onChange={(event) => update("takeProfit", event.target.value)} placeholder={copy.optionalPlaceholder}/></label><label>{copy.feesLabel}<input type="number" min="0" step="any" value={form.fees} onChange={(event) => update("fees", event.target.value)} placeholder={copy.optionalPlaceholder}/><small>{copy.feesHint}</small></label>
+      <div className="field-with-chips">
+        <label>{copy.timeframeLabel}<input maxLength={40} value={form.timeframe} onChange={(event) => update("timeframe", event.target.value)} placeholder={copy.timeframePlaceholder}/></label>
+        <div className="smart-chips" role="group" aria-label={copy.presetTimeframesAria}>
+          {PRESET_TIMEFRAMES.map((tf) => {
+            const active = form.timeframe.trim().toUpperCase() === tf;
+            return (
+              <button
+                type="button"
+                key={tf}
+                className={`smart-chip ${active ? "selected" : ""}`}
+                aria-pressed={active}
+                onClick={() => update("timeframe", active ? "" : tf)}
+              >
+                {tf}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="field-with-chips">
+        <label>{copy.sessionLabel}<input maxLength={40} value={form.session} onChange={(event) => update("session", event.target.value)} placeholder="e.g. London"/></label>
+        <div className="smart-chips" role="group" aria-label={copy.presetSessionsAria}>
+          {PRESET_SESSIONS.map((sess) => {
+            const active = form.session.trim().toLowerCase() === sess.toLowerCase();
+            return (
+              <button
+                type="button"
+                key={sess}
+                className={`smart-chip ${active ? "selected" : ""}`}
+                aria-pressed={active}
+                onClick={() => update("session", active ? "" : sess)}
+              >
+                {sess}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="field-with-chips">
+        <label>{copy.tagsLabel}<input value={form.tags} onChange={(event) => update("tags", event.target.value)} placeholder="breakout, patient, A+"/><small>{copy.tagsHint}</small></label>
+        <div className="smart-chips" role="group" aria-label={copy.suggestedTagsAria}>
+          {suggestions.tags.map((tagChip) => {
+            const active = activeTagNorms.has(tagChip.toLowerCase());
+            return (
+              <button
+                type="button"
+                key={tagChip}
+                className={`smart-chip ${active ? "selected" : ""}`}
+                aria-pressed={active}
+                onClick={() => toggleTagChip(tagChip)}
+              >
+                #{tagChip}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+      <div className="form-subheading">
+        <strong>{copy.playbookChecklistTitle} {form.checklist.length > 0 ? <em className="checklist-live-count">({checkedCount}/{form.checklist.length})</em> : null}</strong>
+        <div className="checklist-sub-actions">
+          <span>{copy.playbookChecklistSub}</span>
+          {form.checklist.length > 0 && (
+            <button
+              type="button"
+              className="checklist-quick-btn"
+              onClick={() =>
+                update(
+                  "checklist",
+                  form.checklist.map((item) => ({ ...item, checked: !allRulesChecked })),
+                )
+              }
+            >
+              {allRulesChecked ? copy.clearAllRules : copy.checkAllRules}
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="trade-checklist">{form.checklist.map((rule) => <label key={rule.id}><input type="checkbox" checked={rule.checked} onChange={(event) => update("checklist", form.checklist.map((item) => item.id === rule.id ? { ...item, checked: event.target.checked } : item))}/><span>{rule.text}</span></label>)}{!form.checklist.length && <p>{copy.emptyChecklistHint}</p>}</div>
       <div className="form-subheading"><strong>{copy.screenshotsTitle}</strong><span>{copy.screenshotsSub}</span></div>
       <div className="attachment-editor-list">
         {form.attachments.map((item, idx) => (

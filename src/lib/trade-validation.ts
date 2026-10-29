@@ -50,6 +50,7 @@ export function parseTradeInput(input: unknown) {
     entryPrice: numeric("entryPrice"), exitPrice: numeric("exitPrice"), positionSize: numeric("positionSize"),
     stopLoss: numeric("stopLoss"), takeProfit: numeric("takeProfit"), fees: numeric("fees"), initialRisk: numeric("initialRisk"),
     timeframe: String(body.timeframe ?? "").trim().slice(0, 40), session: String(body.session ?? "").trim().slice(0, 40), tags,
+    ...(typeof body.followedPlan === "boolean" ? { followedPlan: body.followedPlan } : {}),
     checklist: Array.isArray(body.checklist) ? body.checklist as RuleSnapshot[] : [],
     attachments: sanitizeAttachments(body.attachments),
   };

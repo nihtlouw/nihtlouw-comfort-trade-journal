@@ -428,4 +428,119 @@ test("chart attachment stage tags, captions, and R-multiple helpers normalize ba
   assert.equal(parsedBackup.journal.trades[0].attachments?.[1].stage, undefined);
 });
 
+test("process matrix, multi-tag breakdown, playbook compliance, and smart entry chips maintain exact accounting", async () => {
+  const { evaluateTradeProcess, getProcessMatrix, getSmartEntrySuggestions, groupTradesByTag } = await import("@/lib/analytics");
+  const { parseTradeInput } = await import("@/lib/trade-validation");
+
+  // Untouched checklist (0 checked) without explicit followedPlan stays honestly "unrated"
+  const unratedWithChecklist: Trade = {
+    ...makeTrade(1, "120", "60"),
+    checklist: [
+      { id: "r1", text: "Rule 1", checked: false },
+      { id: "r2", text: "Rule 2", checked: false },
+    ],
+  };
+  assert.equal(evaluateTradeProcess(unratedWithChecklist).status, "unrated");
+
+  // >= 70% checked rules -> followed; >0 and <70% checked -> broken
+  const modelWinTrade: Trade = {
+    ...makeTrade(2, "200", "100"), // +2.00R
+    tags: ["A+", "patient"],
+    checklist: [
+      { id: "r1", text: "Rule 1", checked: true },
+      { id: "r2", text: "Rule 2", checked: true },
+      { id: "r3", text: "Rule 3", checked: true },
+      { id: "r4", text: "Rule 4", checked: false },
+    ], // 75% >= 70%
+  };
+  const goodLossTrade: Trade = {
+    ...makeTrade(3, "-50", "50"), // -1.00R
+    followedPlan: true,
+    tags: ["patient"],
+  };
+  const badWinTrade: Trade = {
+    ...makeTrade(4, "90", "45"), // +2.00R
+    followedPlan: false,
+    tags: ["fomo", "early-exit", "FOMO"],
+  };
+  const unforcedLossTrade: Trade = {
+    ...makeTrade(5, "-120", "60"), // -2.00R
+    checklist: [
+      { id: "r1", text: "Rule 1", checked: true },
+      { id: "r2", text: "Rule 2", checked: false },
+      { id: "r3", text: "Rule 3", checked: false },
+    ], // 33% < 70%
+    tags: ["fomo", "revenge"],
+  };
+  const ratedBreakevenTrade: Trade = {
+    ...makeTrade(6, "0", "50"),
+    followedPlan: true,
+  };
+
+  const sample = [
+    unratedWithChecklist,
+    modelWinTrade,
+    goodLossTrade,
+    badWinTrade,
+    unforcedLossTrade,
+    ratedBreakevenTrade,
+  ];
+  const matrix = getProcessMatrix(sample);
+  assert.equal(matrix.modelWin.count, 1);
+  assert.equal(matrix.modelWin.pnl, 200);
+  assert.equal(matrix.modelWin.avgR, 2);
+  assert.equal(matrix.goodLoss.count, 1);
+  assert.equal(matrix.goodLoss.pnl, -50);
+  assert.equal(matrix.goodLoss.avgR, -1);
+  assert.equal(matrix.badWin.count, 1);
+  assert.equal(matrix.badWin.pnl, 90);
+  assert.equal(matrix.badWin.avgR, 2);
+  assert.equal(matrix.unforcedLoss.count, 1);
+  assert.equal(matrix.unforcedLoss.pnl, -120);
+  assert.equal(matrix.unforcedLoss.avgR, -2);
+  assert.equal(matrix.ratedBreakevens, 1);
+  assert.equal(matrix.unratedCount, 1);
+  assert.equal(matrix.ratedCount, 5);
+  assert.equal(matrix.followedCount, 3);
+  assert.equal(matrix.processScorePct, 60);
+  assert.equal(
+    matrix.modelWin.count + matrix.goodLoss.count + matrix.badWin.count + matrix.unforcedLoss.count + matrix.ratedBreakevens + matrix.unratedCount,
+    sample.length,
+  );
+
+  // Multi-tag breakdown deduplicates case-insensitively per trade & computes per-tag avgR
+  const byTag = groupTradesByTag(sample, "No tags");
+  const fomoRow = byTag.find((row) => row.name.toLowerCase() === "#fomo")!;
+  assert.equal(fomoRow.count, 2);
+  assert.equal(fomoRow.pnl, -30); // +90 + -120
+  assert.equal(fomoRow.avgR, 0); // (+2R + -2R) / 2
+  const untaggedRow = byTag.find((row) => row.name === "No tags")!;
+  assert.equal(untaggedRow.count, 2);
+
+  // followedPlan survives parseTradeInput and normalization
+  const parsed = parseTradeInput({
+    symbol: "xauusd",
+    market: "Commodities",
+    side: "Long",
+    setup: "Sweep",
+    tradeDate: "2026-04-12",
+    pnl: "-40",
+    mood: "Calm",
+    notes: "Good loss",
+    followedPlan: true,
+  });
+  assert.equal(parsed.followedPlan, true);
+  const normalized = normalizeJournalData({
+    ...createDemoData(),
+    trades: [{ ...parsed, id: 99, isDemo: false }],
+  });
+  assert.equal(normalized.trades[0].followedPlan, true);
+
+  // Smart entry suggestions rank real trades first and include starter tags
+  const suggestions = getSmartEntrySuggestions(sample);
+  assert.ok(suggestions.symbols.includes("TEST2"));
+  assert.ok(suggestions.tags.some((t) => t.toLowerCase() === "fomo"));
+});
+
+
 

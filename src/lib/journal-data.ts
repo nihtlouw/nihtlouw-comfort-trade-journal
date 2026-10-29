@@ -43,6 +43,7 @@ const trade = z.object({
   takeProfit: optionalNumber, fees: optionalNumber, initialRisk: optionalNumber,
   timeframe: z.string().max(40).optional().default(""), session: z.string().max(40).optional().default(""),
   tags: z.array(z.string().min(1).max(30)).max(20).optional().default([]),
+  followedPlan: z.boolean().nullable().optional(),
   checklist: z.array(z.object({ id, text: z.string().max(160), checked: z.boolean() })).max(100).optional().default([]),
   attachments: z.array(attachment).max(8).optional().default([]),
 });
