@@ -38,6 +38,15 @@ const settings = z.object({
   theme: z.enum(["light", "dark"]).optional(), reduceMotion: z.boolean().optional(), includeSamples: z.boolean().optional(),
   riskLimits: z.object({ perTrade: z.number().finite().positive().max(99999999999).nullable(), dailyLoss: z.number().finite().positive().max(99999999999).nullable() }).optional(),
   backupReminderDays: z.union([z.literal(0), z.literal(7), z.literal(14), z.literal(30)]).optional(),
+  patienceLocale: z.enum(["en", "id"]).optional(),
+  patienceMaxTrades: z.number().int().min(1).max(20).optional(),
+  walkAwayLogs: z.array(z.object({
+    id,
+    date,
+    accountId: id,
+    reason: z.enum(["lock_profit", "stop_giveback", "respect_loss", "protect_focus"]),
+    note: z.string().max(240),
+  })).max(3660).optional(),
 });
 const journal = z.object({ trades: z.array(trade).max(10000), settings }).superRefine((value, ctx) => {
   const ids = value.trades.map((item) => item.id);
@@ -47,6 +56,8 @@ const journal = z.object({ trades: z.array(trade).max(10000), settings }).superR
   if (value.trades.some((item) => !accountIds.includes(item.accountId))) ctx.addIssue({ code: "custom", message: "A trade references a missing account" });
   const goalIds = value.settings.goals?.map((item) => item.id) ?? [];
   if (new Set(goalIds).size !== goalIds.length) ctx.addIssue({ code: "custom", message: "Duplicate intention IDs" });
+  const walkAwayIds = value.settings.walkAwayLogs?.map((item) => item.id) ?? [];
+  if (new Set(walkAwayIds).size !== walkAwayIds.length) ctx.addIssue({ code: "custom", message: "Duplicate walk-away log IDs" });
   const images = new Map<string, { name: string; type: string; size: number }>();
   for (const item of value.trades.flatMap((entry) => entry.attachments)) {
     const existing = images.get(item.id);
@@ -76,6 +87,9 @@ export function normalizeJournalData(input: unknown): JournalData {
       includeSamples: data.settings.includeSamples ?? true,
       riskLimits: data.settings.riskLimits ?? { perTrade: null, dailyLoss: null },
       backupReminderDays: data.settings.backupReminderDays ?? 7,
+      patienceLocale: data.settings.patienceLocale ?? "en",
+      patienceMaxTrades: data.settings.patienceMaxTrades ?? 3,
+      walkAwayLogs: data.settings.walkAwayLogs ?? [],
     },
   };
 }

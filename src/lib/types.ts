@@ -20,6 +20,9 @@ export type WeeklyReflection = { id: string; date: string; wentWell: string; lea
 /** Informational thresholds, in USD. A null limit is disabled. */
 export type RiskLimits = { perTrade: number | null; dailyLoss: number | null };
 export type BackupReminderDays = 0 | 7 | 14 | 30;
+export type PatienceLocale = "en" | "id";
+export type WalkAwayReason = "lock_profit" | "stop_giveback" | "respect_loss" | "protect_focus";
+export type WalkAwayLog = { id: string; date: string; accountId: string; reason: WalkAwayReason; note: string };
 
 export type Trade = {
   id: number;
@@ -70,6 +73,10 @@ export type JournalSettings = {
   riskLimits?: RiskLimits;
   /** Reminder preference; last-download status stays on the current device. */
   backupReminderDays?: BackupReminderDays;
+  patienceLocale?: PatienceLocale;
+  /** Reference daily trade cap used only inside the Patience mirror (1–20). */
+  patienceMaxTrades?: number;
+  walkAwayLogs?: WalkAwayLog[];
 };
 
 export type JournalData = { trades: Trade[]; settings: JournalSettings };

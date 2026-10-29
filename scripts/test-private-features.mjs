@@ -32,6 +32,13 @@ try {
   await page.getByRole("button", { name: "Save trade", exact: true }).click(); await page.locator(".modal").waitFor({ state: "detached" }); await page.reload({ waitUntil: "networkidle" }); await page.getByLabel("Edit ALPHA-PRIVATE trade").waitFor();
   await page.getByLabel("Open settings").click(); await page.getByRole("button", { name: "Data", exact: true }).click(); await page.getByLabel("Backup reminder frequency").selectOption("30");
   await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Download", exact: true }).click()]); await page.getByText(/Last backup download started on this device/).waitFor(); await close();
+  await page.getByLabel("Open navigation").click(); await page.locator(".sidebar-nav").getByRole("button", { name: "Patience", exact: true }).click();
+  await page.getByLabel("Short note to self (optional)").fill("ALPHA-WALKAWAY-SECRET");
+  await page.getByRole("button", { name: "End today’s session", exact: true }).click(); await page.getByText("Session closed for today", { exact: true }).waitFor();
+  await page.getByRole("group", { name: "Patience page language" }).getByRole("button", { name: "ID", exact: true }).click(); await page.getByText("Sesi hari ini ditutup", { exact: true }).waitFor();
+  await page.reload({ waitUntil: "networkidle" });
+  await page.getByLabel("Open navigation").click(); await page.locator(".sidebar-nav").getByRole("button", { name: "Patience", exact: true }).click();
+  await page.getByText("Sesi hari ini ditutup", { exact: true }).waitFor(); assert.match(await page.locator(".patience-view").innerText(), /ALPHA-WALKAWAY-SECRET/);
   await page.getByLabel("Open navigation").click(); await page.locator(".sidebar-nav").getByRole("button", { name: "Weekly review", exact: true }).click();
   assert.match(await page.locator(".risk-review").innerText(), /ALPHA-PRIVATE/); assert.match(await page.locator(".risk-review").innerText(), /\$100\.00/);
   const privateKeys = await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("bloom:backup-reminder:v1:private")));
@@ -41,7 +48,7 @@ try {
   // The single cached navigation is /local/, never the authenticated root.
   assert.ok(!urls.includes(`${base}/`));
   const shell = await page.evaluate(async (url) => (await (await caches.open("bloom-local-shell-v1")).match(url)).text(), local);
-  assert.doesNotMatch(shell, /ALPHA-PRIVATE|alpha-chart/);
+  assert.doesNotMatch(shell, /ALPHA-PRIVATE|alpha-chart|ALPHA-WALKAWAY-SECRET/);
   await context.setOffline(true); await page.getByText("Private sync needs a connection.").waitFor();
   await page.getByLabel("Edit ALPHA-PRIVATE trade").click(); await page.getByLabel("Notes", { exact: true }).fill("This must not save offline"); await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await page.locator(".toast-error").waitFor(); assert.equal(await page.locator(".modal").count(), 1); await close();
@@ -52,6 +59,9 @@ try {
   await context.setOffline(false); await page.goto(base); await page.getByLabel("Edit ALPHA-PRIVATE trade").click(); assert.equal(await page.getByLabel("Notes", { exact: true }).inputValue(), ""); await page.locator(".attachment-thumb a").waitFor(); await close();
   await page.getByLabel("Open settings").click(); await page.getByRole("button", { name: "Sign out", exact: true }).click(); await page.getByRole("heading", { name: "Sign in", exact: true }).waitFor();
   await signUp("Beta"); assert.equal(await page.getByLabel("Edit ALPHA-PRIVATE trade").count(), 0);
+  await page.getByLabel("Open navigation").click(); await page.locator(".sidebar-nav").getByRole("button", { name: "Patience", exact: true }).click();
+  assert.doesNotMatch(await page.locator(".patience-view").innerText(), /ALPHA-WALKAWAY-SECRET/);
+  assert.equal(await page.getByText("Slow down before the next click.", { exact: true }).count(), 1);
   await page.getByLabel("Open settings").click(); await page.getByRole("button", { name: "Data", exact: true }).click();
   assert.match(await page.locator(".backup-reminder-settings").innerText(), /No backup download started/); assert.equal(await page.getByLabel("Backup reminder frequency").inputValue(), "7");
   const after = await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("bloom:backup-reminder:v1:private"))); assert.equal(after.length, 2); assert.notEqual(after[0], after[1]);

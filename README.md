@@ -9,6 +9,7 @@ A calmer place to record trades, understand your process, and look after your mi
 - Search and filters, a trading calendar, CSV export, and mapped CSV import with a preview, validation, and possible-duplicate checks. On phones, filters collapse, trade rows show all details without horizontal scrolling, and calendar markers lead to exact daily amounts. Broker CSV files can be imported without giving Bloom trading permissions; **there is no live broker API connection or order execution**.
 - Realized P&L charts, period comparisons, expectancy, average win/loss, R-multiple, realized drawdown, and breakdowns by market, setup, mood, and weekday.
 - A Monday–Sunday weekly review bringing together trades, setups, risk coverage, trade notes, and reflections; optional post-trade risk reminders.
+- A **Patience** workspace (with an English / Bahasa Indonesia switch) combining a 60-second impulse reset and walk-away session log, an intra-day overtrade and profit-giveback mirror from recorded trades, an educational proportional-compounding vs. revenge-day simulator with drawdown-recovery math, and grounded lessons.
 - A playbook, mood-check-in history, reflections, multiple intentions, and an optional breathing break.
 - An installable browser-only Android experience with offline access, full JSON backup/restore including screenshots, periodic backup reminders, and an optional private PostgreSQL account mode.
 
@@ -38,6 +39,14 @@ The service worker caches **only** the generic `/local/` shell and public build 
 **Weekly review** uses the device’s date for the current Monday–Sunday week. Navigate between weeks to see the account- and sample-filtered trades, net P&L, setups, risk-entry coverage, trade notes, and recorded reflections. Reflections are journal-wide and are not tied to a trading account; they stay visible when changing the account filter. The trade list shows up to 100 entries; use the journal for additional trades. Amount hiding applies to displayed calculated amounts.
 
 In **Settings → Risk**, optionally set an initial-risk limit per trade and a daily realized-net-loss limit, in USD. The same chosen daily limit is checked **separately for each account and calendar date**. A reminder appears when an amount is **greater than** its limit: daily realized net loss is the negative of the sum of recorded net P&L that day, with each amount rounded to cents, so gains offset losses. Samples are excluded. Only positive entered initial-risk values can be checked; missing or zero risk is shown as missing coverage in the review. These are informational checks on manually recorded outcomes, not live brokerage monitoring or investment advice; they do not place or block orders or prevent saving a trade.
+
+### Patience and realistic compounding
+
+Open **Patience** under **Your wellbeing** (or from the losing-trade notice / Mindset) when tempted to overtrade or chase back given-back profits:
+
+- **Impulse reset and walk-away log:** Reads today’s visible trades in entry order to highlight green-to-red reversals or ≥40% intraday profit giveback, pairs a 60-second pause timer with three honest pre-trade checks, and lets you record an intentional session stop for the day. Walk-away logs are self-commitments stored in your journal and backups; Bloom never connects to or blocks a broker.
+- **Overtrade and giveback mirror:** Splits each `(account, date)` session by entry ID using a page-local comfort trade count (without altering **Settings → Risk**) and lists sessions that reached a positive intraday peak before giving back ≥50% or turning negative. Because trade records store calendar dates rather than execution timestamps, intra-day ordering follows entry ID.
+- **Compounding vs. revenge-day model:** Compares proportional `%` equity risk against flat dollar risk and periodic `−5R` emotional blowup days alongside exact drawdown-recovery math (`−2%` needs `+2.04%`, `−50%` needs `+100%`). Figures are hypothetical educational illustrations, not predictions or guarantees. Use the **EN / ID** toggle at the top of the page to switch between English and Bahasa Indonesia.
 
 ### Backup reminders
 
