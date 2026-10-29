@@ -142,10 +142,62 @@ test("new preferences survive normalization and backups while old journals get s
   const old = createDemoData();
   const upgraded = normalizeJournalData(old);
   assert.deepEqual(upgraded.settings.riskLimits, { perTrade: null, dailyLoss: null }); assert.equal(upgraded.settings.backupReminderDays, 7);
+  assert.equal(upgraded.settings.patienceLocale, "en"); assert.equal(upgraded.settings.patienceMaxTrades, 3);
+  assert.deepEqual(upgraded.settings.walkAwayLogs, []);
   upgraded.settings.riskLimits = { perTrade: 125.5, dailyLoss: 300 }; upgraded.settings.backupReminderDays = 30;
+  upgraded.settings.patienceLocale = "id"; upgraded.settings.patienceMaxTrades = 2;
+  upgraded.settings.walkAwayLogs = [{ id: "w1", date: "2026-10-29", accountId: "main", reason: "stop_giveback", note: "Kept remaining green day." }];
   const parsed = await parseBackup(JSON.stringify({ format: "bloom-journal-backup", version: 2, journal: upgraded, images: [] }));
   assert.deepEqual(parsed.journal.settings.riskLimits, { perTrade: 125.5, dailyLoss: 300 }); assert.equal(parsed.journal.settings.backupReminderDays, 30);
+  assert.equal(parsed.journal.settings.patienceLocale, "id"); assert.equal(parsed.journal.settings.patienceMaxTrades, 2);
+  assert.equal(parsed.journal.settings.walkAwayLogs?.length, 1);
   assert.throws(() => normalizeJournalData({ ...upgraded, settings: { ...upgraded.settings, riskLimits: { perTrade: -1, dailyLoss: null } } }));
+  assert.throws(() => normalizeJournalData({ ...upgraded, settings: { ...upgraded.settings, patienceMaxTrades: 0 } }));
+  assert.throws(() => normalizeJournalData({ ...upgraded, settings: { ...upgraded.settings, walkAwayLogs: [upgraded.settings.walkAwayLogs![0], upgraded.settings.walkAwayLogs![0]] } }));
+});
+
+test("patience mirror detects green-to-red giveback, separates accounts, and models realistic compounding", async () => {
+  const { getDrawdownRecoveryRows, getJournalSimPreset, getPatienceMirror, getTodaySessionPulse, simulateCompoundingComparison } = await import("@/lib/patience");
+  const day1 = "2026-10-28"; const day2 = "2026-10-29";
+  const rows: Trade[] = [
+    // day1 on main: +300 -> +350 (peak at #2) -> +100 -> -80 (green-to-red; overtrade after #2 cost -430)
+    { ...makeTrade(1, "300", "100"), tradeDate: day1, accountId: "main" },
+    { ...makeTrade(2, "50", "100"), tradeDate: day1, accountId: "main" },
+    { ...makeTrade(3, "-250", "100"), tradeDate: day1, accountId: "main" },
+    { ...makeTrade(4, "-180", "100"), tradeDate: day1, accountId: "main" },
+    // day2 on main: +200 -> +80 (60% heavy giveback, still green)
+    { ...makeTrade(5, "200", "100"), tradeDate: day2, accountId: "main" },
+    { ...makeTrade(6, "-120", "100"), tradeDate: day2, accountId: "main" },
+    // day1 on swing: 2 calm trades, must not mix into main's trade count
+    { ...makeTrade(7, "120", "60"), tradeDate: day1, accountId: "swing" },
+    { ...makeTrade(8, "90", "60"), tradeDate: day1, accountId: "swing" },
+  ];
+  const pulseRed = getTodaySessionPulse(rows.filter((t) => t.accountId === "main"), day1, 2);
+  assert.equal(pulseRed.statusKind, "green_to_red"); assert.equal(pulseRed.intradayPeak, 350); assert.equal(pulseRed.currentNet, -80);
+  const pulseGiveback = getTodaySessionPulse(rows.filter((t) => t.accountId === "main"), day2, 2);
+  assert.equal(pulseGiveback.statusKind, "heavy_giveback"); assert.equal(pulseGiveback.givebackPct, 60);
+
+  const mirror = getPatienceMirror(rows, 2);
+  assert.equal(mirror.totalSessions, 3);
+  assert.equal(mirror.withinCap.count, 6); assert.equal(mirror.overCap.count, 2);
+  assert.equal(mirror.stoppedAtCapNet, 640); assert.equal(mirror.overCapNet, -430); assert.equal(mirror.actualNet, 210);
+  assert.equal(mirror.greenToRedCount, 1); assert.equal(mirror.heavyGivebackCount, 1);
+  assert.equal(mirror.givebackDays[0]?.date, day2); assert.equal(mirror.givebackDays[1]?.kind, "green_to_red");
+
+  const preset = getJournalSimPreset(rows);
+  assert.ok(preset); assert.equal(preset.source, "r_multiple"); assert.equal(preset.winRate, 63);
+
+  const sim50 = simulateCompoundingComparison({ startingBalance: 5000, riskPercent: 1, winRate: 50, rewardRisk: 1.8, totalTrades: 100, revengeDaysPer20: 2 });
+  const sim60 = simulateCompoundingComparison({ startingBalance: 5000, riskPercent: 1, winRate: 60, rewardRisk: 1.8, totalTrades: 100, revengeDaysPer20: 2 });
+  assert.equal(sim50.wins, 50); assert.ok(sim50.patientFinal > sim50.flatFinal, "proportional compounding beats flat risk with positive expectancy");
+  assert.ok(sim50.patientFinal > sim50.revengeFinal && sim50.impatienceCost > 0, "revenge blowup days erode compounded equity");
+  assert.ok(sim60.patientFinal > sim50.patientFinal, "higher win rate monotonically improves simulated equity");
+
+  const dd = getDrawdownRecoveryRows(1, 2);
+  assert.equal(dd.find((r) => r.lossPct === 2)?.recoveryPct, 2.04);
+  assert.equal(dd.find((r) => r.lossPct === 20)?.recoveryPct, 25);
+  assert.equal(dd.find((r) => r.lossPct === 50)?.recoveryPct, 100);
+  assert.ok((dd.find((r) => r.lossPct === 50)?.winsToRecover ?? 0) > (dd.find((r) => r.lossPct === 5)?.winsToRecover ?? 0));
 });
 
 test("backup reminders are periodic, snoozable, and isolated by journal on this device", async () => {

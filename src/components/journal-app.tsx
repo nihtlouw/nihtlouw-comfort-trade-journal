@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ElementType } from "react";
-import { BarChart3, BookOpenCheck, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, CircleAlert, ClipboardList, CloudDownload, Eye, EyeOff, Heart, LayoutDashboard, Menu, NotebookPen, Plus, Settings2, Smartphone, Sprout, Target, Wind, X } from "lucide-react";
+import { BarChart3, BookOpenCheck, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, CircleAlert, ClipboardList, CloudDownload, Eye, EyeOff, Heart, Hourglass, LayoutDashboard, Menu, NotebookPen, Plus, Settings2, Smartphone, Sprout, Target, Wind, X } from "lucide-react";
 import type { Intention, JournalData, JournalSettings, PlaybookRule, Trade, TradeAttachment, WeeklyReflection } from "@/lib/types";
 import { DEFAULT_ACCOUNT, MAX_JOURNAL_IMAGE_BYTES } from "@/lib/types";
 import { currency, longToday, todayString, type Period } from "@/lib/format";
@@ -14,6 +14,7 @@ import { exportTradesCsv } from "@/lib/csv";
 import { parseTradeInput } from "@/lib/trade-validation";
 import { isBackupReminderDue, loadBackupReminder, recordBackupDownload, snoozeBackupReminder, writeBackupReminder, type BackupReminderState } from "@/lib/backup-reminder";
 import { WeeklyReview } from "@/components/journal-review";
+import { PatienceView } from "@/components/journal-patience";
 import { LocalPwaStatus } from "@/components/local-pwa";
 import { AnalyticsView, CalendarView, GoalsView, JournalView, MindsetView, Overview, PlaybookView, type View } from "@/components/journal-views";
 import { BreathingModal, ImportModal, SettingsModal, TradeModal, type SettingsTab, type TradeDraft } from "@/components/journal-dialogs";
@@ -24,7 +25,7 @@ const MODAL_EXIT_MS = 420;
 const workspaceNav: { label: View; icon: ElementType }[] = [
   { label: "Overview", icon: LayoutDashboard }, { label: "Trade journal", icon: NotebookPen }, { label: "Analytics", icon: BarChart3 }, { label: "Weekly review", icon: ClipboardList }, { label: "Calendar", icon: CalendarDays }, { label: "Playbook", icon: BookOpenCheck },
 ];
-const personalNav: { label: View; icon: ElementType }[] = [{ label: "Mindset", icon: Heart }, { label: "Goals", icon: Target }];
+const personalNav: { label: View; icon: ElementType }[] = [{ label: "Mindset", icon: Heart }, { label: "Patience", icon: Hourglass }, { label: "Goals", icon: Target }];
 const titles: Record<View, { title: string; subtitle: string }> = {
   Overview: { title: "", subtitle: "Your recent trading activity, at a glance." },
   "Trade journal": { title: "Trade journal", subtitle: "Search, filter, and manage your trades." },
@@ -33,6 +34,7 @@ const titles: Record<View, { title: string; subtitle: string }> = {
   Calendar: { title: "Calendar", subtitle: "Explore your trades by date." },
   Playbook: { title: "Playbook", subtitle: "Build checklists for each stage of a trade." },
   Mindset: { title: "Mindset", subtitle: "Check in and reflect on your trading." },
+  Patience: { title: "Patience", subtitle: "Pause emotional urges, protect profit peaks, and let steady compounding work." },
   Goals: { title: "Goals", subtitle: "Track the habits you want to build." },
 };
 function greeting() { const hour = new Date().getHours(); return hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"; }
@@ -236,7 +238,8 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
         {view === "Weekly review" && <WeeklyReview trades={visibleTrades} settings={data.settings} hidden={hidden} onMindset={() => navigate("Mindset")} onSettings={() => openSettings("Risk")} onEditTrade={editTrade} onNewTrade={newTrade} onJournal={() => navigate("Trade journal")}/>}
         {view === "Calendar" && <CalendarView trades={visibleTrades} hidden={hidden} onDay={day}/>}
         {view === "Playbook" && <PlaybookView settings={data.settings} onUpdate={(playbook: PlaybookRule[]) => void updateSettings({ playbook })}/>}
-        {view === "Mindset" && <MindsetView settings={data.settings} trades={visibleTrades} onMood={selectMood} onSaveMoodNote={saveMoodNote} onBreath={() => openModal("breathing")} onSaveReflection={(reflection: WeeklyReflection) => updateSettings({ reflections: [...(dataRef.current.settings.reflections ?? []), reflection] }, "Reflection saved.")} onDeleteReflection={(reflectionId) => { if (window.confirm("Delete this reflection?")) void updateSettings({ reflections: (dataRef.current.settings.reflections ?? []).filter((item) => item.id !== reflectionId) }, "Reflection removed."); }}/>}
+        {view === "Mindset" && <MindsetView settings={data.settings} trades={visibleTrades} onMood={selectMood} onSaveMoodNote={saveMoodNote} onBreath={() => openModal("breathing")} onPatience={() => navigate("Patience")} onSaveReflection={(reflection: WeeklyReflection) => updateSettings({ reflections: [...(dataRef.current.settings.reflections ?? []), reflection] }, "Reflection saved.")} onDeleteReflection={(reflectionId) => { if (window.confirm("Delete this reflection?")) void updateSettings({ reflections: (dataRef.current.settings.reflections ?? []).filter((item) => item.id !== reflectionId) }, "Reflection removed."); }}/>}
+        {view === "Patience" && <PatienceView trades={visibleTrades} settings={data.settings} accountFilter={accountFilter} hidden={hidden} onBreath={() => openModal("breathing")} onDay={day} onUpdateSettings={updateSettings}/>}
         {view === "Goals" && <GoalsView settings={data.settings} onMark={markGoal} onUndo={undoGoal} onReset={resetGoal} onDelete={deleteGoal} onAdd={addGoal}/>}
         </div>
       </div><footer className="app-footer"><span>{storage === "browser" ? "Stored on this device · Back up in Settings." : "Private account · Keep an independent backup."}</span></footer></main>
@@ -249,6 +252,6 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
     {modal === "import" && <ImportModal trades={data.trades} accounts={accounts} defaultAccount={defaultAccount} onClose={closeModal} onImport={importTrades}/>}
     {modal === "breathing" && <BreathingModal onClose={closeModal}/>}
     </div>}
-    {toast && <div className={`toast ${toast.error ? "toast-error" : ""}`} role="status">{toast.error ? <CircleAlert size={18}/> : <CheckCircle2 size={18}/>} {toast.message}{toast.breath && <button type="button" onClick={() => { setToast(null); openModal("breathing"); }}>Take a breath</button>}</div>}
+    {toast && <div className={`toast ${toast.error ? "toast-error" : ""}`} role="status">{toast.error ? <CircleAlert size={18}/> : <CheckCircle2 size={18}/>} {toast.message}{toast.breath && <><button type="button" onClick={() => { setToast(null); openModal("breathing"); }}>Take a breath</button><button type="button" onClick={() => { setToast(null); navigate("Patience"); }}>Patience</button></>}</div>}
   </div>;
 }

@@ -168,6 +168,38 @@ try {
   await page.locator(".file-button input").setInputFiles(backupFile); await page.locator(".modal").waitFor({ state: "detached" });
   await page.reload({ waitUntil: "domcontentloaded" }); assert.equal(await page.getByLabel("Edit OFFLINE-NEW trade").count(), 0); await page.getByLabel("Edit RISK-ONE trade").click(); await page.locator(".attachment-thumb a").waitFor(); await close();
   await openSettings("Data"); assert.match(await page.locator(".backup-reminder-settings").innerText(), /No backup download started/); await close();
+  // Exercise Patience offline: green-to-red giveback mirror, walk-away session log, privacy, simulator, and EN/ID toggle.
+  await page.getByLabel("Filter by trading account").selectOption({ label: "Swing account" });
+  for (const [symbol, pnl] of [["SWING-PEAK", "250"], ["SWING-TILT", "-220"]]) {
+    await page.getByRole("button", { name: "Log a trade", exact: true }).first().click();
+    await page.getByLabel("Asset / symbol").fill(symbol); await page.getByLabel("Net P&L (USD)").fill(pnl);
+    await page.getByRole("button", { name: "Save trade", exact: true }).click(); await page.locator(".modal").waitFor({ state: "detached" });
+  }
+  await navigate("Patience");
+  assert.match(await page.locator(".patience-today-strip").innerText(), /\+\$190\.00/);
+  assert.match(await page.locator(".patience-today-strip").innerText(), /[−-]\$30\.00/);
+  await page.getByLabel("Comfort trades / day").selectOption("2");
+  assert.match(await page.locator(".patience-view").innerText(), /reduced net P&L by \$220\.00/);
+  assert.match(await page.locator(".patience-giveback-list").innerText(), /Green → Red/);
+  await page.getByLabel("Hide amounts").click();
+  assert.doesNotMatch(await page.locator(".patience-today-strip").innerText(), /\$190\.00|\$30\.00/);
+  assert.match(await page.locator(".patience-today-strip").innerText(), /••••••/);
+  await page.getByLabel("Show amounts").click();
+  await page.getByRole("button", { name: "Use my journal stats", exact: true }).click();
+  assert.match(await page.locator(".patience-preset-note").innerText(), /Applied from your visible trades/);
+  await page.getByLabel("Short note to self (optional)").fill("Stepped back to protect tomorrow.");
+  await page.getByRole("button", { name: "End today’s session", exact: true }).click();
+  await page.getByText("Session closed for today", { exact: true }).waitFor();
+  await page.getByRole("group", { name: "Patience page language" }).getByRole("button", { name: "ID", exact: true }).click();
+  await page.getByText("Tenangkan diri sebelum klik berikutnya.", { exact: true }).waitFor();
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await navigate("Patience");
+  await page.getByText("Tenangkan diri sebelum klik berikutnya.", { exact: true }).waitFor();
+  await page.getByText("Sesi hari ini ditutup", { exact: true }).waitFor();
+  await page.getByRole("button", { name: /Lihat hari/ }).first().click();
+  await page.locator('.view-motion[data-view="Trade journal"]').waitFor();
+  assert.match(await page.locator(".selected-day").innerText(), /Showing/);
+  console.log("PASS: Patience reset, green-to-red giveback mirror, walk-away log, simulator, and EN/ID toggle work offline.");
   if (!external) {
     const didFetch = await page.evaluate((url) => fetch(url).then(() => true).catch(() => false), new URL("api/private-test", base).href); assert.equal(didFetch, false, "API responses must not be cached");
   }

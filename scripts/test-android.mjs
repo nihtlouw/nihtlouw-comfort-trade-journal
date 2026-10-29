@@ -49,9 +49,16 @@ export async function testAndroid(browser, url, errors, apiRequests) {
     }
 
     // Visit every page using the real bottom bar and drawer, not hidden desktop controls.
-    for (const view of ["Trade journal", "Analytics", "Weekly review", "Calendar", "Playbook", "Mindset", "Goals", "Overview"]) {
+    for (const view of ["Trade journal", "Analytics", "Weekly review", "Calendar", "Playbook", "Mindset", "Patience", "Goals", "Overview"]) {
       await navigate(view);
       if (view === "Playbook" || view === "Goals") assert.equal(await page.getByLabel("Filter by trading account").count(), 0);
+      if (view === "Patience") {
+        await page.getByRole("group", { name: "Patience page language" }).getByRole("button", { name: "ID", exact: true }).click();
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width, `Patience ID fits at ${width}px`);
+        const idHeadings = (await page.locator(".page-content h1, .page-content h2").allTextContents()).map((h) => h.trim().replace(/\s+/g, " ").toLowerCase());
+        assert.equal(new Set(idHeadings).size, idHeadings.length, `Patience ID: no repeated headings at ${width}px`);
+        await page.getByRole("group", { name: "Bahasa halaman Patience" }).getByRole("button", { name: "EN", exact: true }).click();
+      }
     }
     assert.equal(await page.locator(".mobile-top-brand").isVisible(), true);
     assert.equal(await page.getByLabel("Take a breath").isVisible(), true);
