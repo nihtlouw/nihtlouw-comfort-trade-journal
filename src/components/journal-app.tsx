@@ -16,6 +16,8 @@ import { AnalyticsView, CalendarView, GoalsView, JournalView, MindsetView, Overv
 import { BreathingModal, ImportModal, SettingsModal, TradeModal, type TradeDraft } from "@/components/journal-dialogs";
 
 type Modal = "trade" | "settings" | "breathing" | "import" | null;
+// Keep this in sync with --bloom-dialog-exit in globals.css.
+const MODAL_EXIT_MS = 420;
 const workspaceNav: { label: View; icon: ElementType }[] = [
   { label: "Overview", icon: LayoutDashboard }, { label: "Trade journal", icon: NotebookPen }, { label: "Analytics", icon: BarChart3 }, { label: "Calendar", icon: CalendarDays }, { label: "Playbook", icon: BookOpenCheck },
 ];
@@ -40,7 +42,7 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
   const [editing, setEditing] = useState<Trade | null>(null); const [hidden, setHidden] = useState(false); const [accountFilter, setAccountFilter] = useState("all");
   const [selectedDay, setSelectedDay] = useState(""); const [mobileMenu, setMobileMenu] = useState(false); const [saving, setSaving] = useState(false);
   const [damaged, setDamaged] = useState(initialDamaged); const [toast, setToast] = useState<{ message: string; error: boolean; breath: boolean } | null>(null);
-  const toastTimer = useRef<number | null>(null); const modalCloseTimer = useRef<number | null>(null); const mobileClose = useRef<HTMLButtonElement>(null);
+  const toastTimer = useRef<number | null>(null); const modalCloseTimer = useRef<number | null>(null); const modalLayer = useRef<HTMLDivElement>(null); const mobileClose = useRef<HTMLButtonElement>(null);
   const prefersReducedMotion = useCallback(() => dataRef.current.settings.reduceMotion === true || window.matchMedia("(prefers-reduced-motion: reduce)").matches, []);
   const openModal = useCallback((next: Exclude<Modal, null>) => {
     if (modalCloseTimer.current !== null) window.clearTimeout(modalCloseTimer.current);
@@ -49,8 +51,19 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
   const closeModal = useCallback(() => {
     if (modalCloseTimer.current !== null) return;
     if (prefersReducedMotion()) { setModal(null); setModalClosing(false); return; }
+    // A quick Escape/close can interrupt the entrance. Start the exit from the
+    // actual on-screen frame instead of jumping to the fully-open position.
+    const layer = modalLayer.current;
+    const panel = layer?.querySelector<HTMLElement>(".modal");
+    const backdrop = layer?.querySelector<HTMLElement>(".modal-backdrop");
+    if (layer && panel && backdrop) {
+      const panelStyle = window.getComputedStyle(panel);
+      layer.style.setProperty("--bloom-exit-opacity", panelStyle.opacity);
+      layer.style.setProperty("--bloom-exit-transform", panelStyle.transform);
+      layer.style.setProperty("--bloom-backdrop-opacity", window.getComputedStyle(backdrop).opacity);
+    }
     setModalClosing(true);
-    modalCloseTimer.current = window.setTimeout(() => { modalCloseTimer.current = null; setModal(null); setModalClosing(false); }, 180);
+    modalCloseTimer.current = window.setTimeout(() => { modalCloseTimer.current = null; setModal(null); setModalClosing(false); }, MODAL_EXIT_MS);
   }, [prefersReducedMotion]);
   useEffect(() => () => { if (modalCloseTimer.current !== null) window.clearTimeout(modalCloseTimer.current); if (toastTimer.current !== null) window.clearTimeout(toastTimer.current); }, []);
   useEffect(() => {
@@ -181,7 +194,9 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
         </div>
       </div><footer className="app-footer"><span>Made with care for your trading journey <span>♥</span></span><span>{storage === "browser" ? "Browser-only journal · Remember to back up your data." : "Progress looks good on you."}</span></footer></main>
     <nav className="mobile-bottom-nav" aria-label="Mobile navigation">{([{ label: "Overview", icon: LayoutDashboard }, { label: "Trade journal", icon: NotebookPen }, { label: "Calendar", icon: CalendarDays }] as const).map(({ label, icon: Icon }) => <button type="button" key={label} className={view === label ? "active" : ""} onClick={() => navigate(label)}><Icon size={19}/><span>{label === "Trade journal" ? "Journal" : label}</span></button>)}<button type="button" onClick={() => setMobileMenu(true)} aria-expanded={mobileMenu} aria-controls="primary-sidebar"><Menu size={19}/><span>More</span></button></nav>
-    {modal && <div className={`modal-layer ${modalClosing ? "is-closing" : ""}`}>
+    {modal && <div ref={modalLayer} className={`modal-layer ${modalClosing ? "is-closing" : ""}`}
+      onClickCapture={(event) => { if (modalClosing) { event.preventDefault(); event.stopPropagation(); } }}
+      onSubmitCapture={(event) => { if (modalClosing) { event.preventDefault(); event.stopPropagation(); } }}>
     {modal === "trade" && <TradeModal key={editing?.id ?? "new"} trade={editing} accounts={accounts} playbook={data.settings.playbook} defaultAccount={defaultAccount} mode={storage} onClose={closeModal} onSave={saveTrade} onDelete={deleteTrade}/>}
     {modal === "settings" && <SettingsModal data={data} mode={storage} sampleCount={sampleCount} onClose={closeModal} onUpdate={updateSettings} onClearSamples={clearSamples} onBackup={backup} onRestore={restore} onExportCsv={() => exportCsv(dataRef.current.trades)} onImportCsv={() => openModal("import")} onAddAccount={addAccount} onRemoveAccount={removeAccount} onSignOut={storage === "server" ? signOut : undefined}/>}
     {modal === "import" && <ImportModal trades={data.trades} accounts={accounts} defaultAccount={defaultAccount} onClose={closeModal} onImport={importTrades}/>}
