@@ -13,5 +13,5 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   if (!session) return <AuthScreen allowSignUp={process.env.BLOOM_ALLOW_SIGNUP === "true"}/>;
   const { getPrivateJournal } = await import("@/lib/server-journal");
   const journal = await getPrivateJournal(session.user.id, session.user.name);
-  return <JournalApp initialData={journal.data} initialRevision={journal.revision} storage="server"/>;
+  return <JournalApp initialData={journal.data} initialRevision={journal.revision} storage="server" backupScope={`private:${session.user.id}`}/>;
 }

@@ -13,7 +13,9 @@
     "test": "tsx --test tests/*.test.ts",
     "test:private": "node scripts/test-private.mjs",
     "db:migrate:private": "node scripts/migrate-private.mjs",
-    "test:private:ui": "node scripts/test-private-ui.mjs"
+    "test:private:ui": "node scripts/test-private-ui.mjs",
+    "test:features": "node scripts/test-features.mjs",
+    "test:private:features": "node scripts/test-private-features.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.3.0",

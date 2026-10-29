@@ -90,3 +90,77 @@ test("motion preference survives normalization, storage, and backup", async () =
   const backup = JSON.stringify({ format: "bloom-journal-backup", version: 2, journal: data, images: [] });
   assert.equal((await parseBackup(backup)).journal.settings.reduceMotion, true);
 });
+
+test("weekly review follows Monday–Sunday across years and keeps reflection scope explicit", async () => {
+  const { getWeeklyReview, shiftWeek, weekBounds } = await import("@/lib/review");
+  assert.deepEqual(weekBounds("2026-01-01"), { start: "2025-12-29", end: "2026-01-04" });
+  assert.deepEqual(weekBounds("2026-01-04"), { start: "2025-12-29", end: "2026-01-04" });
+  assert.equal(shiftWeek("2025-12-29", 1), "2026-01-05");
+  const trades = [
+    { ...makeTrade(1, "100", "50"), tradeDate: "2025-12-29", notes: "A good setup" },
+    { ...makeTrade(2, "-20"), tradeDate: "2026-01-04", setup: "Pullback" },
+    { ...makeTrade(3, "50", "10"), tradeDate: "2026-01-05" },
+  ];
+  const reflections = [
+    { id: "a", date: "2026-01-04", wentWell: "Patience", learned: "", nextWeek: "" },
+    { id: "b", date: "2026-01-05", wentWell: "Next week", learned: "", nextWeek: "" },
+  ];
+  const review = getWeeklyReview(trades, reflections, "2025-12-29");
+  assert.equal(review.trades.length, 2); assert.equal(review.stats.net, 80); assert.equal(review.riskCount, 1);
+  assert.equal(review.averageRisk, 50); assert.equal(review.setups.length, 2); assert.equal(review.tradeNotes[0].notes, "A good setup");
+  assert.deepEqual(review.reflections.map((item) => item.id), ["a"]);
+  assert.equal(getWeeklyReview([], [], "2025-12-29").averageRisk, null);
+});
+
+test("risk limits are informational, account/date-specific, exclude samples, and do not double-count edits", async () => {
+  const { getRiskAlerts, getDraftRiskAlerts } = await import("@/lib/risk");
+  const day = "2026-01-01";
+  const trades: Trade[] = [
+    { ...makeTrade(1, "-80", "51"), tradeDate: day, accountId: "main" },
+    { ...makeTrade(2, "-40", "50"), tradeDate: day, accountId: "main" },
+    { ...makeTrade(3, "30", ""), tradeDate: day, accountId: "main" },
+    { ...makeTrade(4, "-150", "100"), tradeDate: day, accountId: "other" },
+    { ...makeTrade(5, "-1000", "500"), tradeDate: day, accountId: "main", isDemo: true },
+  ];
+  const limits = { perTrade: 50, dailyLoss: 100 };
+  let alerts = getRiskAlerts(trades, limits);
+  assert.equal(alerts.filter((alert) => alert.kind === "trade").length, 2); // equal risk is not a breach
+  assert.deepEqual(alerts.filter((alert) => alert.kind === "daily").map((alert) => alert.accountId), ["other"]); // gains offset losses
+  const edit = { ...trades[0], pnl: "-100" };
+  alerts = getDraftRiskAlerts(trades, edit, limits, edit.id);
+  assert.equal(alerts.filter((alert) => alert.kind === "daily").length, 1);
+  assert.equal((alerts.find((alert) => alert.kind === "daily")?.amount), 110);
+  assert.equal(getDraftRiskAlerts(trades, trades[4], limits, trades[4].id).length, 0);
+  assert.equal(getRiskAlerts(trades, { perTrade: null, dailyLoss: null }).length, 0);
+  assert.equal(getRiskAlerts([{ ...makeTrade(1, "-0.10"), tradeDate: day }, { ...makeTrade(2, "-0.20"), tradeDate: day }], { perTrade: null, dailyLoss: .30 }).length, 0);
+  // Exact cent accumulation remains reliable even when large totals cancel out.
+  const large = [...Array.from({ length: 1000 }, (_, i) => ({ ...makeTrade(i + 1, "-99999999999.99"), tradeDate: day })), ...Array.from({ length: 1000 }, (_, i) => ({ ...makeTrade(i + 1001, "99999999999.99"), tradeDate: day })), { ...makeTrade(2001, "-100.01"), tradeDate: day }];
+  assert.equal(getRiskAlerts(large, { perTrade: null, dailyLoss: 100 })[0]?.amount, 100.01);
+});
+
+test("new preferences survive normalization and backups while old journals get safe defaults", async () => {
+  const old = createDemoData();
+  const upgraded = normalizeJournalData(old);
+  assert.deepEqual(upgraded.settings.riskLimits, { perTrade: null, dailyLoss: null }); assert.equal(upgraded.settings.backupReminderDays, 7);
+  upgraded.settings.riskLimits = { perTrade: 125.5, dailyLoss: 300 }; upgraded.settings.backupReminderDays = 30;
+  const parsed = await parseBackup(JSON.stringify({ format: "bloom-journal-backup", version: 2, journal: upgraded, images: [] }));
+  assert.deepEqual(parsed.journal.settings.riskLimits, { perTrade: 125.5, dailyLoss: 300 }); assert.equal(parsed.journal.settings.backupReminderDays, 30);
+  assert.throws(() => normalizeJournalData({ ...upgraded, settings: { ...upgraded.settings, riskLimits: { perTrade: -1, dailyLoss: null } } }));
+});
+
+test("backup reminders are periodic, snoozable, and isolated by journal on this device", async () => {
+  const { backupReminderKey, isBackupReminderDue, loadBackupReminder, recordBackupDownload, snoozeBackupReminder, writeBackupReminder } = await import("@/lib/backup-reminder");
+  const store = new Map<string, string>();
+  const storage = { getItem: (key: string) => store.get(key) ?? null, setItem: (key: string, value: string) => { store.set(key, value); } };
+  const start = Date.UTC(2026, 0, 1); const day = 86_400_000;
+  const local = loadBackupReminder(storage, "browser", start);
+  assert.equal(local.available, true); assert.equal(isBackupReminderDue(local.state, 7, start + 7 * day - 1), false);
+  assert.equal(isBackupReminderDue(local.state, 7, start + 7 * day), true); assert.equal(isBackupReminderDue(local.state, 0, start + 300 * day), false);
+  const snoozed = snoozeBackupReminder(local.state, start + 7 * day); assert.equal(isBackupReminderDue(snoozed, 7, start + 13 * day), false); assert.equal(isBackupReminderDue(snoozed, 7, start + 14 * day), true);
+  const downloaded = recordBackupDownload(snoozed, start + 14 * day); assert.equal(writeBackupReminder(storage, "browser", downloaded), true);
+  assert.equal(loadBackupReminder(storage, "browser", start).state.lastDownloadAt, start + 14 * day);
+  assert.equal(loadBackupReminder(storage, "private:user-1", start).state.lastDownloadAt, null);
+  assert.notEqual(backupReminderKey("private:user-1"), backupReminderKey("private:user-2"));
+  const blocked = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } };
+  assert.equal(loadBackupReminder(blocked, "browser", start).available, false); assert.equal(writeBackupReminder(blocked, "browser", downloaded), false);
+});

@@ -49,7 +49,7 @@ export async function testAndroid(browser, url, errors, apiRequests) {
     }
 
     // Visit every page using the real bottom bar and drawer, not hidden desktop controls.
-    for (const view of ["Trade journal", "Analytics", "Calendar", "Playbook", "Mindset", "Goals", "Overview"]) {
+    for (const view of ["Trade journal", "Analytics", "Weekly review", "Calendar", "Playbook", "Mindset", "Goals", "Overview"]) {
       await navigate(view);
       if (view === "Playbook" || view === "Goals") assert.equal(await page.getByLabel("Filter by trading account").count(), 0);
     }
@@ -195,12 +195,19 @@ export async function testAndroid(browser, url, errors, apiRequests) {
     await closeModal();
     await page.reload({ waitUntil: "networkidle" });
     assert.equal(await page.locator(".app-shell").getAttribute("data-theme"), "dark");
+    await navigate("Weekly review");
+    assert.equal(await page.locator(".app-shell").getAttribute("data-theme"), "dark");
+    await page.getByLabel("Previous week").click(); assert.ok(await page.getByRole("button", { name: "This week" }).isEnabled());
+    await page.getByRole("button", { name: "This week" }).click();
+    await page.getByLabel("Open settings").click(); await page.getByRole("button", { name: "Risk", exact: true }).click();
+    assert.equal(await page.getByLabel("Initial risk per trade (USD)").evaluate((el) => getComputedStyle(el).fontSize), "16px");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width); await closeModal();
     await navigate("Trade journal");
     await page.getByLabel("Search trades").fill(`ANDROID-${width}`);
     await assertVisibleRow(page.locator(".trade-row").first(), "$0.00");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
     console.log(`PASS: ${width}px Android navigation, all pages, filters, trade cards, calendar, import/export, wellbeing, settings and persistence.`);
-    // Keep contexts alive until browser shutdown: some single-process builds exit when their last page closes.
+    // Keep contexts alive until browser cleanup.
   }
 
   // A phone in landscape can cross the tablet breakpoint while keeping a short viewport.
@@ -232,6 +239,12 @@ export async function testAndroid(browser, url, errors, apiRequests) {
     await page.getByLabel("Previous month").click();
     assert.notEqual(await page.locator(".calendar-nav strong").innerText(), month);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
-    console.log(`PASS: ${width}×360 Android landscape trade details, forms and calendar navigation.`);
+    await page.locator(".mobile-bottom-nav").getByRole("button", { name: "More", exact: true }).click();
+    await page.locator(".sidebar-nav").getByRole("button", { name: "Weekly review", exact: true }).click();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
+    await page.getByLabel("Previous week").click(); await page.getByRole("button", { name: "This week" }).click();
+    await page.getByLabel("Open settings").click(); await page.getByRole("button", { name: "Risk", exact: true }).click();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
+    console.log(`PASS: ${width}×360 Android landscape trade details, forms, calendar and weekly review.`);
   }
 }

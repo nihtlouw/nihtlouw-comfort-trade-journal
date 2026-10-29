@@ -1,0 +1,16 @@
+{
+  "name": "Bloom Trading Journal — Browser Only",
+  "short_name": "Bloom",
+  "description": "A mindful, browser-only trading journal with offline access.",
+  "id": "./local/",
+  "start_url": "./local/",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f7f3",
+  "theme_color": "#6e9f79",
+  "icons": [
+    { "src": "./icons/bloom-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/bloom-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/bloom-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

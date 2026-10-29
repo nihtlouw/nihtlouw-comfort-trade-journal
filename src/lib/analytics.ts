@@ -35,7 +35,7 @@ export function maxRealizedDrawdown(trades: Trade[]) {
 
 export function groupTrades(trades: Trade[], key: (trade: Trade) => string) {
   const groups = new Map<string, Trade[]>();
-  trades.forEach((trade) => { const value = key(trade) || "Not specified"; groups.set(value, [...(groups.get(value) ?? []), trade]); });
+  trades.forEach((trade) => { const value = key(trade) || "Not specified"; const existing = groups.get(value); if (existing) existing.push(trade); else groups.set(value, [trade]); });
   return [...groups.entries()].map(([name, rows]) => ({
     name, count: rows.length, pnl: rows.reduce((sum, trade) => sum + Number(trade.pnl), 0),
     wins: rows.filter((trade) => Number(trade.pnl) > 0).length,
