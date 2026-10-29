@@ -20,7 +20,7 @@ test("v1 data is upgraded in memory without changing the original", () => {
   const result = inspectBrowserJournal(storage, createDemoData());
   assert.equal(store.get(storageKey), raw); assert.equal(result.damaged, null);
   assert.equal(result.data.settings.goals?.[0].progress, 3); assert.equal(result.data.settings.moodHistory?.[0].mood, "Focused");
-  assert.equal(result.data.trades[0].accountId, "main");
+  assert.equal(result.data.trades[0].accountId, "main"); assert.equal(result.data.settings.reduceMotion, false);
   saveBrowserJournal(storage, result.data); assert.equal(JSON.parse(store.get(storageKey)!).trades.length, original.trades.length);
 });
 
@@ -78,4 +78,15 @@ test("request body limits apply even when content-length is absent", async () =>
   assert.equal(new TextDecoder().decode(await readLimitedBody(small, 4)), "1234");
   const large = new Request("http://localhost/test", { method: "POST", body: "12345" });
   await assert.rejects(readLimitedBody(large, 4), /too large/);
+});
+
+
+test("motion preference survives normalization, storage, and backup", async () => {
+  const data = createDemoData(); data.settings.reduceMotion = true;
+  const store = new Map<string, string>();
+  const storage = { getItem: (key: string) => store.get(key) ?? null, setItem: (key: string, value: string) => { store.set(key, value); } };
+  saveBrowserJournal(storage, data);
+  assert.equal(inspectBrowserJournal(storage, createDemoData()).data.settings.reduceMotion, true);
+  const backup = JSON.stringify({ format: "bloom-journal-backup", version: 2, journal: data, images: [] });
+  assert.equal((await parseBackup(backup)).journal.settings.reduceMotion, true);
 });

@@ -40,7 +40,7 @@ export function PerformanceChart({ trades, period, onPeriodChange, hidden, compa
   return <section className={`card performance-card ${compact ? "compact-chart" : ""}`}>
     <CardTitle eyebrow="THE BIGGER PICTURE" title="Your performance" description="Realized P&L over your selected period." action={<PeriodControl value={period} onChange={onPeriodChange} />} />
     <div className="chart-headline"><strong>{currency(stats.net, stats.net > 0, hidden)}</strong><span><i /> Cumulative net P&L</span></div>
-    {trades.length ? <div className="chart-wrap" role="img" aria-label={`Cumulative realized P and L for ${trades.length} trades: ${hidden ? "amount hidden" : currency(stats.net)}. The chart starts at zero for the selected period.`}>
+    {trades.length ? <div className="chart-wrap" key={period} role="img" aria-label={`Cumulative realized P and L for ${trades.length} trades: ${hidden ? "amount hidden" : currency(stats.net)}. The chart starts at zero for the selected period.`}>
       <ResponsiveContainer width="100%" height="100%"><AreaChart data={data} margin={{ top: 10, right: 6, left: -19, bottom: 0 }}>
         <defs><linearGradient id="pnl-gradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#81b39a" stopOpacity={0.3}/><stop offset="95%" stopColor="#81b39a" stopOpacity={0.015}/></linearGradient></defs>
         <CartesianGrid vertical={false} stroke="var(--chart-grid)" strokeDasharray="3 5" />
@@ -123,7 +123,7 @@ export function TradingCalendar({ trades, hidden, onDay, compact = false }: { tr
   return <section className={`card calendar-card ${compact ? "calendar-compact" : ""}`}>
     <CardTitle eyebrow="ONE DAY AT A TIME" title={compact ? "Trading activity" : "Trading calendar"} description={compact ? "A little look at your journey." : "Select a day to see its trades."} action={<div className="calendar-nav"><button type="button" onClick={() => shift(-1)} aria-label="Previous month"><ChevronLeft size={16}/></button><strong>{monthTitle(month.year, month.month)}</strong><button type="button" onClick={() => shift(1)} aria-label="Next month"><ChevronRight size={16}/></button></div>}/>
     <div className="calendar-weekdays">{["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => <span key={day}>{day}</span>)}</div>
-    <div className="calendar-grid">{days.map((day, index) => { if (!day) return <span className="calendar-blank" key={`blank-${index}`}/>;
+    <div className="calendar-grid" key={`${month.year}-${month.month}`}>{days.map((day, index) => { if (!day) return <span className="calendar-blank" key={`blank-${index}`}/>;
       const result = byDay.get(day); const value = result?.pnl ?? 0; const state = result ? value > 0 ? "day-win" : value < 0 ? "day-loss" : "day-even" : "";
       return <button type="button" key={day} className={`calendar-day ${state} ${day === todayString() ? "today" : ""}`} onClick={() => onDay(day)} aria-label={`${shortDate(day, true)}: ${result ? `${result.count} trades, ${hidden ? "amount hidden" : currency(value)}` : "no trades"}`}><span>{Number(day.slice(-2))}</span>{result && <small>{compact ? <i/> : currency(value, value > 0, hidden)}</small>}</button>;
     })}</div>

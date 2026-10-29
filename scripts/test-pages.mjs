@@ -104,8 +104,78 @@ try {
   await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(350);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390, "no page-wide mobile overflow");
   assert.equal(await page.locator(".mobile-bottom-nav").isVisible(), true); await page.getByRole("button", { name: "More", exact: true }).click();
+  assert.equal(await page.getByRole("button", { name: "More", exact: true }).getAttribute("aria-expanded"), "true");
+  assert.equal(await page.locator(".mobile-scrim").evaluate((element) => getComputedStyle(element).visibility), "visible");
   await page.locator(".sidebar-nav").getByRole("button", { name: "Goals", exact: true }).click(); assert.equal(await page.locator(".breadcrumbs strong").innerText(), "Goals");
   console.log("PASS: mobile navigation and layout work without horizontal page overflow.");
+
+  const motionContext = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "no-preference" });
+  const motion = await motionContext.newPage(); motion.on("pageerror", (error) => errors.push(error.message));
+  motion.on("request", (request) => { if (new URL(request.url()).pathname.includes("/api/")) apiRequests.push(request.url()); });
+  await motion.goto(url, { waitUntil: "networkidle" }); await motion.locator(".app-shell").waitFor();
+  await motion.evaluate(() => { window.bloomScrollBehavior = ""; window.scrollTo = (options) => { window.bloomScrollBehavior = options.behavior; }; });
+  for (const view of ["Trade journal", "Analytics", "Calendar", "Playbook", "Mindset", "Goals", "Overview"]) {
+    await motion.locator(".sidebar-nav").getByRole("button", { name: view, exact: true }).click();
+    assert.equal(await motion.locator(".view-motion").getAttribute("data-view"), view);
+    const animated = motion.locator(".view-motion .view-stack > *, .view-motion .overview-main > *, .view-motion .calendar-layout > *, .view-motion .goals-page > *").first();
+    assert.equal(await animated.evaluate((element) => getComputedStyle(element).animationName), "bloom-rise");
+  }
+  assert.equal(await motion.evaluate(() => window.bloomScrollBehavior), "smooth");
+  assert.ok(parseFloat(await motion.locator(".progress-track > span").first().evaluate((element) => getComputedStyle(element).transitionDuration)) > 0);
+  const oldChart = await motion.locator(".chart-wrap").elementHandle();
+  await motion.locator(".period-control").getByRole("button", { name: "1W", exact: true }).click();
+  assert.equal(await oldChart.evaluate((element) => element.isConnected), false);
+  assert.equal(await motion.locator(".chart-wrap").evaluate((element) => getComputedStyle(element).animationName), "bloom-fade-in");
+  await motion.locator(".sidebar-nav").getByRole("button", { name: "Calendar", exact: true }).click();
+  const oldGrid = await motion.locator(".calendar-grid").elementHandle();
+  await motion.getByRole("button", { name: "Previous month" }).click();
+  assert.equal(await oldGrid.evaluate((element) => element.isConnected), false);
+  assert.equal(await motion.locator(".calendar-grid").evaluate((element) => getComputedStyle(element).animationName), "bloom-rise");
+  await motion.getByLabel("Open settings").click();
+  assert.equal(await motion.locator(".modal").evaluate((element) => getComputedStyle(element).animationName), "bloom-dialog-in");
+  const exitAnimation = await motion.evaluate(() => new Promise((resolve) => {
+    const layer = document.querySelector(".modal-layer");
+    const observer = new MutationObserver(() => { if (layer.classList.contains("is-closing")) { observer.disconnect(); resolve(getComputedStyle(layer.querySelector(".modal")).animationName); } });
+    observer.observe(layer, { attributes: true, attributeFilter: ["class"] });
+    document.querySelector(".modal-close").click();
+    setTimeout(() => { observer.disconnect(); resolve("not observed"); }, 1000);
+  }));
+  assert.equal(exitAnimation, "bloom-dialog-out"); await motion.locator(".modal").waitFor({ state: "detached" });
+  assert.equal(await motion.getByLabel("Open settings").evaluate((element) => document.activeElement === element), true, "focus returns after closing the dialog");
+  await motion.getByLabel("Open settings").click(); await motion.getByRole("button", { name: "Reduce motion: Off", exact: true }).click();
+  assert.equal(await motion.locator(".app-shell").getAttribute("data-motion"), "reduced");
+  assert.equal(await motion.getByRole("button", { name: "Reduce motion: On", exact: true }).getAttribute("aria-pressed"), "true");
+  assert.ok(parseFloat(await motion.locator(".modal").evaluate((element) => getComputedStyle(element).animationDuration)) < .01);
+  await motion.getByRole("button", { name: "Close", exact: true }).click(); await motion.locator(".modal").waitFor({ state: "detached" });
+  await motion.locator(".calendar-day").first().hover();
+  assert.equal(await motion.locator(".calendar-day").first().evaluate((element) => getComputedStyle(element).transform), "none");
+  await motion.getByRole("button", { name: "Take a breath", exact: true }).click();
+  await motion.getByRole("button", { name: "Begin breathing", exact: true }).click();
+  assert.equal(await motion.locator(".breathing-orb").evaluate((element) => getComputedStyle(element).transform), "none");
+  await motion.getByRole("button", { name: "Close", exact: true }).click(); await motion.locator(".modal").waitFor({ state: "detached" });
+  await motion.locator(".sidebar-nav").getByRole("button", { name: "Analytics", exact: true }).click();
+  assert.equal(await motion.evaluate(() => window.bloomScrollBehavior), "auto");
+  await motion.reload({ waitUntil: "networkidle" }); assert.equal(await motion.locator(".app-shell").getAttribute("data-motion"), "reduced");
+
+  const systemMotionContext = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" });
+  const systemMotion = await systemMotionContext.newPage(); systemMotion.on("pageerror", (error) => errors.push(error.message));
+  await systemMotion.goto(url, { waitUntil: "networkidle" }); await systemMotion.locator(".app-shell").waitFor();
+  assert.equal(await systemMotion.locator(".sidebar").evaluate((element) => getComputedStyle(element).visibility), "hidden");
+  const more = systemMotion.getByRole("button", { name: "More", exact: true }); await more.click();
+  assert.equal(await more.getAttribute("aria-expanded"), "true");
+  await systemMotion.waitForFunction(() => document.activeElement === document.querySelector(".mobile-close"));
+  await systemMotion.keyboard.press("Escape");
+  assert.equal(await more.getAttribute("aria-expanded"), "false");
+  assert.equal(await more.evaluate((element) => document.activeElement === element), true);
+  assert.equal(await systemMotion.locator(".welcome-banner").evaluate((element) => getComputedStyle(element).animationName), "none");
+  await systemMotion.getByRole("button", { name: "Log a trade", exact: true }).first().click();
+  assert.equal(await systemMotion.locator(".modal").evaluate((element) => getComputedStyle(element).animationName), "none");
+  await systemMotion.getByRole("button", { name: "Close", exact: true }).click(); await systemMotion.locator(".modal").waitFor({ state: "detached" });
+  await systemMotion.evaluate(() => { window.bloomScrollBehavior = ""; window.scrollTo = (options) => { window.bloomScrollBehavior = options.behavior; }; });
+  await systemMotion.locator(".mobile-bottom-nav").getByRole("button", { name: "Calendar", exact: true }).click();
+  assert.equal(await systemMotion.evaluate(() => window.bloomScrollBehavior), "auto");
+  assert.equal(await systemMotion.evaluate(() => document.documentElement.scrollWidth), 390);
+  console.log("PASS: view and dialog motion, focus return, and both reduced-motion preferences work.");
 
   const recoveryContext = await browser.newContext(); const recovery = await recoveryContext.newPage(); recovery.on("dialog", (dialog) => dialog.accept());
   await recovery.goto(url, { waitUntil: "networkidle" }); await recovery.evaluate(() => localStorage.setItem("nihtlouw-comfort-trade-journal:v1", "{broken")); await recovery.reload({ waitUntil: "networkidle" });
