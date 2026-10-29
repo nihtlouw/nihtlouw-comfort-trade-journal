@@ -5,11 +5,16 @@ export type PlaybookRule = {
   group: "Before trading" | "While trading" | "After trading";
 };
 
+export const ATTACHMENT_STAGES = ["Before", "Entry", "After", "HTF"] as const;
+export type AttachmentStage = (typeof ATTACHMENT_STAGES)[number];
+
 export type TradeAttachment = {
   id: string;
   name: string;
   type: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
   size: number;
+  stage?: AttachmentStage;
+  caption?: string;
 };
 
 export type AppLocale = "en" | "id";

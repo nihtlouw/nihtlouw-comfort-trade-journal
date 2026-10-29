@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   ArrowDownRight, ArrowRight, ArrowUpRight, BookOpenText,
-  ChevronLeft, ChevronRight, Leaf, Pencil, Plus, Sparkles, Target, TrendingUp, Wallet,
+  ChevronLeft, ChevronRight, Images, Leaf, Pencil, Plus, Sparkles, Target, TrendingUp, Wallet,
 } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { AppLocale, JournalSettings, Trade } from "@/lib/types";
@@ -201,17 +201,17 @@ export function AssetIcon({ symbol }: { symbol: string }) {
   const icon = symbol.startsWith("BTC") ? "₿" : symbol.startsWith("ETH") ? "◆" : symbol.startsWith("EUR") ? "€" : symbol.startsWith("GBP") ? "£" : symbol.startsWith("XAU") ? "✦" : symbol.slice(0, 1);
   return <span className={`asset-icon ${symbolColor(symbol)}`}>{icon}</span>;
 }
-export function TradeTable({ trades, hidden, onEdit, onNew, onViewAll, compact = false, locale = "en" }: { trades: Trade[]; hidden: boolean; onEdit: (trade: Trade) => void; onNew: () => void; onViewAll?: () => void; compact?: boolean; locale?: AppLocale }) {
+export function TradeTable({ trades, hidden, onEdit, onNew, onViewAll, onPreviewCharts, compact = false, locale = "en" }: { trades: Trade[]; hidden: boolean; onEdit: (trade: Trade) => void; onNew: () => void; onViewAll?: () => void; onPreviewCharts?: (trade: Trade) => void; compact?: boolean; locale?: AppLocale }) {
   const copy = UI_COPY[locale];
   return <section className="card trades-card"><CardTitle title={compact ? copy.recentTrades : copy.tradeHistory} description={compact ? copy.recentTradesDesc : copy.tradesInView(trades.length)} action={onViewAll && <button type="button" className="text-link" onClick={onViewAll}>{copy.viewJournal} <ArrowRight size={14}/></button>}/>
     <div className="table-scroll"><table className="trade-table" role="table"><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">{copy.colAsset}</th><th scope="col" role="columnheader">{copy.colDate}</th><th scope="col" role="columnheader">{copy.colSetup}</th><th scope="col" role="columnheader">{copy.colDirection}</th><th scope="col" role="columnheader">{copy.colNetPnl}</th><th scope="col" role="columnheader">{copy.colResult}</th><th scope="col" role="columnheader"><span className="sr-only">{copy.colActions}</span></th></tr></thead><tbody role="rowgroup">
-      {trades.map((trade) => { const pnl = Number(trade.pnl); return <tr className="trade-row" role="row" key={trade.id}>
+      {trades.map((trade) => { const pnl = Number(trade.pnl); const shotCount = trade.attachments?.length ?? 0; return <tr className="trade-row" role="row" key={trade.id}>
         <th scope="row" role="rowheader" className="trade-asset"><div className="asset-cell"><AssetIcon symbol={trade.symbol}/><span><strong>{trade.symbol}</strong><small>{translateMarket(trade.market, locale)}{trade.isDemo ? ` · ${copy.sampleBadge}` : ""}</small></span></div></th>
         <td role="cell" className="trade-date table-muted" data-label={copy.colDate}>{shortDate(trade.tradeDate, !compact, locale)}</td><td role="cell" className="trade-setup" data-label={copy.colSetup}><span className="setup-label">{trade.setup || "—"}</span></td>
         <td role="cell" className="trade-direction" data-label={copy.colDirection}><span className={`direction ${trade.side.toLowerCase()}`}>{trade.side === "Long" ? <ArrowUpRight size={14}/> : <ArrowDownRight size={14}/>} {translateSide(trade.side, locale)}</span></td>
         <td role="cell" data-label={copy.colNetPnl} className={`amount-cell ${pnl > 0 ? "positive-text" : pnl < 0 ? "loss-text" : ""}`}>{currency(pnl, pnl > 0, hidden)}</td>
         <td role="cell" className="trade-result" data-label={copy.colResult}><span className={`result-pill ${pnl > 0 ? "win" : pnl < 0 ? "loss" : "even"}`}><span />{pnl > 0 ? copy.win : pnl < 0 ? copy.loss : copy.breakeven}</span></td>
-        <td role="cell" className="trade-action"><button type="button" className="row-more" onClick={() => onEdit(trade)} aria-label={copy.editTradeAria(trade.symbol)}><Pencil size={14}/><span>{copy.edit}</span></button></td>
+        <td role="cell" className="trade-action"><div className="trade-action-group">{shotCount > 0 && onPreviewCharts && <button type="button" className="row-chart-pill" onClick={() => onPreviewCharts(trade)} aria-label={copy.viewTradeChartsAria(trade.symbol, shotCount)}><Images size={13}/><span>{shotCount}</span></button>}<button type="button" className="row-more" onClick={() => onEdit(trade)} aria-label={copy.editTradeAria(trade.symbol)}><Pencil size={14}/><span>{copy.edit}</span></button></div></td>
       </tr>; })}
     </tbody></table></div>
     {!trades.length && <div className="empty-state"><span><BookOpenText size={20}/></span><strong>{copy.noTradesTitle}</strong><p>{copy.noTradesBody}</p><button type="button" className="text-link" onClick={onNew}><Plus size={14}/> {copy.logATrade}</button></div>}

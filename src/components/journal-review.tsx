@@ -44,7 +44,7 @@ export function RiskOverview({ trades, settings, hidden, onReview, onSettings }:
   </section>;
 }
 
-export function WeeklyReview({ trades, settings, hidden, onMindset, onSettings, onEditTrade, onNewTrade, onJournal }: { trades: Trade[]; settings: JournalSettings; hidden: boolean; onMindset: () => void; onSettings: () => void; onEditTrade: (trade: Trade) => void; onNewTrade: () => void; onJournal: () => void }) {
+export function WeeklyReview({ trades, settings, hidden, onMindset, onSettings, onEditTrade, onNewTrade, onJournal, onPreviewCharts }: { trades: Trade[]; settings: JournalSettings; hidden: boolean; onMindset: () => void; onSettings: () => void; onEditTrade: (trade: Trade) => void; onNewTrade: () => void; onJournal: () => void; onPreviewCharts?: (trade: Trade) => void }) {
   const locale = settings.locale ?? "en";
   const copy = UI_COPY[locale];
   const [weekStart, setWeekStart] = useState(() => weekBounds().start);
@@ -79,6 +79,6 @@ export function WeeklyReview({ trades, settings, hidden, onMindset, onSettings, 
         <button type="button" className="widget-link review-mindset-link" onClick={onMindset}>{copy.writeReflectionLink} <ArrowRight size={14}/></button>
       </section>
     </div></div>
-    <div><TradeTable trades={review.trades.slice(0, 100)} hidden={hidden} onEdit={onEditTrade} onNew={onNewTrade} onViewAll={onJournal} locale={locale}/>{review.trades.length > 100 && <p className="review-footnote review-trade-limit">{copy.showing100Trades(review.trades.length)}</p>}</div>
+    <div><TradeTable trades={review.trades.slice(0, 100)} hidden={hidden} onEdit={onEditTrade} onNew={onNewTrade} onViewAll={onJournal} onPreviewCharts={onPreviewCharts} locale={locale}/>{review.trades.length > 100 && <p className="review-footnote review-trade-limit">{copy.showing100Trades(review.trades.length)}</p>}</div>
   </div>;
 }

@@ -155,7 +155,7 @@ try {
   await context.setOffline(true); await page.reload({ waitUntil: "domcontentloaded" });
   await page.getByText("Browser journal ready offline", { exact: true }).waitFor({ timeout: 20_000 });
   if (!external) assert.equal(await page.locator('meta[name="bloom-test-version"]').getAttribute("content"), "3");
-  await page.getByLabel("Edit RISK-ONE trade").click(); await page.locator(".attachment-thumb a").waitFor(); assert.equal(await page.locator(".attachment-thumb").count(), 1); await close();
+  await page.getByLabel("Edit RISK-ONE trade").click(); await page.locator(".attachment-editor-card .attachment-preview-btn img").waitFor(); assert.equal(await page.locator(".attachment-editor-card").count(), 1); await close();
   await page.getByRole("button", { name: "Log a trade", exact: true }).first().click();
   await page.getByLabel("Asset / symbol").fill("OFFLINE-NEW"); await page.getByLabel("Net P&L (USD)").fill("25"); await page.getByRole("button", { name: /OPTIONAL DETAILS/ }).click();
   await page.locator(".upload-image input").setInputFiles({ name: "new-offline.png", mimeType: "image/png", buffer: png });
@@ -166,7 +166,7 @@ try {
   const offlineFile = join(temp, "offline.json"); await offlineDownload.saveAs(offlineFile);
   const offlineBackup = JSON.parse(readFileSync(offlineFile, "utf8")); assert.equal(offlineBackup.images.length, 2); assert.ok(offlineBackup.journal.trades.some((trade) => trade.symbol === "OFFLINE-NEW"));
   await page.locator(".file-button input").setInputFiles(backupFile); await page.locator(".modal").waitFor({ state: "detached" });
-  await page.reload({ waitUntil: "domcontentloaded" }); assert.equal(await page.getByLabel("Edit OFFLINE-NEW trade").count(), 0); await page.getByLabel("Edit RISK-ONE trade").click(); await page.locator(".attachment-thumb a").waitFor(); await close();
+  await page.reload({ waitUntil: "domcontentloaded" }); assert.equal(await page.getByLabel("Edit OFFLINE-NEW trade").count(), 0); await page.getByLabel("Edit RISK-ONE trade").click(); await page.locator(".attachment-editor-card .attachment-preview-btn img").waitFor(); await close();
   await openSettings("Data"); assert.match(await page.locator(".backup-reminder-settings").innerText(), /No backup download started/); await close();
   // Exercise Patience offline: green-to-red giveback mirror, walk-away session log, privacy, simulator, and EN/ID toggle.
   await page.getByLabel("Filter by trading account").selectOption({ label: "Swing account" });
@@ -299,6 +299,81 @@ try {
   assert.equal(await page.locator(".cassette-timeline > span").first().innerText(), "0:00");
   await close();
   console.log("PASS: Spinning cassette deck enforces 5-song cap, persists audio across views, and stops cleanly.");
+
+  // Exercise Visual Chartbook, In-App Zoom Lightbox & Before/After Stage Tags + Backup/Restore preservation.
+  await page.getByLabel("Filter by trading account").selectOption("all");
+  await navigate("Trade journal");
+  if (await page.locator(".selected-day").count()) {
+    await page.getByLabel("Clear selected day").click();
+  }
+  await page.getByRole("button", { name: "Log a trade", exact: true }).first().click();
+  await page.getByLabel("Asset / symbol").fill("CHART-PAIR");
+  await page.getByLabel("Net P&L (USD)").fill("180");
+  await page.getByLabel("Setup", { exact: true }).fill("London Sweep");
+  await page.getByLabel("Notes", { exact: true }).fill("Waited calmly for liquidity sweep.");
+  await page.getByRole("button", { name: /OPTIONAL DETAILS/ }).click();
+  await page.getByLabel("Initial risk (USD)").fill("60");
+  await page.locator(".upload-image input").setInputFiles([
+    { name: "before-setup.png", mimeType: "image/png", buffer: png },
+    { name: "after-exit.png", mimeType: "image/png", buffer: png },
+  ]);
+  await page.getByRole("group", { name: "Chart stage for before-setup.png" }).getByRole("button", { name: "Before", exact: true }).click();
+  await page.getByLabel("Caption for before-setup.png").fill("Clean H4 sweep before London open");
+  await page.getByRole("group", { name: "Chart stage for after-exit.png" }).getByRole("button", { name: "After", exact: true }).click();
+  await page.getByLabel("Caption for after-exit.png").fill("Target hit cleanly at HTF resistance");
+
+  // Preview inside TradeModal via in-app Lightbox; Escape must close ONLY Lightbox, keeping TradeModal open!
+  await page.getByLabel("Zoom before-setup.png").click();
+  await page.getByRole("dialog", { name: "Chart viewer" }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.getByRole("dialog", { name: "Chart viewer" }).waitFor({ state: "detached" });
+  assert.equal(await page.locator(".modal").count(), 1, "Escape inside nested Lightbox keeps TradeModal open");
+  await page.getByRole("button", { name: "Save trade", exact: true }).click();
+  await page.locator(".modal").waitFor({ state: "detached" });
+
+  // Open Lightbox directly from TradeTable screenshot pill
+  await page.getByLabel("View 2 chart screenshots for CHART-PAIR").click();
+  const viewer = page.getByRole("dialog", { name: "Chart viewer" });
+  await viewer.waitFor();
+  assert.match(await viewer.innerText(), /1 of 2/);
+  assert.match(await viewer.innerText(), /\+\$180\.00/);
+  assert.match(await viewer.innerText(), /\+3\.00R/);
+  assert.match(await viewer.innerText(), /Clean H4 sweep before London open/);
+  await viewer.getByRole("button", { name: "2 · After", exact: true }).click();
+  assert.match(await viewer.innerText(), /2 of 2/);
+  assert.match(await viewer.innerText(), /Target hit cleanly at HTF resistance/);
+  await viewer.getByRole("button", { name: "1.75×", exact: true }).click();
+  assert.equal(await viewer.locator(".chart-lightbox-viewport.is-zoomed").count(), 1);
+  await page.keyboard.press("Escape");
+  await viewer.waitFor({ state: "detached" });
+
+  // Switch Trade journal to Chartbook gallery, filter stages, check privacy & 360px layout
+  await page.getByRole("group", { name: "Journal view mode" }).getByRole("button", { name: /Chartbook/ }).click();
+  await page.locator(".chartbook-section").waitFor();
+  assert.equal(await page.locator(".chartbook-card").count(), 3, "2 tagged on CHART-PAIR + 1 untagged on RISK-ONE");
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Chartbook fits 360px cleanly");
+  await page.getByRole("group", { name: "Filter by chart stage" }).getByRole("button", { name: /^Before/ }).click();
+  assert.equal(await page.locator(".chartbook-card").count(), 1);
+  await page.getByLabel("Hide amounts").click();
+  assert.doesNotMatch(await page.locator(".chartbook-section").innerText(), /\$180\.00/);
+  assert.match(await page.locator(".chartbook-section").innerText(), /••••••/);
+  assert.match(await page.locator(".chartbook-section").innerText(), /\+3\.00R/);
+  await page.getByLabel("Show amounts").click();
+
+  // Verify stage & caption survive full JSON Backup + Restore (stageBackupImages)
+  await openSettings("Data");
+  const [chartBackupDl] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Download", exact: true }).click(),
+  ]);
+  const chartBackupPath = join(temp, "chartbook-backup.json");
+  await chartBackupDl.saveAs(chartBackupPath);
+  await page.locator(".file-button input").setInputFiles(chartBackupPath);
+  await page.locator(".modal").waitFor({ state: "detached" });
+  await page.getByRole("group", { name: "Filter by chart stage" }).getByRole("button", { name: /^After/ }).click();
+  assert.equal(await page.locator(".chartbook-card").count(), 1, "After stage preserved across backup restore");
+  assert.match(await page.locator(".chartbook-card").innerText(), /Target hit cleanly at HTF resistance/);
+  console.log("PASS: Visual Chartbook, In-App Zoom Lightbox, Before/After stage tags & captions, and backup/restore metadata preservation work offline.");
   if (!external) {
     const didFetch = await page.evaluate((url) => fetch(url).then(() => true).catch(() => false), new URL("api/private-test", base).href); assert.equal(didFetch, false, "API responses must not be cached");
   }

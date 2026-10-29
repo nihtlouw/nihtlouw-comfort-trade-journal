@@ -1,5 +1,22 @@
-import { MARKETS, MOODS, type RuleSnapshot, type TradeAttachment } from "@/lib/types";
+import { ATTACHMENT_STAGES, MARKETS, MOODS, type AttachmentStage, type RuleSnapshot, type TradeAttachment } from "@/lib/types";
 import { isDate } from "@/lib/journal-data";
+
+function sanitizeAttachments(raw: unknown): TradeAttachment[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 8).map((item) => {
+    const entry = item as TradeAttachment;
+    const stage = ATTACHMENT_STAGES.includes(entry.stage as AttachmentStage) ? (entry.stage as AttachmentStage) : undefined;
+    const caption = typeof entry.caption === "string" && entry.caption.trim() ? entry.caption.trim().slice(0, 180) : undefined;
+    return {
+      id: entry.id,
+      name: entry.name,
+      type: entry.type,
+      size: entry.size,
+      ...(stage ? { stage } : {}),
+      ...(caption ? { caption } : {}),
+    };
+  });
+}
 
 export function parseTradeInput(input: unknown) {
   if (!input || typeof input !== "object") throw new Error("Please check the trade details.");
@@ -34,6 +51,6 @@ export function parseTradeInput(input: unknown) {
     stopLoss: numeric("stopLoss"), takeProfit: numeric("takeProfit"), fees: numeric("fees"), initialRisk: numeric("initialRisk"),
     timeframe: String(body.timeframe ?? "").trim().slice(0, 40), session: String(body.session ?? "").trim().slice(0, 40), tags,
     checklist: Array.isArray(body.checklist) ? body.checklist as RuleSnapshot[] : [],
-    attachments: Array.isArray(body.attachments) ? body.attachments as TradeAttachment[] : [],
+    attachments: sanitizeAttachments(body.attachments),
   };
 }
