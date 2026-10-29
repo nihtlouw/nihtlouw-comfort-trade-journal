@@ -35,7 +35,7 @@ const settings = z.object({
   goals: z.array(z.object({ id, text: z.string().min(1).max(100), target: z.number().int().min(1).max(7), progress: z.number().int().min(0).max(7), markedDates: z.array(date).max(1000) })).max(20).optional(),
   moodHistory: z.array(z.object({ date, mood: z.string().min(1).max(24), note: z.string().max(1000) })).max(3660).optional(),
   reflections: z.array(z.object({ id, date, wentWell: z.string().max(2000), learned: z.string().max(2000), nextWeek: z.string().max(2000) })).max(520).optional(),
-  theme: z.enum(["light", "dark"]).optional(), includeSamples: z.boolean().optional(),
+  theme: z.enum(["light", "dark"]).optional(), reduceMotion: z.boolean().optional(), includeSamples: z.boolean().optional(),
 });
 const journal = z.object({ trades: z.array(trade).max(10000), settings }).superRefine((value, ctx) => {
   const ids = value.trades.map((item) => item.id);
@@ -70,6 +70,7 @@ export function normalizeJournalData(input: unknown): JournalData {
       moodHistory: data.settings.moodHistory ?? legacyMood,
       reflections: data.settings.reflections ?? [],
       theme: data.settings.theme ?? "light",
+      reduceMotion: data.settings.reduceMotion ?? false,
       includeSamples: data.settings.includeSamples ?? true,
     },
   };

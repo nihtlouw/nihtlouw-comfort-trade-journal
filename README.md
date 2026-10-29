@@ -4,7 +4,7 @@ A calmer place to record trades, understand your process, and look after your mi
 
 ## What’s included
 
-- A redesigned responsive dashboard, light/dark themes, amount-hiding control, sample-data toggle, and portfolio filters.
+- A redesigned responsive dashboard, gentle interface motion, light/dark themes, amount-hiding control, sample-data toggle, and portfolio filters. Motion follows the device’s reduced-motion setting and can also be reduced in Settings.
 - Trade logging with optional entry/exit, size, stop, target, fees, initial risk, timeframe, session, tags, checklist snapshots, and screenshots.
 - Search and filters, a trading calendar, CSV export, and mapped CSV import with a preview, validation, and possible-duplicate checks. Broker CSV files can be imported without giving Bloom trading permissions; **there is no live broker API connection or order execution**.
 - Realized P&L charts, period comparisons, expectancy, average win/loss, R-multiple, realized drawdown, and breakdowns by market, setup, mood, and weekday.

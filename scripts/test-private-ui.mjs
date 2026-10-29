@@ -36,10 +36,13 @@ try {
   await page.locator(".file-button input").setInputFiles(backupFile); await page.locator(".modal").waitFor({ state: "detached" });
   await page.reload({ waitUntil: "networkidle" }); await page.getByLabel("Edit CLOUD-UI trade").click();
   assert.equal(await page.locator(".attachment-thumb").count(), 1); await page.getByRole("button", { name: "Close", exact: true }).click();
-  await page.getByLabel("Open settings").click(); await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await page.getByLabel("Open settings").click(); await page.getByRole("button", { name: "Reduce motion: Off", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector(".app-shell")?.getAttribute("data-motion") === "reduced");
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await page.getByRole("heading", { name: "Welcome back." }).waitFor();
   await page.getByLabel("Email address").fill(email); await page.getByLabel("Password").fill("test-password-not-for-production");
   await page.getByRole("button", { name: "Sign in", exact: true }).click(); await page.getByLabel("Edit CLOUD-UI trade").waitFor();
+  assert.equal(await page.locator(".app-shell").getAttribute("data-motion"), "reduced");
   assert.deepEqual(errors, []);
-  console.log("PASS: private UI signup, screenshot persistence, backup/restore, signout and sign-in.");
+  console.log("PASS: private UI signup, screenshot persistence, backup/restore, motion preference, signout and sign-in.");
 } finally { if (browser) await browser.close().catch(() => {}); rmSync(temp, { recursive: true, force: true }); }

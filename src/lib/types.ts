@@ -61,6 +61,8 @@ export type JournalSettings = {
   moodHistory?: MoodEntry[];
   reflections?: WeeklyReflection[];
   theme?: "light" | "dark";
+  /** Reduce interface motion regardless of the device preference. */
+  reduceMotion?: boolean;
   includeSamples?: boolean;
 };
 
