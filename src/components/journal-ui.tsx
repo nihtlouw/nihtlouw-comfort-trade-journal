@@ -6,7 +6,7 @@ import {
   ChevronLeft, ChevronRight, Images, Leaf, Pencil, Plus, Sparkles, Target, TrendingUp, Wallet,
 } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import type { AppLocale, JournalSettings, Trade } from "@/lib/types";
+import type { AppLocale, DayJournalEntry, JournalSettings, Trade } from "@/lib/types";
 import {
   compactCurrency,
   currency,
@@ -218,7 +218,7 @@ export function TradeTable({ trades, hidden, onEdit, onNew, onViewAll, onPreview
   </section>;
 }
 
-export function TradingCalendar({ trades, hidden, onDay, compact = false, locale = "en" }: { trades: Trade[]; hidden: boolean; onDay: (date: string) => void; compact?: boolean; locale?: AppLocale }) {
+export function TradingCalendar({ trades, dayJournals = [], hidden, onDay, compact = false, locale = "en" }: { trades: Trade[]; dayJournals?: DayJournalEntry[]; hidden: boolean; onDay: (date: string) => void; compact?: boolean; locale?: AppLocale }) {
   const copy = UI_COPY[locale];
   const now = new Date();
   const [month, setMonth] = useState({ year: now.getFullYear(), month: now.getMonth(), direction: 0 });
@@ -228,6 +228,11 @@ export function TradingCalendar({ trades, hidden, onDay, compact = false, locale
     trades.forEach((trade) => { const item = map.get(trade.tradeDate) ?? { pnl: 0, count: 0 }; item.pnl += Number(trade.pnl); item.count++; map.set(trade.tradeDate, item); });
     return map;
   }, [trades]);
+  const notesByDay = useMemo(() => {
+    const map = new Map<string, DayJournalEntry>();
+    dayJournals.forEach((entry) => map.set(entry.date, entry));
+    return map;
+  }, [dayJournals]);
   function shift(amount: number) {
     setMonth((current) => {
       const date = new Date(Date.UTC(current.year, current.month + amount, 1));
@@ -240,12 +245,24 @@ export function TradingCalendar({ trades, hidden, onDay, compact = false, locale
     <p className="calendar-mobile-hint">{hidden ? copy.calMobileHintHidden : copy.calMobileHintVisible}</p>
     <div className="calendar-weekdays">{copy.weekdays.map((day) => <span key={day}>{day}</span>)}</div>
     <div className="calendar-grid" data-direction={month.direction < 0 ? "previous" : month.direction > 0 ? "next" : "initial"} key={`${month.year}-${month.month}`}>{days.map((day, index) => { if (!day) return <span className="calendar-blank" key={`blank-${index}`}/>;
-      const result = byDay.get(day); const value = result?.pnl ?? 0; const state = result ? value > 0 ? "day-win" : value < 0 ? "day-loss" : "day-even" : "";
+      const result = byDay.get(day); const value = result?.pnl ?? 0;
+      const dayEntry = notesByDay.get(day);
+      const isRestDay = !result && Boolean(dayEntry?.intentionalNoTrade);
+      const hasNote = Boolean(dayEntry?.preMarketPlan || dayEntry?.postSessionNote);
+      const state = result ? (value > 0 ? "day-win" : value < 0 ? "day-loss" : "day-even") : isRestDay ? "day-rest" : "";
       const dayLabel = locale === "id"
-        ? `${shortDate(day, true, locale)}: ${result ? `${result.count} trade, ${hidden ? "nominal disembunyikan" : currency(value)}` : "tidak ada trade"}`
-        : `${shortDate(day, true, locale)}: ${result ? `${result.count} ${result.count === 1 ? "trade" : "trades"}, ${hidden ? "amount hidden" : currency(value)}` : "no trades"}`;
-      return <button type="button" key={day} className={`calendar-day ${state} ${day === todayString() ? "today" : ""}`} onClick={() => onDay(day)} aria-label={dayLabel}><span>{Number(day.slice(-2))}</span>{result && <small><span className="calendar-value-full">{compact ? "" : currency(value, value > 0, hidden)}</span><span className="calendar-value-marker" aria-hidden="true">{value > 0 ? "+" : value < 0 ? "−" : "="}</span></small>}</button>;
+        ? `${shortDate(day, true, locale)}: ${result ? `${result.count} trade, ${hidden ? "nominal disembunyikan" : currency(value)}` : isRestDay ? copy.noTradeAriaTag : "tidak ada trade"}`
+        : `${shortDate(day, true, locale)}: ${result ? `${result.count} ${result.count === 1 ? "trade" : "trades"}, ${hidden ? "amount hidden" : currency(value)}` : isRestDay ? copy.noTradeAriaTag : "no trades"}`;
+      return <button type="button" key={day} className={`calendar-day ${state} ${day === todayString() ? "today" : ""}`} onClick={() => onDay(day)} aria-label={dayLabel}>
+        {hasNote && <i className="calendar-note-dot" aria-hidden="true"/>}
+        <span>{Number(day.slice(-2))}</span>
+        {result ? (
+          <small><span className="calendar-value-full">{compact ? "" : currency(value, value > 0, hidden)}</span><span className="calendar-value-marker" aria-hidden="true">{value > 0 ? "+" : value < 0 ? "−" : "="}</span></small>
+        ) : isRestDay ? (
+          <small className="calendar-rest-tag"><span className="calendar-value-full">{compact ? "" : <><Leaf size={10} aria-hidden="true" /> {copy.noTradeCellLabel}</>}</span><span className="calendar-value-marker" aria-hidden="true"><Leaf size={11} /></span></small>
+        ) : null}
+      </button>;
     })}</div>
-    <div className="calendar-foot"><span><i className="legend-square win"/> {copy.profitLegend}</span><span><i className="legend-square loss"/> {copy.lossLegend}</span><span><i className="legend-square even"/> {copy.breakevenLegend}</span><span className="calendar-count">{copy.tradesThisMonth(monthTrades.length)}</span></div>
+    <div className="calendar-foot"><span><i className="legend-square win"/> {copy.profitLegend}</span><span><i className="legend-square loss"/> {copy.lossLegend}</span><span><i className="legend-square even"/> {copy.breakevenLegend}</span><span><i className="legend-square rest"/> {copy.noTradeLegend}</span><span className="calendar-count">{copy.tradesThisMonth(monthTrades.length)}</span></div>
   </section>;
 }

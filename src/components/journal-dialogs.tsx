@@ -18,6 +18,7 @@ import {
   type BackupReminderDays,
   type JournalData,
   type PlaybookRule,
+  type SetupBlueprint,
   type RiskLimits,
   type Trade,
   type TradeAttachment,
@@ -187,7 +188,7 @@ type TradeForm = {
 };
 export type TradeDraft = Omit<TradeForm, "tags"> & { tags: string[] };
 
-export function TradeModal({ trade, trades, limits, hidden, accounts, playbook, defaultAccount, mode, locale = "en", onClose, onSave, onDelete }: { trade: Trade | null; trades: Trade[]; limits: RiskLimits; hidden: boolean; accounts: TradingAccount[]; playbook: PlaybookRule[]; defaultAccount: string; mode: StorageMode; locale?: AppLocale; onClose: () => void; onSave: (draft: TradeDraft, files: PendingAttachmentFile[], removed: TradeAttachment[], id?: number) => Promise<boolean>; onDelete: (id: number) => Promise<boolean> }) {
+export function TradeModal({ trade, trades, limits, hidden, accounts, playbook, setupBlueprints = [], defaultAccount, mode, locale = "en", onClose, onSave, onDelete }: { trade: Trade | null; trades: Trade[]; limits: RiskLimits; hidden: boolean; accounts: TradingAccount[]; playbook: PlaybookRule[]; setupBlueprints?: SetupBlueprint[]; defaultAccount: string; mode: StorageMode; locale?: AppLocale; onClose: () => void; onSave: (draft: TradeDraft, files: PendingAttachmentFile[], removed: TradeAttachment[], id?: number) => Promise<boolean>; onDelete: (id: number) => Promise<boolean> }) {
   const copy = UI_COPY[locale];
   const [form, setForm] = useState<TradeForm>(() => ({
     symbol: trade?.symbol ?? "", market: trade?.market ?? "Forex", side: trade?.side ?? "Long", tradeDate: trade?.tradeDate ?? todayString(), pnl: trade?.pnl ?? "",
@@ -199,7 +200,7 @@ export function TradeModal({ trade, trades, limits, hidden, accounts, playbook, 
   const [files, setFiles] = useState<PendingAttachmentFile[]>([]); const [saving, setSaving] = useState(false); const [error, setError] = useState(""); const [advanced, setAdvanced] = useState(!!trade && !!(trade.entryPrice || trade.initialRisk || trade.timeframe || trade.session || trade.tags?.length || trade.attachments?.length || trade.checklist?.some((rule) => rule.checked)));
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const update = <K extends keyof TradeForm>(key: K, value: TradeForm[K]) => setForm((current) => ({ ...current, [key]: value }));
-  const suggestions = useMemo(() => getSmartEntrySuggestions(trades), [trades]);
+  const suggestions = useMemo(() => getSmartEntrySuggestions(trades, setupBlueprints), [trades, setupBlueprints]);
   const activeTagNorms = useMemo(
     () => new Set(form.tags.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean)),
     [form.tags],

@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState, type ElementType } from "react";
 import { BarChart3, BookOpenCheck, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, CircleAlert, ClipboardList, CloudDownload, Eye, EyeOff, Heart, Hourglass, LayoutDashboard, Menu, NotebookPen, Plus, Settings2, Smartphone, Sprout, Target, Wind, X } from "lucide-react";
-import type { AppLocale, Intention, JournalData, JournalSettings, PlaybookRule, Trade, TradeAttachment, WeeklyReflection } from "@/lib/types";
+import type { AppLocale, DayJournalEntry, Intention, JournalData, JournalSettings, PlaybookRule, SetupBlueprint, Trade, TradeAttachment, WeeklyReflection } from "@/lib/types";
 import { DEFAULT_ACCOUNT, MAX_JOURNAL_IMAGE_BYTES } from "@/lib/types";
+import { upsertDayJournal } from "@/lib/analytics";
 import { longToday, todayString, type Period } from "@/lib/format";
 import { greetingText, translateAccountName, UI_COPY, writeStoredLocale } from "@/lib/i18n";
 import { normalizeJournalData } from "@/lib/journal-data";
@@ -197,6 +198,10 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
   function day(date: string) { setSelectedDay(date); setView("Trade journal"); scrollToTop(); }
   function selectMood(mood: string) { const today = todayString(); const previous = dataRef.current.settings.moodHistory ?? []; const note = previous.find((item) => item.date === today)?.note ?? ""; void updateSettings({ mood, moodDate: today, moodHistory: [...previous.filter((item) => item.date !== today), { date: today, mood, note }] }, locale === "id" ? "Kondisi hari ini tersimpan." : "Check-in saved."); }
   function saveMoodNote(note: string) { const today = todayString(); const previous = dataRef.current.settings.moodHistory ?? []; void updateSettings({ moodHistory: previous.map((item) => item.date === today ? { ...item, note: note.trim().slice(0, 1000) } : item) }, locale === "id" ? "Catatan kondisi tersimpan." : "Check-in note saved."); }
+  function saveDayJournal(entry: DayJournalEntry) {
+    const next = upsertDayJournal(dataRef.current.settings.dayJournals ?? [], entry);
+    return updateSettings({ dayJournals: next }, copy.dayJournalSavedToast);
+  }
   function updateGoals(goals: Intention[], message?: string) { const first = goals[0]; return updateSettings({ goals, ...(first ? { goal: first.text, goalTarget: first.target, goalProgress: first.progress } : {}) }, message); }
   function markGoal(goalId: string) { const goals = dataRef.current.settings.goals ?? []; const today = todayString(); void updateGoals(goals.map((goal) => goal.id === goalId && goal.progress < goal.target && !goal.markedDates.includes(today) ? { ...goal, progress: goal.progress + 1, markedDates: [...goal.markedDates, today] } : goal), locale === "id" ? "Progres tersimpan." : "Progress saved."); }
   function undoGoal(goalId: string) { const goals = dataRef.current.settings.goals ?? []; void updateGoals(goals.map((goal) => goal.id === goalId && goal.progress > 0 ? { ...goal, progress: goal.progress - 1, markedDates: goal.markedDates.slice(0, -1) } : goal)); }
@@ -294,7 +299,7 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
   };
   const title = view === "Overview" ? `${greetingText(locale)}, ${displayPersonName}` : copy.views[view].title;
   const showTradeControls = view !== "Playbook" && view !== "Goals";
-  const showAmountsControl = showTradeControls && view !== "Mindset";
+  const showAmountsControl = view !== "Goals" && view !== "Mindset";
 
   return <div className="app-shell" data-theme={data.settings.theme ?? "light"} data-motion={data.settings.reduceMotion ? "reduced" : "system"}>
     {cassetteDeck.audioElement}
@@ -318,11 +323,11 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
         {showTradeControls && <div className="workspace-controls"><div className="account-select-wrap"><span className="account-select-icon">✳</span><label><span>{copy.accountLabel}</span><select aria-label={copy.filterByAccount} value={accountFilter} onChange={(event) => setAccountFilter(event.target.value)}><option value="all">{copy.allAccounts}</option>{accounts.map((account) => <option key={account.id} value={account.id}>{translateAccountName(account.name, locale)}</option>)}</select></label><ChevronDown size={14}/></div><div className="workspace-control-right">{sampleCount > 0 && <button type="button" className={`sample-toggle ${data.settings.includeSamples !== false ? "on" : ""}`} onClick={() => void updateSettings({ includeSamples: data.settings.includeSamples === false }, data.settings.includeSamples === false ? (locale === "id" ? "Trade contoh disertakan." : "Sample trades included.") : (locale === "id" ? "Trade contoh disembunyikan." : "Sample trades hidden."))} aria-pressed={data.settings.includeSamples !== false}><span className="sample-indicator-dot"/> {data.settings.includeSamples === false ? copy.samplesHidden : copy.samplesIncluded}<span className="switch"><i/></span></button>}<span className="save-indicator"><span/>{saving ? copy.saving : storage === "browser" ? copy.savedOnDevice : copy.privateSynced}</span></div></div>}
         <div className="view-motion" data-view={view} key={view}>
         {view === "Overview" && <Overview {...common}/>}
-        {view === "Trade journal" && <JournalView trades={visibleTrades} hidden={hidden} mode={storage} onEditTrade={editTrade} onNewTrade={newTrade} onImport={() => openModal("import")} onExport={exportCsv} onPreviewCharts={openTradeCharts} onOpenSlides={(slides, index) => setLightbox({ slides, index })} selectedDay={selectedDay} clearDay={() => setSelectedDay("")} locale={locale}/>}
+        {view === "Trade journal" && <JournalView trades={visibleTrades} dayJournals={data.settings.dayJournals} hidden={hidden} mode={storage} onEditTrade={editTrade} onNewTrade={newTrade} onImport={() => openModal("import")} onExport={exportCsv} onPreviewCharts={openTradeCharts} onOpenSlides={(slides, index) => setLightbox({ slides, index })} selectedDay={selectedDay} clearDay={() => setSelectedDay("")} locale={locale}/>}
         {view === "Analytics" && <AnalyticsView trades={visibleTrades} allTrades={data.trades} accountFilter={accountFilter} settings={data.settings} hidden={hidden} period={period} onPeriod={setPeriod} onAccountsSettings={() => openSettings("Accounts")}/>}
         {view === "Weekly review" && <WeeklyReview trades={visibleTrades} settings={data.settings} hidden={hidden} onMindset={() => navigate("Mindset")} onSettings={() => openSettings("Risk")} onEditTrade={editTrade} onNewTrade={newTrade} onJournal={() => navigate("Trade journal")} onPreviewCharts={openTradeCharts}/>}
-        {view === "Calendar" && <CalendarView trades={visibleTrades} allTrades={data.trades} accountFilter={accountFilter} settings={data.settings} hidden={hidden} onDay={day} onAccountsSettings={() => openSettings("Accounts")}/>}
-        {view === "Playbook" && <PlaybookView settings={data.settings} onUpdate={(playbook: PlaybookRule[]) => void updateSettings({ playbook })}/>}
+        {view === "Calendar" && <CalendarView trades={visibleTrades} allTrades={data.trades} accountFilter={accountFilter} settings={data.settings} hidden={hidden} onDay={day} onAccountsSettings={() => openSettings("Accounts")} onSaveDayJournal={saveDayJournal}/>}
+        {view === "Playbook" && <PlaybookView settings={data.settings} trades={visibleTrades} hidden={hidden} onUpdate={(playbook: PlaybookRule[]) => void updateSettings({ playbook })} onUpdateBlueprints={(setupBlueprints: SetupBlueprint[], msg?: string) => void updateSettings({ setupBlueprints }, msg)}/>}
         {view === "Mindset" && <MindsetView settings={data.settings} trades={visibleTrades} onMood={selectMood} onSaveMoodNote={saveMoodNote} onBreath={() => openModal("breathing")} onPatience={() => navigate("Patience")} onSaveReflection={(reflection: WeeklyReflection) => updateSettings({ reflections: [...(dataRef.current.settings.reflections ?? []), reflection] }, locale === "id" ? "Refleksi tersimpan." : "Reflection saved.")} onDeleteReflection={(reflectionId) => { if (window.confirm(locale === "id" ? "Hapus refleksi ini?" : "Delete this reflection?")) void updateSettings({ reflections: (dataRef.current.settings.reflections ?? []).filter((item) => item.id !== reflectionId) }, locale === "id" ? "Refleksi dihapus." : "Reflection removed."); }}/>}
         {view === "Patience" && <PatienceView trades={visibleTrades} settings={data.settings} accountFilter={accountFilter} hidden={hidden} onBreath={() => openModal("breathing")} onDay={day} onUpdateSettings={updateSettings}/>}
         {view === "Goals" && <GoalsView settings={data.settings} onMark={markGoal} onUndo={undoGoal} onReset={resetGoal} onDelete={deleteGoal} onAdd={addGoal}/>}
@@ -332,7 +337,7 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
     {modal && <div ref={modalLayer} className={`modal-layer ${modalClosing ? "is-closing" : ""}`}
       onClickCapture={(event) => { if (modalClosing) { event.preventDefault(); event.stopPropagation(); } }}
       onSubmitCapture={(event) => { if (modalClosing) { event.preventDefault(); event.stopPropagation(); } }}>
-    {modal === "trade" && <TradeModal key={editing?.id ?? "new"} trade={editing} trades={data.trades} limits={data.settings.riskLimits ?? { perTrade: null, dailyLoss: null }} hidden={hidden} accounts={accounts} playbook={data.settings.playbook} defaultAccount={defaultAccount} mode={storage} locale={locale} onClose={closeModal} onSave={saveTrade} onDelete={deleteTrade}/>}
+    {modal === "trade" && <TradeModal key={editing?.id ?? "new"} trade={editing} trades={data.trades} limits={data.settings.riskLimits ?? { perTrade: null, dailyLoss: null }} hidden={hidden} accounts={accounts} playbook={data.settings.playbook} setupBlueprints={data.settings.setupBlueprints} defaultAccount={defaultAccount} mode={storage} locale={locale} onClose={closeModal} onSave={saveTrade} onDelete={deleteTrade}/>}
     {modal === "settings" && <SettingsModal data={data} mode={storage} sampleCount={sampleCount} initialTab={settingsTab} backupState={backupTracking?.state ?? null} backupAvailable={backupTracking?.available ?? false} backupEnabled={damaged === null} hidden={hidden} onClose={closeModal} onUpdate={updateSettings} onClearSamples={clearSamples} onBackup={backup} onRestore={restore} onExportCsv={() => exportCsv(dataRef.current.trades)} onImportCsv={() => openModal("import")} onAddAccount={addAccount} onUpdateAccount={updateAccount} onRemoveAccount={removeAccount} onSignOut={storage === "server" ? signOut : undefined}/>}
     {modal === "import" && <ImportModal trades={data.trades} accounts={accounts} defaultAccount={defaultAccount} locale={locale} onClose={closeModal} onImport={importTrades}/>}
     {modal === "breathing" && <BreathingModal onClose={closeModal} locale={locale}/>}

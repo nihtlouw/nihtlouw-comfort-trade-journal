@@ -542,5 +542,106 @@ test("process matrix, multi-tag breakdown, playbook compliance, and smart entry 
   assert.ok(suggestions.tags.some((t) => t.toLowerCase() === "fomo"));
 });
 
+test("ambient presets, calendar intentional no-trade day notes, and setup blueprints persist and link accurately", async () => {
+  const { getSetupBlueprintStats, getSmartEntrySuggestions, upsertDayJournal } = await import("@/lib/analytics");
+  const { getAmbientPresets } = await import("@/lib/ambient-synth");
+
+  // 1) 4 zero-storage Web Audio presets in both EN and ID
+  const presetsEn = getAmbientPresets("en");
+  const presetsId = getAmbientPresets("id");
+  assert.equal(presetsEn.length, 4);
+  assert.equal(presetsId.length, 4);
+  assert.deepEqual(presetsEn.map((p) => p.id), presetsId.map((p) => p.id));
+
+  // 2) DayJournal upsert sorts newest-first, deduplicates by date, and prunes empty entries
+  let entries = upsertDayJournal([], {
+    date: "2026-10-10",
+    intentionalNoTrade: true,
+    preMarketPlan: "  Wait for London sweep  ",
+    postSessionNote: "  Stayed flat cleanly. ",
+  });
+  entries = upsertDayJournal(entries, {
+    date: "2026-10-12",
+    intentionalNoTrade: false,
+    preMarketPlan: "Watch CPI volatility",
+    postSessionNote: "",
+  });
+  assert.equal(entries.length, 2);
+  assert.equal(entries[0].date, "2026-10-12");
+  assert.equal(entries[1].preMarketPlan, "Wait for London sweep");
+  // Pruning when cleared
+  entries = upsertDayJournal(entries, {
+    date: "2026-10-12",
+    intentionalNoTrade: false,
+    preMarketPlan: "   ",
+    postSessionNote: "",
+  });
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].date, "2026-10-10");
+
+  // 3) SetupBlueprint stats match case-insensitively, exclude breakevens from winRate, and feed Smart Entry Chips
+  const blueprintTrades: Trade[] = [
+    { ...makeTrade(1, "180", "90"), setup: "London Sweep" }, // +2R win
+    { ...makeTrade(2, "-60", "60"), setup: "london sweep" }, // -1R loss
+    { ...makeTrade(3, "0", "50"), setup: "LONDON SWEEP" },   // 0R breakeven
+    { ...makeTrade(4, "100", "50"), setup: "Other Setup" },
+  ];
+  const bpStats = getSetupBlueprintStats(blueprintTrades, "London Sweep");
+  assert.equal(bpStats.count, 3);
+  assert.equal(bpStats.wins, 1);
+  assert.equal(bpStats.losses, 1);
+  assert.equal(bpStats.winRate, 50); // excludes breakeven
+  assert.equal(bpStats.net, 120);
+  assert.ok(bpStats.avgR !== null && Math.abs(bpStats.avgR - 1 / 3) < 1e-9); // (2 + -1 + 0) / 3
+
+  const blueprints = [
+    {
+      id: "bp-1",
+      name: "Asia Range Fade",
+      market: "Forex",
+      timeframe: "M15",
+      session: "London",
+      entryTrigger: "Sweep + displacement",
+      invalidation: "Above sweep high",
+      targetPlan: "Midpoint & opposing low",
+      notes: "Calm execution",
+    },
+  ];
+  const smart = getSmartEntrySuggestions(blueprintTrades, blueprints);
+  assert.ok(smart.setups.includes("Asia Range Fade"));
+
+  // 4) Normalization + Backup v2 round-trip + duplicate rejection
+  const upgraded = normalizeJournalData(createDemoData());
+  assert.deepEqual(upgraded.settings.dayJournals, []);
+  assert.deepEqual(upgraded.settings.setupBlueprints, []);
+
+  upgraded.settings.dayJournals = entries;
+  upgraded.settings.setupBlueprints = blueprints;
+  const parsed = await parseBackup(JSON.stringify({
+    format: "bloom-journal-backup",
+    version: 2,
+    journal: upgraded,
+    images: [],
+  }));
+  assert.equal(parsed.journal.settings.dayJournals?.length, 1);
+  assert.equal(parsed.journal.settings.dayJournals?.[0].intentionalNoTrade, true);
+  assert.equal(parsed.journal.settings.setupBlueprints?.length, 1);
+  assert.equal(parsed.journal.settings.setupBlueprints?.[0].name, "Asia Range Fade");
+
+  assert.throws(() =>
+    normalizeJournalData({
+      ...upgraded,
+      settings: { ...upgraded.settings, dayJournals: [entries[0], entries[0]] },
+    }),
+  );
+  assert.throws(() =>
+    normalizeJournalData({
+      ...upgraded,
+      settings: { ...upgraded.settings, setupBlueprints: [blueprints[0], blueprints[0]] },
+    }),
+  );
+});
+
+
 
 

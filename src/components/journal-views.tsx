@@ -1,12 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowRight, BookHeart, CalendarDays, Check, CheckCircle2, ChevronDown, CirclePlus, Download, Filter, Images, List, Plus, RotateCcw, Search, Sparkles, Target, Trash2, Upload, Wind, X } from "lucide-react";
+import { ArrowRight, BookHeart, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CirclePlus, Compass, Download, Filter, Images, Leaf, List, Pencil, Plus, RotateCcw, Search, Sparkles, Target, Trash2, Upload, Wind, X } from "lucide-react";
 import type { StorageMode } from "@/lib/attachments";
-import { evaluateTradeProcess, getProcessMatrix, groupTrades, groupTradesByTag, maxRealizedDrawdown, previousPeriodTrades } from "@/lib/analytics";
+import { evaluateTradeProcess, getProcessMatrix, getSetupBlueprintStats, groupTrades, groupTradesByTag, maxRealizedDrawdown, previousPeriodTrades } from "@/lib/analytics";
 import { currency, filterTrades, formatRMultiple, getAccountBalanceSummary, getStats, shortDate, todayString, type Period } from "@/lib/format";
 import { periodLabel, translateAccountName, translateMarket, translateMood, translatePlaybookGroup, translateSide, UI_COPY } from "@/lib/i18n";
-import { DEFAULT_ACCOUNT, MARKETS, MOODS, type AppLocale, type Intention, type JournalSettings, type PlaybookRule, type Trade, type WeeklyReflection } from "@/lib/types";
+import { DEFAULT_ACCOUNT, MARKETS, MOODS, type AppLocale, type DayJournalEntry, type Intention, type JournalSettings, type PlaybookRule, type SetupBlueprint, type Trade, type WeeklyReflection } from "@/lib/types";
 import { RiskOverview } from "@/components/journal-review";
 import { AccountBalanceCard, CardTitle, GoalCard, MoodCard, PerformanceChart, StatsCards, TradeTable, TradingCalendar } from "@/components/journal-ui";
 import { ChartbookGallery, type ChartLightboxSlide, type StageFilterValue } from "@/components/chart-lightbox";
@@ -53,12 +53,13 @@ export function Overview(props: CommonProps) {
     <StatsCards trades={periodTrades} hidden={props.hidden} locale={locale}/>
     <PerformanceChart trades={periodTrades} period={props.period} onPeriodChange={props.onPeriod} hidden={props.hidden} locale={locale}/>
     <TradeTable trades={props.trades.slice(0, 5)} hidden={props.hidden} onEdit={props.onEditTrade} onNew={props.onNewTrade} onViewAll={() => props.onView("Trade journal")} onPreviewCharts={props.onPreviewCharts} compact locale={locale}/>
-    <TradingCalendar trades={props.trades} hidden={props.hidden} onDay={props.onDay} compact locale={locale}/>
+    <TradingCalendar trades={props.trades} dayJournals={props.settings.dayJournals} hidden={props.hidden} onDay={props.onDay} compact locale={locale}/>
   </div><aside className="overview-side"><MoodCard settings={props.settings} onMood={props.onMood} onOpen={() => props.onView("Mindset")} locale={locale}/><GoalCard settings={props.settings} onMark={props.onMarkGoal} onOpen={() => props.onView("Goals")} locale={locale}/><RiskOverview trades={props.trades} settings={props.settings} hidden={props.hidden} onReview={() => props.onView("Weekly review")} onSettings={props.onRiskSettings}/></aside></div>;
 }
 
 export function JournalView({
   trades,
+  dayJournals = [],
   hidden,
   mode = "browser",
   onEditTrade,
@@ -72,6 +73,7 @@ export function JournalView({
   locale = "en",
 }: {
   trades: Trade[];
+  dayJournals?: DayJournalEntry[];
   hidden: boolean;
   mode?: StorageMode;
   onEditTrade: (trade: Trade) => void;
@@ -103,6 +105,7 @@ export function JournalView({
       && (!selectedDay || trade.tradeDate === selectedDay) && (!start || trade.tradeDate >= start) && (!end || trade.tradeDate <= end);
   }), [trades, query, market, side, mood, result, selectedDay, start, end, locale]);
   const chartCount = useMemo(() => filtered.reduce((sum, trade) => sum + (trade.attachments?.length ?? 0), 0), [filtered]);
+  const selectedDayNote = selectedDay ? dayJournals.find((entry) => entry.date === selectedDay) : undefined;
   return <div className="view-stack">
     <div className="journal-toolbar card"><div className="toolbar-primary"><label className="search-box"><Search size={17}/><span className="sr-only">{copy.searchTrades}</span><input type="search" enterKeyHint="search" placeholder={copy.searchTrades} value={query} onChange={(event) => setQuery(event.target.value)}/></label><div className="segment-control journal-view-switch" role="group" aria-label={copy.journalViewModeAria}><button type="button" className={viewMode === "table" ? "selected" : ""} aria-pressed={viewMode === "table"} onClick={() => setViewMode("table")}><List size={14}/><span>{copy.journalViewTable}</span></button><button type="button" className={viewMode === "chartbook" ? "selected" : ""} aria-pressed={viewMode === "chartbook"} onClick={() => setViewMode("chartbook")}><Images size={14}/><span>{copy.journalViewChartbook}</span>{chartCount > 0 && <b className="chart-switch-count">{chartCount}</b>}</button></div><button type="button" className="button-secondary" onClick={onImport}><Upload size={15}/> {copy.importCsv}</button><button type="button" className="button-secondary" onClick={() => onExport(filtered)}><Download size={15}/> {copy.exportCsv}</button></div>
       <button type="button" className="filters-toggle" aria-expanded={filtersOpen} aria-controls="journal-filters" onClick={() => setFiltersOpen(!filtersOpen)}><span><Filter size={16}/> {copy.filters} {activeFilters > 0 && <b>{activeFilters}</b>}</span><ChevronDown size={17} className={filtersOpen ? "rotated" : ""}/></button>
@@ -114,6 +117,13 @@ export function JournalView({
         <label className="date-filter"><span>{copy.from}</span><input aria-label={copy.fromDateAria} type="date" value={start} onChange={(event) => setStart(event.target.value)}/></label><label className="date-filter"><span>{copy.to}</span><input aria-label={copy.toDateAria} type="date" value={end} onChange={(event) => setEnd(event.target.value)}/></label>
         {activeFilters > 0 && <button type="button" className="clear-filters" onClick={clearFilters}>{copy.clearFilters}</button>}
       </div>{selectedDay && <div className="selected-day"><CalendarDays size={14}/> {copy.showingDay} {shortDate(selectedDay, true, locale)} <button type="button" onClick={clearDay} aria-label={copy.clearSelectedDay}><X size={14}/></button></div>}
+      {selectedDayNote && (selectedDayNote.intentionalNoTrade || selectedDayNote.preMarketPlan || selectedDayNote.postSessionNote) && (
+        <div className="selected-day-journal">
+          {selectedDayNote.intentionalNoTrade && <span className="rest-day-pill"><Leaf size={12} aria-hidden="true" /> {copy.noTradeToggleTitle}</span>}
+          {selectedDayNote.preMarketPlan && <p><strong>{copy.preMarketPlanLabel}:</strong> {selectedDayNote.preMarketPlan}</p>}
+          {selectedDayNote.postSessionNote && <p><strong>{copy.postSessionNoteLabel}:</strong> {selectedDayNote.postSessionNote}</p>}
+        </div>
+      )}
     </div>
     {viewMode === "table" ? (
       <TradeTable trades={filtered} hidden={hidden} onEdit={onEditTrade} onNew={onNewTrade} onPreviewCharts={onPreviewCharts} locale={locale}/>
@@ -241,10 +251,86 @@ export function AnalyticsView({ trades, allTrades, accountFilter, settings, hidd
   </div>;
 }
 
-export function CalendarView({ trades, allTrades, accountFilter, settings, hidden, onDay, onAccountsSettings }: { trades: Trade[]; allTrades: Trade[]; accountFilter: string; settings: JournalSettings; hidden: boolean; onDay: (date: string) => void; onAccountsSettings: () => void }) {
+function shiftIsoDate(dateStr: string, deltaDays: number): string {
+  const d = new Date(`${dateStr}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return todayString();
+  d.setUTCDate(d.getUTCDate() + deltaDays);
+  return d.toISOString().slice(0, 10);
+}
+
+export function CalendarView({
+  trades,
+  allTrades,
+  accountFilter,
+  settings,
+  hidden,
+  onDay,
+  onAccountsSettings,
+  onSaveDayJournal,
+}: {
+  trades: Trade[];
+  allTrades: Trade[];
+  accountFilter: string;
+  settings: JournalSettings;
+  hidden: boolean;
+  onDay: (date: string) => void;
+  onAccountsSettings: () => void;
+  onSaveDayJournal?: (entry: DayJournalEntry) => Promise<boolean> | void;
+}) {
   const locale = settings.locale ?? "en";
   const copy = UI_COPY[locale];
   const stats = getStats(trades);
+  const dayJournals = settings.dayJournals ?? [];
+  const today = todayString();
+  const initialEntry = dayJournals.find((entry) => entry.date === today);
+
+  const [noteDate, setNoteDate] = useState(today);
+  const [intentionalNoTrade, setIntentionalNoTrade] = useState(initialEntry?.intentionalNoTrade ?? false);
+  const [preMarketPlan, setPreMarketPlan] = useState(initialEntry?.preMarketPlan ?? "");
+  const [postSessionNote, setPostSessionNote] = useState(initialEntry?.postSessionNote ?? "");
+
+  const loadForDate = (targetDate: string) => {
+    setNoteDate(targetDate);
+    const found = dayJournals.find((entry) => entry.date === targetDate);
+    setIntentionalNoTrade(found?.intentionalNoTrade ?? false);
+    setPreMarketPlan(found?.preMarketPlan ?? "");
+    setPostSessionNote(found?.postSessionNote ?? "");
+  };
+
+  const toggleNoTrade = () => {
+    const nextVal = !intentionalNoTrade;
+    setIntentionalNoTrade(nextVal);
+    void onSaveDayJournal?.({
+      date: noteDate,
+      intentionalNoTrade: nextVal,
+      preMarketPlan,
+      postSessionNote,
+    });
+  };
+
+  const saveDayForm = (event: React.FormEvent) => {
+    event.preventDefault();
+    void onSaveDayJournal?.({
+      date: noteDate,
+      intentionalNoTrade,
+      preMarketPlan,
+      postSessionNote,
+    });
+  };
+
+  const clearDayForm = () => {
+    setIntentionalNoTrade(false);
+    setPreMarketPlan("");
+    setPostSessionNote("");
+    void onSaveDayJournal?.({
+      date: noteDate,
+      intentionalNoTrade: false,
+      preMarketPlan: "",
+      postSessionNote: "",
+    });
+  };
+
+  const restDaysCount = dayJournals.filter((entry) => entry.intentionalNoTrade).length;
   const accounts = (settings.accounts ?? [DEFAULT_ACCOUNT]).map((item) => ({
     ...item,
     name: translateAccountName(item.name, locale),
@@ -253,19 +339,562 @@ export function CalendarView({ trades, allTrades, accountFilter, settings, hidde
     () => getAccountBalanceSummary(allTrades, accounts, accountFilter),
     [allTrades, accounts, accountFilter],
   );
-  return <div className="calendar-layout"><TradingCalendar trades={trades} hidden={hidden} onDay={onDay} locale={locale}/><aside className="calendar-side"><section className="card calendar-summary"><span className="widget-icon green"><CalendarDays size={18}/></span><h2>{copy.allTimeSummary}</h2><p>{copy.forSelectedAccount}</p><div><span>{copy.colTrades}</span><strong>{stats.count}</strong></div><div><span>{copy.colNetPnl}</span><strong>{currency(stats.net, stats.net > 0, hidden)}</strong></div>{balanceSummary.currentBalance !== null && <div><span>{copy.balanceTitle}</span><strong>{currency(balanceSummary.currentBalance, false, hidden)}</strong></div>}<button type="button" className="widget-link calendar-balance-link" onClick={onAccountsSettings}>{balanceSummary.currentBalance === null ? copy.balanceSetAction : copy.balanceManageAction} <ArrowRight size={14}/></button></section></aside></div>;
+  return (
+    <div className="calendar-layout">
+      <TradingCalendar trades={trades} dayJournals={dayJournals} hidden={hidden} onDay={onDay} locale={locale} />
+      <aside className="calendar-side">
+        <section className="card calendar-summary">
+          <span className="widget-icon green"><CalendarDays size={18} /></span>
+          <h2>{copy.allTimeSummary}</h2>
+          <p>{copy.forSelectedAccount}</p>
+          <div><span>{copy.colTrades}</span><strong>{stats.count}</strong></div>
+          <div><span>{copy.colNetPnl}</span><strong>{currency(stats.net, stats.net > 0, hidden)}</strong></div>
+          <div><span className="summary-rest-label"><Leaf size={12} aria-hidden="true" /> {copy.restDaysSummaryLabel}</span><strong>{restDaysCount}</strong></div>
+          {balanceSummary.currentBalance !== null && (
+            <div><span>{copy.balanceTitle}</span><strong>{currency(balanceSummary.currentBalance, false, hidden)}</strong></div>
+          )}
+          <button type="button" className="widget-link calendar-balance-link" onClick={onAccountsSettings}>
+            {balanceSummary.currentBalance === null ? copy.balanceSetAction : copy.balanceManageAction} <ArrowRight size={14} />
+          </button>
+        </section>
+
+        <section className="card day-journal-card">
+          <div className="day-journal-eyebrow-row">
+            <span className="card-eyebrow">{copy.dayJournalEyebrow}</span>
+            {noteDate !== today && (
+              <button type="button" className="day-journal-today-btn" onClick={() => loadForDate(today)}>
+                {copy.dayJournalTodayBtn}
+              </button>
+            )}
+          </div>
+          <h2>{copy.dayJournalTitle}</h2>
+          <p>{copy.dayJournalDesc}</p>
+
+          <div className="day-journal-date-bar">
+            <button type="button" className="icon-button" onClick={() => loadForDate(shiftIsoDate(noteDate, -1))} aria-label={copy.dayJournalPrevDay}>
+              <ChevronLeft size={15} />
+            </button>
+            <input
+              type="date"
+              aria-label={copy.dayJournalDateAria}
+              value={noteDate}
+              onChange={(event) => {
+                if (event.target.value) loadForDate(event.target.value);
+              }}
+            />
+            <button type="button" className="icon-button" onClick={() => loadForDate(shiftIsoDate(noteDate, 1))} aria-label={copy.dayJournalNextDay}>
+              <ChevronRight size={15} />
+            </button>
+          </div>
+
+          <button
+            type="button"
+            className={`no-trade-toggle ${intentionalNoTrade ? "selected" : ""}`}
+            aria-pressed={intentionalNoTrade}
+            onClick={toggleNoTrade}
+          >
+            <span className="no-trade-leaf" aria-hidden="true"><Leaf size={15} /></span>
+            <span className="no-trade-copy">
+              <strong>{copy.noTradeToggleTitle}</strong>
+              <small>{copy.noTradeToggleSub}</small>
+            </span>
+            <span className="no-trade-check" aria-hidden="true">{intentionalNoTrade && <Check size={13} />}</span>
+          </button>
+
+          <form className="day-journal-form" onSubmit={saveDayForm}>
+            <label>
+              <span>{copy.preMarketPlanLabel}</span>
+              <textarea
+                maxLength={600}
+                rows={2}
+                value={preMarketPlan}
+                onChange={(event) => setPreMarketPlan(event.target.value)}
+                placeholder={copy.preMarketPlanPlaceholder}
+              />
+            </label>
+            <label>
+              <span>{copy.postSessionNoteLabel}</span>
+              <textarea
+                maxLength={1000}
+                rows={3}
+                value={postSessionNote}
+                onChange={(event) => setPostSessionNote(event.target.value)}
+                placeholder={copy.postSessionNotePlaceholder}
+              />
+            </label>
+            <div className="day-journal-actions">
+              <button type="submit" className="button-primary">{copy.saveDayJournalBtn}</button>
+              {(intentionalNoTrade || preMarketPlan.trim() || postSessionNote.trim()) && (
+                <button type="button" className="button-quiet" onClick={clearDayForm}>{copy.clearDayJournalBtn}</button>
+              )}
+            </div>
+          </form>
+
+          {dayJournals.length > 0 && (
+            <div className="day-journal-recent">
+              <small>{copy.recentDayNotesLabel}</small>
+              <div className="smart-chips">
+                {dayJournals.slice(0, 5).map((item) => (
+                  <button
+                    type="button"
+                    key={item.date}
+                    className={`smart-chip ${item.date === noteDate ? "selected" : ""}`}
+                    onClick={() => loadForDate(item.date)}
+                  >
+                    {item.intentionalNoTrade && <Leaf size={10} aria-hidden="true" />} {shortDate(item.date, false, locale)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      </aside>
+    </div>
+  );
 }
 
-export function PlaybookView({ settings, onUpdate }: { settings: JournalSettings; onUpdate: (rules: PlaybookRule[]) => void }) {
+const STARTER_BLUEPRINTS_EN: Omit<SetupBlueprint, "id">[] = [
+  {
+    name: "Trend continuation",
+    market: "Forex",
+    timeframe: "M15 / H1",
+    session: "London · New York",
+    entryTrigger: "HTF impulse leg + clean pullback into key structure or FVG with calm candle close.",
+    invalidation: "Hard stop beyond pullback swing low/high. Never widen if momentum stalls.",
+    targetPlan: "Scale 50% at +2R, trail remainder beneath structure toward HTF liquidity.",
+    notes: "Skip if price already extended >2x ADR before session open.",
+  },
+  {
+    name: "Breakout",
+    market: "All",
+    timeframe: "M15 / H4",
+    session: "London · NY Open",
+    entryTrigger: "Multi-touch consolidation break + patient retest hold without immediate rejection wick.",
+    invalidation: "Close back inside prior range invalidates the breakout thesis.",
+    targetPlan: "Measured range projection or opposing HTF level (minimum 2R).",
+    notes: "Wait for candle close—never chase the initial spike.",
+  },
+];
+
+const STARTER_BLUEPRINTS_ID: Omit<SetupBlueprint, "id">[] = [
+  {
+    name: "Trend continuation",
+    market: "Forex",
+    timeframe: "M15 / H1",
+    session: "London · New York",
+    entryTrigger: "Impuls searah tren HTF + koreksi rapi ke area struktur/FVG dengan penutupan candle tenang.",
+    invalidation: "Stop tegas di balik swing koreksi. Jangan pernah geser stop bila harga melambat.",
+    targetPlan: "Ambil 50% di +2R, kawal sisanya mengikuti struktur menuju likuiditas HTF.",
+    notes: "Lewati bila rentang harian sudah terlalu jauh sebelum sesi buka.",
+  },
+  {
+    name: "Breakout",
+    market: "All",
+    timeframe: "M15 / H4",
+    session: "London · Pembukaan NY",
+    entryTrigger: "Penembusan area konsolidasi jelas + bertahan saat retest tanpa ekor penolakan tajam.",
+    invalidation: "Penutupan candle kembali ke dalam area konsolidasi membatalkan skenario.",
+    targetPlan: "Target proyeksi rentang konsolidasi atau level HTF seberang (minimal 2R).",
+    notes: "Tunggu candle tutup—jangan kejar lonjakan pertama.",
+  },
+];
+
+export function PlaybookView({
+  settings,
+  trades = [],
+  hidden = false,
+  onUpdate,
+  onUpdateBlueprints,
+}: {
+  settings: JournalSettings;
+  trades?: Trade[];
+  hidden?: boolean;
+  onUpdate: (rules: PlaybookRule[]) => void;
+  onUpdateBlueprints?: (blueprints: SetupBlueprint[], toastMessage?: string) => void;
+}) {
   const locale = settings.locale ?? "en";
   const copy = UI_COPY[locale];
-  const [adding, setAdding] = useState<PlaybookRule["group"] | null>(null); const [text, setText] = useState("");
+  const [adding, setAdding] = useState<PlaybookRule["group"] | null>(null);
+  const [text, setText] = useState("");
+
+  const blueprints = settings.setupBlueprints ?? [];
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [bpName, setBpName] = useState("");
+  const [bpMarket, setBpMarket] = useState("All");
+  const [bpTimeframe, setBpTimeframe] = useState("");
+  const [bpSession, setBpSession] = useState("");
+  const [bpEntry, setBpEntry] = useState("");
+  const [bpInvalidation, setBpInvalidation] = useState("");
+  const [bpTarget, setBpTarget] = useState("");
+  const [bpNotes, setBpNotes] = useState("");
+
   const completed = settings.playbook.filter((rule) => rule.checked).length;
-  function add(group: PlaybookRule["group"]) { if (!text.trim()) return; if (settings.playbook.length >= 100) return; onUpdate([...settings.playbook, { id: crypto.randomUUID(), group, text: text.trim().slice(0, 160), checked: false }]); setText(""); setAdding(null); }
-  return <div className="view-stack"><div className="playbook-summary card"><div><strong>{copy.rulesCheckedSummary(completed, settings.playbook.length)}</strong><p>{copy.playbookSavedDesc}</p></div><button type="button" className="button-secondary" disabled={!completed} onClick={() => onUpdate(settings.playbook.map((rule) => ({ ...rule, checked: false })))}><RotateCcw size={15}/> {copy.resetChecks}</button></div>
-    <div className="playbook-grid">{(["Before trading", "While trading", "After trading"] as const).map((group, index) => { const rules = settings.playbook.filter((rule) => rule.group === group); return <section className="card playbook-card" key={group}><div className="playbook-top"><span>0{index + 1}</span><small>{rules.filter((rule) => rule.checked).length}/{rules.length} {copy.checkedUpper}</small></div><h2>{translatePlaybookGroup(group, locale)}</h2><div className="rule-list">{rules.length ? rules.map((rule) => <div className="rule-row" key={rule.id}><button type="button" className={`rule-toggle ${rule.checked ? "checked" : ""}`} onClick={() => onUpdate(settings.playbook.map((item) => item.id === rule.id ? { ...item, checked: !item.checked } : item))} aria-pressed={rule.checked}><span>{rule.checked && <Check size={13}/>}</span>{rule.text}</button><button type="button" className="icon-button delete-rule" onClick={() => { if (window.confirm(copy.confirmRemoveRule(rule.text))) onUpdate(settings.playbook.filter((item) => item.id !== rule.id)); }} aria-label={`Remove ${rule.text}`}><X size={14}/></button></div>) : <p className="no-rules">{copy.noRulesYet}</p>}</div>
-      {adding === group ? <form className="add-rule-form" onSubmit={(event) => { event.preventDefault(); add(group); }}><input autoFocus maxLength={160} value={text} onChange={(event) => setText(event.target.value)} placeholder={copy.writeARule} aria-label={copy.newPlaybookRuleAria}/><button type="submit">{copy.add}</button><button type="button" onClick={() => { setAdding(null); setText(""); }} aria-label={copy.cancel}><X size={14}/></button></form> : <button type="button" className="add-rule" onClick={() => setAdding(group)}><Plus size={15}/> {copy.addARule}</button>}</section>; })}</div>
-  </div>;
+  function add(group: PlaybookRule["group"]) {
+    if (!text.trim()) return;
+    if (settings.playbook.length >= 100) return;
+    onUpdate([...settings.playbook, { id: crypto.randomUUID(), group, text: text.trim().slice(0, 160), checked: false }]);
+    setText("");
+    setAdding(null);
+  }
+
+  function openNewBlueprint() {
+    setEditingId(null);
+    setBpName("");
+    setBpMarket("All");
+    setBpTimeframe("");
+    setBpSession("");
+    setBpEntry("");
+    setBpInvalidation("");
+    setBpTarget("");
+    setBpNotes("");
+    setFormOpen(true);
+  }
+
+  function openEditBlueprint(bp: SetupBlueprint) {
+    setEditingId(bp.id);
+    setBpName(bp.name);
+    setBpMarket(bp.market || "All");
+    setBpTimeframe(bp.timeframe);
+    setBpSession(bp.session);
+    setBpEntry(bp.entryTrigger);
+    setBpInvalidation(bp.invalidation);
+    setBpTarget(bp.targetPlan);
+    setBpNotes(bp.notes);
+    setFormOpen(true);
+  }
+
+  function submitBlueprint(event: React.FormEvent) {
+    event.preventDefault();
+    const trimmedName = bpName.trim().slice(0, 80);
+    if (!trimmedName) return;
+    if (!editingId && blueprints.length >= 30) return;
+    const item: SetupBlueprint = {
+      id: editingId ?? crypto.randomUUID(),
+      name: trimmedName,
+      market: bpMarket || "All",
+      timeframe: bpTimeframe.trim().slice(0, 40),
+      session: bpSession.trim().slice(0, 40),
+      entryTrigger: bpEntry.trim().slice(0, 280),
+      invalidation: bpInvalidation.trim().slice(0, 280),
+      targetPlan: bpTarget.trim().slice(0, 280),
+      notes: bpNotes.trim().slice(0, 400),
+    };
+    const next = editingId
+      ? blueprints.map((existing) => (existing.id === editingId ? item : existing))
+      : [...blueprints, item];
+    onUpdateBlueprints?.(next, copy.bpSavedToast);
+    setFormOpen(false);
+    setEditingId(null);
+  }
+
+  function deleteBlueprint(bp: SetupBlueprint) {
+    if (!window.confirm(copy.bpConfirmDelete(bp.name))) return;
+    onUpdateBlueprints?.(
+      blueprints.filter((item) => item.id !== bp.id),
+      copy.bpDeletedToast,
+    );
+  }
+
+  function loadStarters() {
+    const templates = locale === "id" ? STARTER_BLUEPRINTS_ID : STARTER_BLUEPRINTS_EN;
+    const created: SetupBlueprint[] = templates.map((tpl) => ({
+      ...tpl,
+      id: crypto.randomUUID(),
+    }));
+    onUpdateBlueprints?.([...blueprints, ...created].slice(0, 30), copy.bpSavedToast);
+  }
+
+  return (
+    <div className="view-stack">
+      <div className="playbook-summary card">
+        <div>
+          <strong>{copy.rulesCheckedSummary(completed, settings.playbook.length)}</strong>
+          <p>{copy.playbookSavedDesc}</p>
+        </div>
+        <button
+          type="button"
+          className="button-secondary"
+          disabled={!completed}
+          onClick={() => onUpdate(settings.playbook.map((rule) => ({ ...rule, checked: false })))}
+        >
+          <RotateCcw size={15} /> {copy.resetChecks}
+        </button>
+      </div>
+
+      <div className="playbook-grid">
+        {(["Before trading", "While trading", "After trading"] as const).map((group, index) => {
+          const rules = settings.playbook.filter((rule) => rule.group === group);
+          return (
+            <section className="card playbook-card" key={group}>
+              <div className="playbook-top">
+                <span>0{index + 1}</span>
+                <small>{rules.filter((rule) => rule.checked).length}/{rules.length} {copy.checkedUpper}</small>
+              </div>
+              <h2>{translatePlaybookGroup(group, locale)}</h2>
+              <div className="rule-list">
+                {rules.length ? rules.map((rule) => (
+                  <div className="rule-row" key={rule.id}>
+                    <button
+                      type="button"
+                      className={`rule-toggle ${rule.checked ? "checked" : ""}`}
+                      onClick={() => onUpdate(settings.playbook.map((item) => (item.id === rule.id ? { ...item, checked: !item.checked } : item)))}
+                      aria-pressed={rule.checked}
+                    >
+                      <span>{rule.checked && <Check size={13} />}</span>{rule.text}
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button delete-rule"
+                      onClick={() => {
+                        if (window.confirm(copy.confirmRemoveRule(rule.text))) {
+                          onUpdate(settings.playbook.filter((item) => item.id !== rule.id));
+                        }
+                      }}
+                      aria-label={`Remove ${rule.text}`}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                )) : <p className="no-rules">{copy.noRulesYet}</p>}
+              </div>
+              {adding === group ? (
+                <form className="add-rule-form" onSubmit={(event) => { event.preventDefault(); add(group); }}>
+                  <input
+                    autoFocus
+                    maxLength={160}
+                    value={text}
+                    onChange={(event) => setText(event.target.value)}
+                    placeholder={copy.writeARule}
+                    aria-label={copy.newPlaybookRuleAria}
+                  />
+                  <button type="submit">{copy.add}</button>
+                  <button type="button" onClick={() => { setAdding(null); setText(""); }} aria-label={copy.cancel}>
+                    <X size={14} />
+                  </button>
+                </form>
+              ) : (
+                <button type="button" className="add-rule" onClick={() => setAdding(group)}>
+                  <Plus size={15} /> {copy.addARule}
+                </button>
+              )}
+            </section>
+          );
+        })}
+      </div>
+
+      {/* Tahap C (#10): Visual Setup Blueprints */}
+      <section className="card setup-blueprints-section">
+        <CardTitle
+          eyebrow={copy.blueprintsEyebrow}
+          title={copy.blueprintsTitle}
+          description={copy.blueprintsDesc}
+          action={
+            !formOpen && blueprints.length < 30 ? (
+              <button type="button" className="button-secondary" onClick={openNewBlueprint}>
+                <Plus size={15} /> {copy.newBlueprintBtn}
+              </button>
+            ) : undefined
+          }
+        />
+
+        {formOpen && (
+          <form className="blueprint-form" onSubmit={submitBlueprint}>
+            <div className="blueprint-form-grid">
+              <label>
+                <span>{copy.bpNameLabel}</span>
+                <input
+                  required
+                  maxLength={80}
+                  value={bpName}
+                  onChange={(event) => setBpName(event.target.value)}
+                  placeholder={copy.bpNamePlaceholder}
+                />
+              </label>
+              <label>
+                <span>{copy.bpMarketLabel}</span>
+                <select value={bpMarket} onChange={(event) => setBpMarket(event.target.value)}>
+                  <option value="All">{copy.bpMarketAll}</option>
+                  {MARKETS.map((m) => (
+                    <option key={m} value={m}>{translateMarket(m, locale)}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>{copy.bpTimeframeLabel}</span>
+                <input
+                  maxLength={40}
+                  value={bpTimeframe}
+                  onChange={(event) => setBpTimeframe(event.target.value)}
+                  placeholder={copy.bpTimeframePlaceholder}
+                />
+              </label>
+              <label>
+                <span>{copy.bpSessionLabel}</span>
+                <input
+                  maxLength={40}
+                  value={bpSession}
+                  onChange={(event) => setBpSession(event.target.value)}
+                  placeholder={copy.bpSessionPlaceholder}
+                />
+              </label>
+            </div>
+
+            <div className="blueprint-rules-inputs">
+              <label>
+                <span>{copy.bpEntryLabel}</span>
+                <textarea
+                  rows={2}
+                  maxLength={280}
+                  value={bpEntry}
+                  onChange={(event) => setBpEntry(event.target.value)}
+                  placeholder={copy.bpEntryPlaceholder}
+                />
+              </label>
+              <label>
+                <span>{copy.bpInvalidationLabel}</span>
+                <textarea
+                  rows={2}
+                  maxLength={280}
+                  value={bpInvalidation}
+                  onChange={(event) => setBpInvalidation(event.target.value)}
+                  placeholder={copy.bpInvalidationPlaceholder}
+                />
+              </label>
+              <label>
+                <span>{copy.bpTargetLabel}</span>
+                <textarea
+                  rows={2}
+                  maxLength={280}
+                  value={bpTarget}
+                  onChange={(event) => setBpTarget(event.target.value)}
+                  placeholder={copy.bpTargetPlaceholder}
+                />
+              </label>
+            </div>
+
+            <label>
+              <span>{copy.bpNotesLabel}</span>
+              <input
+                maxLength={400}
+                value={bpNotes}
+                onChange={(event) => setBpNotes(event.target.value)}
+                placeholder={copy.bpNotesPlaceholder}
+              />
+            </label>
+
+            <div className="blueprint-form-actions">
+              <button type="button" className="button-secondary" onClick={() => { setFormOpen(false); setEditingId(null); }}>
+                {copy.cancel}
+              </button>
+              <button type="submit" className="button-primary">
+                <Check size={15} /> {editingId ? copy.bpUpdateBtn : copy.bpSaveBtn}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {blueprints.length > 0 ? (
+          <div className="blueprint-grid">
+            {blueprints.map((bp) => {
+              const bpStats = getSetupBlueprintStats(trades, bp.name);
+              return (
+                <article className="blueprint-card" key={bp.id}>
+                  <div className="blueprint-card-head">
+                    <div>
+                      <h3>{bp.name}</h3>
+                      <div className="blueprint-tags">
+                        <span>{bp.market === "All" || !bp.market ? copy.bpMarketAll : translateMarket(bp.market, locale)}</span>
+                        {bp.timeframe && <span>{bp.timeframe}</span>}
+                        {bp.session && <span>{bp.session}</span>}
+                      </div>
+                    </div>
+                    <div className="blueprint-card-actions">
+                      <button
+                        type="button"
+                        className="icon-button"
+                        onClick={() => openEditBlueprint(bp)}
+                        aria-label={copy.bpEditAria(bp.name)}
+                        title={copy.bpEditAria(bp.name)}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-button"
+                        onClick={() => deleteBlueprint(bp)}
+                        aria-label={copy.bpDeleteAria(bp.name)}
+                        title={copy.bpDeleteAria(bp.name)}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="blueprint-criteria">
+                    {bp.entryTrigger && (
+                      <div className="bp-criterion entry">
+                        <small>{copy.bpEntryLabel}</small>
+                        <p>{bp.entryTrigger}</p>
+                      </div>
+                    )}
+                    {bp.invalidation && (
+                      <div className="bp-criterion invalidation">
+                        <small>{copy.bpInvalidationLabel}</small>
+                        <p>{bp.invalidation}</p>
+                      </div>
+                    )}
+                    {bp.targetPlan && (
+                      <div className="bp-criterion target">
+                        <small>{copy.bpTargetLabel}</small>
+                        <p>{bp.targetPlan}</p>
+                      </div>
+                    )}
+                    {bp.notes && <p className="bp-cue">“{bp.notes}”</p>}
+                  </div>
+
+                  <div className="blueprint-metrics">
+                    <div>
+                      <small>{copy.bpStatTrades}</small>
+                      <strong>{bpStats.count}</strong>
+                    </div>
+                    <div>
+                      <small>{copy.bpStatWinRate}</small>
+                      <strong>{bpStats.winRate !== null ? `${bpStats.winRate}%` : "—"}</strong>
+                    </div>
+                    <div>
+                      <small>{copy.bpStatAvgR}</small>
+                      <strong>{bpStats.avgR !== null ? formatRMultiple(bpStats.avgR) : "—"}</strong>
+                    </div>
+                    <div>
+                      <small>{copy.bpStatNetPnl}</small>
+                      <strong className={bpStats.net > 0 ? "positive-text" : bpStats.net < 0 ? "loss-text" : ""}>
+                        {bpStats.count ? currency(bpStats.net, bpStats.net > 0, hidden) : "—"}
+                      </strong>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : !formOpen ? (
+          <div className="blueprint-empty">
+            <span className="widget-icon green"><Compass size={19} /></span>
+            <strong>{copy.blueprintsEmptyTitle}</strong>
+            <p>{copy.blueprintsEmptyBody}</p>
+            <div className="blueprint-empty-actions">
+              <button type="button" className="button-primary" onClick={openNewBlueprint}>
+                <Plus size={15} /> {copy.newBlueprintBtn}
+              </button>
+              <button type="button" className="button-secondary" onClick={loadStarters}>
+                <Sparkles size={15} /> {copy.loadStarterBlueprintsBtn}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </section>
+    </div>
+  );
 }
 
 export function MindsetView({ settings, trades, onMood, onSaveMoodNote, onBreath, onPatience, onSaveReflection, onDeleteReflection }: { settings: JournalSettings; trades: Trade[]; onMood: (mood: string) => void; onSaveMoodNote: (note: string) => void; onBreath: () => void; onPatience?: () => void; onSaveReflection: (reflection: WeeklyReflection) => Promise<boolean>; onDeleteReflection: (id: string) => void }) {
