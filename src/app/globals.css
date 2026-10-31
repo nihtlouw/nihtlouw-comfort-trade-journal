@@ -3202,6 +3202,208 @@ input:not([type="checkbox"]):not([type="file"]), select, textarea { min-width: 0
   }
 }
 
+/* ==========================================================================
+   Strict Minimal UX Overhaul: Clean 1-Line Headers, Data-First & 1-Tap '+'
+   ========================================================================== */
+
+.page-heading {
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.stat-card {
+  min-height: 92px;
+}
+
+.widget-top h2 {
+  margin: 0;
+  color: var(--heading);
+  font-size: 14.5px;
+  letter-spacing: -0.25px;
+}
+
+.review-intro {
+  padding: 16px 20px;
+}
+
+.review-intro h2,
+.patience-intro-copy h2,
+.day-journal-eyebrow-row h2 {
+  margin: 0;
+}
+
+.day-journal-eyebrow-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.day-journal-eyebrow-row h2 {
+  color: var(--heading);
+  font-size: 15px;
+  letter-spacing: -0.25px;
+}
+
+.analytics-grid.analytics-grid-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.balance-banner.balance-unset {
+  padding: 12px 16px;
+}
+
+.local-pwa-status.local-pwa-compact {
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 7px 10px 7px 12px;
+}
+
+.local-pwa-status.local-pwa-compact .local-pwa-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+}
+
+.local-pwa-status.local-pwa-compact .button-secondary {
+  min-height: 30px;
+  margin-left: 0;
+  padding: 0 10px;
+  font-size: 10.5px;
+}
+
+.banner-dismiss-btn {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.welcome-banner.welcome-banner-compact {
+  min-height: 112px;
+}
+
+.welcome-banner.welcome-banner-compact .welcome-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  width: 100%;
+  padding: 18px 50px 18px 22px;
+}
+
+.welcome-banner.welcome-banner-compact .welcome-content h2 {
+  margin: 0;
+  font-size: clamp(20px, 2.2vw, 24px);
+}
+
+.welcome-banner.welcome-banner-compact .welcome-content button {
+  margin-top: 0;
+}
+
+.welcome-dismiss-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(6px);
+}
+
+.app-shell[data-theme="dark"] .welcome-dismiss-btn {
+  color: #efe6da;
+  background: rgba(34, 30, 26, 0.76);
+}
+
+.mindset-hero.mindset-hero-compact {
+  min-height: 132px;
+  padding: 20px 24px;
+}
+
+.mindset-hero.mindset-hero-compact h2 {
+  margin: 0 0 12px;
+  font-size: clamp(22px, 2.4vw, 27px);
+}
+
+@media (max-width: 900px) {
+  .mobile-bottom-nav {
+    align-items: center;
+    justify-content: space-between;
+    gap: 2px;
+    padding-left: max(6px, env(safe-area-inset-left));
+    padding-right: max(6px, env(safe-area-inset-right));
+  }
+
+  .mobile-bottom-nav button {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 48px;
+    padding: 0 2px;
+  }
+
+  .mobile-bottom-nav button span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-bottom-nav button.mobile-nav-add {
+    flex: 0 0 46px;
+    width: 46px;
+    min-width: 46px;
+    height: 44px;
+    min-height: 44px;
+    margin: 0 2px;
+    padding: 0;
+    border-radius: 13px;
+    color: #fff;
+    background: var(--accent);
+    box-shadow: 0 4px 12px rgba(74, 124, 89, 0.28);
+  }
+
+  .mobile-bottom-nav button.mobile-nav-add:hover {
+    background: var(--accent-dark);
+  }
+}
+
+@media (max-width: 650px) {
+  .stat-card {
+    min-height: 86px;
+  }
+
+  .local-pwa-status.local-pwa-compact {
+    flex-wrap: nowrap;
+  }
+
+  .local-pwa-status.local-pwa-compact .button-secondary {
+    min-height: 36px;
+  }
+
+  .banner-dismiss-btn,
+  .welcome-dismiss-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .welcome-banner.welcome-banner-compact .welcome-content {
+    padding: 16px 52px 16px 16px;
+  }
+
+  .mindset-hero.mindset-hero-compact {
+    min-height: 124px;
+    padding: 18px;
+  }
+}
+
+
 
 
 

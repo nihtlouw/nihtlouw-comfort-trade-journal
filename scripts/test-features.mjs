@@ -557,6 +557,32 @@ try {
   assert.equal(await page.locator(".app-shell").getAttribute("data-zen"), null);
   assert.equal(await page.locator(".topbar").isVisible(), true, "Topbar restores cleanly on exiting Zen mode");
   console.log("PASS: Command Palette (Ctrl/Cmd+K), Zen Review Mode, and 1200x630 Privacy-Safe PNG Recap Card work offline.");
+
+  // =========================================================================
+  // Strict Minimal UX: 1-line headers, data-first Overview & 1-tap '+' bottom nav
+  // =========================================================================
+  assert.equal(await page.locator(".weekly-review .card-title p").count(), 0, "Weekly review cards have zero verbose subtitle paragraphs");
+  assert.equal(await page.locator(".weekly-review .card-eyebrow").count(), 0, "Weekly review cards have zero uppercase eyebrow clutter");
+
+  await page.locator(".mobile-bottom-nav .mobile-nav-add").click();
+  await page.locator(".modal").waitFor();
+  assert.equal(await page.getByLabel("Asset / symbol").isVisible(), true, "Center + button in mobile bottom nav opens Log Trade modal in 1 tap");
+  await page.locator(".modal").getByRole("button", { name: "Close", exact: true }).first().click();
+  await page.locator(".modal").waitFor({ state: "detached" });
+
+  await navigate("Overview");
+  const overviewOrder = await page.evaluate(() => {
+    const main = document.querySelector(".overview-main");
+    if (!main) return [];
+    return Array.from(main.children).map((el) => el.className);
+  });
+  assert.match(overviewOrder[0] ?? "", /stats-grid/, "KPI stats appear first above the fold on Overview");
+  await page.locator(".welcome-dismiss-btn").click();
+  assert.equal(await page.locator(".welcome-banner").count(), 0, "Welcome banner dismisses cleanly");
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.locator(".app-shell").waitFor();
+  assert.equal(await page.locator(".welcome-banner").count(), 0, "Dismissed welcome banner stays dismissed across reloads");
+  console.log("PASS: Strict Minimal 1-line card headers, Data-First Overview with dismissible banners, and 1-tap '+' mobile nav work cleanly.");
   if (!external) {
     const didFetch = await page.evaluate((url) => fetch(url).then(() => true).catch(() => false), new URL("api/private-test", base).href); assert.equal(didFetch, false, "API responses must not be cached");
   }

@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ArrowRight, BookHeart, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CirclePlus, Compass, Download, Filter, Images, Leaf, List, Pencil, Plus, RotateCcw, Search, Sparkles, Target, Trash2, Upload, Wind, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, CirclePlus, Compass, Download, Filter, Images, Leaf, List, Pencil, Plus, RotateCcw, Search, Sparkles, Target, Trash2, Upload, Wind, X } from "lucide-react";
 import type { StorageMode } from "@/lib/attachments";
 import { evaluateTradeProcess, getProcessMatrix, getSetupBlueprintStats, groupTrades, groupTradesByTag, maxRealizedDrawdown, previousPeriodTrades } from "@/lib/analytics";
 import { currency, filterTrades, formatRMultiple, getAccountBalanceSummary, getStats, shortDate, todayString, type Period } from "@/lib/format";
-import { periodLabel, translateAccountName, translateMarket, translateMood, translatePlaybookGroup, translateSide, UI_COPY } from "@/lib/i18n";
+import { translateAccountName, translateMarket, translateMood, translatePlaybookGroup, translateSide, UI_COPY } from "@/lib/i18n";
 import { DEFAULT_ACCOUNT, MARKETS, MOODS, type AppLocale, type DayJournalEntry, type Intention, type JournalSettings, type PlaybookRule, type SetupBlueprint, type Trade, type WeeklyReflection } from "@/lib/types";
 import { RiskOverview } from "@/components/journal-review";
 import { AccountBalanceCard, CardTitle, GoalCard, MoodCard, PerformanceChart, StatsCards, TradeTable, TradingCalendar } from "@/components/journal-ui";
@@ -44,16 +44,32 @@ export function Overview(props: CommonProps) {
     [props.allTrades, accounts, props.accountFilter],
   );
   const basePath = process.env.NEXT_PUBLIC_GITHUB_PAGES === "true" ? "/nihtlouw-comfort-trade-journal" : "";
+  const [welcomeDismissed, setWelcomeDismissed] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        if (window.localStorage.getItem("bloom:dismissed-welcome:v1") === "1") setWelcomeDismissed(true);
+      } catch { /* Ignore storage errors */ }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+  function dismissWelcome() {
+    setWelcomeDismissed(true);
+    try { window.localStorage.setItem("bloom:dismissed-welcome:v1", "1"); } catch { /* Ignore storage errors */ }
+  }
+
   return <div className="overview-grid"><div className="overview-main">
-    <section className="welcome-banner" style={{ backgroundImage: `linear-gradient(90deg, var(--hero-fade) 0%, var(--hero-fade-soft) 37%, transparent 80%), url('${basePath}/images/bloom-landscape.png')` }}>
-      <div className="welcome-content"><span className="hero-kicker"><Sparkles size={13}/> {copy.heroKicker}</span><h2>{copy.heroLine1}<br/><em>{copy.heroLine2}</em></h2><p>{copy.heroBody}</p><button type="button" onClick={() => props.onView("Trade journal")}>{copy.openJournal} <ArrowRight size={15}/></button></div>
-    </section>
-    <AccountBalanceCard summary={balanceSummary} hidden={props.hidden} locale={locale} onOpenAccounts={props.onAccountsSettings}/>
-    <div className="section-heading"><div><h2>{copy.tradingAtAGlance}</h2></div><div className="range-label"><CalendarDays size={15}/> {periodLabel(props.period, locale)}</div></div>
     <StatsCards trades={periodTrades} hidden={props.hidden} locale={locale}/>
+    <AccountBalanceCard summary={balanceSummary} hidden={props.hidden} locale={locale} onOpenAccounts={props.onAccountsSettings}/>
     <PerformanceChart trades={periodTrades} period={props.period} onPeriodChange={props.onPeriod} hidden={props.hidden} locale={locale}/>
     <TradeTable trades={props.trades.slice(0, 5)} hidden={props.hidden} onEdit={props.onEditTrade} onNew={props.onNewTrade} onViewAll={() => props.onView("Trade journal")} onPreviewCharts={props.onPreviewCharts} compact locale={locale}/>
     <TradingCalendar trades={props.trades} dayJournals={props.settings.dayJournals} hidden={props.hidden} onDay={props.onDay} compact locale={locale}/>
+    {!welcomeDismissed && (
+      <section className="welcome-banner welcome-banner-compact" style={{ backgroundImage: `linear-gradient(90deg, var(--hero-fade) 0%, var(--hero-fade-soft) 37%, transparent 80%), url('${basePath}/images/bloom-landscape.png')` }}>
+        <button type="button" className="icon-button welcome-dismiss-btn" onClick={dismissWelcome} aria-label={copy.dismissBannerAria}><X size={16}/></button>
+        <div className="welcome-content"><h2>{copy.heroLine1} <em>{copy.heroLine2}</em></h2><button type="button" onClick={() => props.onView("Trade journal")}>{copy.openJournal} <ArrowRight size={15}/></button></div>
+      </section>
+    )}
   </div><aside className="overview-side"><MoodCard settings={props.settings} onMood={props.onMood} onOpen={() => props.onView("Mindset")} locale={locale}/><GoalCard settings={props.settings} onMark={props.onMarkGoal} onOpen={() => props.onView("Goals")} locale={locale}/><RiskOverview trades={props.trades} settings={props.settings} hidden={props.hidden} onReview={() => props.onView("Weekly review")} onSettings={props.onRiskSettings}/></aside></div>;
 }
 
@@ -194,21 +210,19 @@ export function AnalyticsView({ trades, allTrades, accountFilter, settings, hidd
     { key: "unforced-loss", title: copy.quadUnforcedLossTitle, sub: copy.quadUnforcedLossSub, hint: copy.quadUnforcedLossHint, data: processMatrix.unforcedLoss, signed: false },
   ] as const;
   const metrics = [
-    { name: copy.expectancy, value: stats.expectancy === null ? "—" : currency(stats.expectancy, stats.expectancy > 0, hidden), note: copy.expectancyNote },
-    { name: copy.avgWinner, value: stats.avgWin === null ? "—" : currency(stats.avgWin, true, hidden), note: copy.winningTradesNote(stats.wins) },
-    { name: copy.avgLoser, value: stats.avgLoss === null ? "—" : currency(stats.avgLoss, false, hidden), note: copy.losingTradesNote(stats.losses) },
-    { name: copy.avgR, value: stats.avgR === null ? "—" : `${stats.avgR.toFixed(2)}R`, note: copy.riskRecordedNote(stats.riskCount) },
-    { name: copy.realizedDrawdown, value: selected.length ? currency(maxRealizedDrawdown(selected), false, hidden) : "—", note: copy.drawdownNote },
-    { name: copy.breakeven, value: String(stats.breakeven), note: copy.breakevenExcludedNote },
+    { name: copy.expectancy, value: stats.expectancy === null ? "—" : currency(stats.expectancy, stats.expectancy > 0, hidden), note: null },
+    { name: copy.avgWinner, value: stats.avgWin === null ? "—" : currency(stats.avgWin, true, hidden), note: stats.wins ? copy.winningTradesNote(stats.wins) : null },
+    { name: copy.avgLoser, value: stats.avgLoss === null ? "—" : currency(stats.avgLoss, false, hidden), note: stats.losses ? copy.losingTradesNote(stats.losses) : null },
+    { name: copy.avgR, value: stats.avgR === null ? "—" : `${stats.avgR.toFixed(2)}R`, note: stats.riskCount ? copy.riskRecordedNote(stats.riskCount) : null },
+    { name: copy.realizedDrawdown, value: selected.length ? currency(maxRealizedDrawdown(selected), false, hidden) : "—", note: null },
+    { name: copy.breakeven, value: String(stats.breakeven), note: null },
   ];
   return <div className="view-stack"><AccountBalanceCard summary={balanceSummary} hidden={hidden} locale={locale} onOpenAccounts={onAccountsSettings}/><StatsCards trades={selected} hidden={hidden} locale={locale}/><PerformanceChart trades={selected} period={period} onPeriodChange={onPeriod} hidden={hidden} locale={locale}/>
-    <section className="card comparison-card"><div><span className="card-eyebrow">{copy.periodComparisonEyebrow}</span><h2>{copy.comparedPrevTitle}</h2><p>{period === "ALL" ? copy.chooseRangeCompare : previous.count ? copy.precedingDaysCount(previous.count, period === "1W" ? "7" : period === "1M" ? "30" : "90") : copy.noTradesPrevPeriod}</p></div>{period !== "ALL" && previous.count > 0 && <div className="comparison-metrics"><div><small>{copy.netPnlChange}</small><strong>{currency(stats.net - previous.net, stats.net - previous.net > 0, hidden)}</strong></div><div><small>{copy.winRateChange}</small><strong>{stats.wins + stats.losses && previous.wins + previous.losses ? `${stats.winRate - previous.winRate > 0 ? "+" : ""}${stats.winRate - previous.winRate} pts` : "—"}</strong></div><div><small>{copy.tradesChange}</small><strong>{stats.count - previous.count > 0 ? "+" : ""}{stats.count - previous.count}</strong></div></div>}</section>
-    <div className="insight-grid">{metrics.map((item) => <div className="card insight-card" key={item.name}><span>{item.name}</span><strong>{item.value}</strong><small>{item.note}</small></div>)}</div>
+    <section className="card comparison-card"><div><h2>{copy.comparedPrevTitle}</h2><p>{period === "ALL" ? copy.chooseRangeCompare : previous.count ? copy.precedingDaysCount(previous.count, period === "1W" ? "7" : period === "1M" ? "30" : "90") : copy.noTradesPrevPeriod}</p></div>{period !== "ALL" && previous.count > 0 && <div className="comparison-metrics"><div><small>{copy.netPnlChange}</small><strong>{currency(stats.net - previous.net, stats.net - previous.net > 0, hidden)}</strong></div><div><small>{copy.winRateChange}</small><strong>{stats.wins + stats.losses && previous.wins + previous.losses ? `${stats.winRate - previous.winRate > 0 ? "+" : ""}${stats.winRate - previous.winRate} pts` : "—"}</strong></div><div><small>{copy.tradesChange}</small><strong>{stats.count - previous.count > 0 ? "+" : ""}{stats.count - previous.count}</strong></div></div>}</section>
+    <div className="insight-grid">{metrics.map((item) => <div className="card insight-card" key={item.name}><span>{item.name}</span><strong>{item.value}</strong>{item.note && <small>{item.note}</small>}</div>)}</div>
     <section className="card process-matrix-card">
       <CardTitle
-        eyebrow={copy.processMatrixEyebrow}
         title={copy.processMatrixTitle}
-        description={copy.processMatrixDesc}
         action={
           processMatrix.processScorePct !== null ? (
             <span className="process-score-pill">{copy.processScoreBadge(processMatrix.processScorePct)}</span>
@@ -235,19 +249,12 @@ export function AnalyticsView({ trades, allTrades, accountFilter, settings, hidd
                 <span className="process-quadrant-r">{formatRMultiple(quad.data.avgR)} avg</span>
               )}
             </div>
-            <p>{quad.hint}</p>
           </article>
         ))}
       </div>
-      <p className="metric-disclaimer">
-        {copy.processMatrixFootnote(processMatrix.unratedCount, processMatrix.ratedBreakevens)}
-      </p>
     </section>
-    <div className="analytics-grid"><section className="card breakdown-card"><CardTitle eyebrow={copy.groupByEyebrow} title={copy.perfBreakdownTitle} description={copy.perfBreakdownDesc}/><div className="segment-control breakdown-tabs">{BREAKDOWN_TABS.map((item) => <button type="button" className={group === item ? "selected" : ""} aria-pressed={group === item} key={item} onClick={() => setGroup(item)}>{copy.groupTabs[item]}</button>)}</div>
-      {groups.length ? <div className="breakdown-list">{groups.map((item) => <div className="breakdown-row" key={item.name}><div className="breakdown-line"><div><strong>{item.name}</strong><small>{copy.breakdownSub(item.count, item.wins + item.losses ? `${Math.round(item.wins / (item.wins + item.losses) * 100)}%` : "—")}{item.avgR !== null ? ` · ${formatRMultiple(item.avgR)}` : ""}</small></div><b className={item.pnl < 0 ? "loss-text" : item.pnl > 0 ? "positive-text" : ""}>{currency(item.pnl, item.pnl > 0, hidden)}</b></div><div className="breakdown-track"><span style={{ width: `${item.count / Math.max(...groups.map((value) => value.count)) * 100}%` }}/></div></div>)}</div> : <div className="simple-empty">{copy.breakdownEmpty}</div>}
-      {group === "Tag" && <p className="metric-disclaimer">{copy.tagMultiNote}</p>}
-      <p className="metric-disclaimer">{copy.patternDisclaimer}</p></section>
-      <section className="card methodology-card"><div className="widget-icon green"><BookHeart size={18}/></div><span className="card-eyebrow">{copy.calcNotesEyebrow}</span><h2>{copy.howNumbersWork}</h2><p>{copy.howNumbersBody}</p><div className="method-item"><CheckCircle2 size={16}/><span>{copy.method1}</span></div><div className="method-item"><CheckCircle2 size={16}/><span>{copy.method2}</span></div><div className="method-item"><CheckCircle2 size={16}/><span>{copy.method3}</span></div><div className="method-sparkle">✳</div></section></div>
+    <div className="analytics-grid analytics-grid-single"><section className="card breakdown-card"><CardTitle title={copy.perfBreakdownTitle}/><div className="segment-control breakdown-tabs">{BREAKDOWN_TABS.map((item) => <button type="button" className={group === item ? "selected" : ""} aria-pressed={group === item} key={item} onClick={() => setGroup(item)}>{copy.groupTabs[item]}</button>)}</div>
+      {groups.length ? <div className="breakdown-list">{groups.map((item) => <div className="breakdown-row" key={item.name}><div className="breakdown-line"><div><strong>{item.name}</strong><small>{copy.breakdownSub(item.count, item.wins + item.losses ? `${Math.round(item.wins / (item.wins + item.losses) * 100)}%` : "—")}{item.avgR !== null ? ` · ${formatRMultiple(item.avgR)}` : ""}</small></div><b className={item.pnl < 0 ? "loss-text" : item.pnl > 0 ? "positive-text" : ""}>{currency(item.pnl, item.pnl > 0, hidden)}</b></div><div className="breakdown-track"><span style={{ width: `${item.count / Math.max(...groups.map((value) => value.count)) * 100}%` }}/></div></div>)}</div> : <div className="simple-empty">{copy.breakdownEmpty}</div>}</section></div>
   </div>;
 }
 
@@ -346,7 +353,6 @@ export function CalendarView({
         <section className="card calendar-summary">
           <span className="widget-icon green"><CalendarDays size={18} /></span>
           <h2>{copy.allTimeSummary}</h2>
-          <p>{copy.forSelectedAccount}</p>
           <div><span>{copy.colTrades}</span><strong>{stats.count}</strong></div>
           <div><span>{copy.colNetPnl}</span><strong>{currency(stats.net, stats.net > 0, hidden)}</strong></div>
           <div><span className="summary-rest-label"><Leaf size={12} aria-hidden="true" /> {copy.restDaysSummaryLabel}</span><strong>{restDaysCount}</strong></div>
@@ -360,15 +366,13 @@ export function CalendarView({
 
         <section className="card day-journal-card">
           <div className="day-journal-eyebrow-row">
-            <span className="card-eyebrow">{copy.dayJournalEyebrow}</span>
+            <h2>{copy.dayJournalTitle}</h2>
             {noteDate !== today && (
               <button type="button" className="day-journal-today-btn" onClick={() => loadForDate(today)}>
                 {copy.dayJournalTodayBtn}
               </button>
             )}
           </div>
-          <h2>{copy.dayJournalTitle}</h2>
-          <p>{copy.dayJournalDesc}</p>
 
           <div className="day-journal-date-bar">
             <button type="button" className="icon-button" onClick={() => loadForDate(shiftIsoDate(noteDate, -1))} aria-label={copy.dayJournalPrevDay}>
@@ -396,7 +400,6 @@ export function CalendarView({
             <span className="no-trade-leaf" aria-hidden="true"><Leaf size={15} /></span>
             <span className="no-trade-copy">
               <strong>{copy.noTradeToggleTitle}</strong>
-              <small>{copy.noTradeToggleSub}</small>
             </span>
             <span className="no-trade-check" aria-hidden="true">{intentionalNoTrade && <Check size={13} />}</span>
           </button>
@@ -610,7 +613,6 @@ export function PlaybookView({
       <div className="playbook-summary card">
         <div>
           <strong>{copy.rulesCheckedSummary(completed, settings.playbook.length)}</strong>
-          <p>{copy.playbookSavedDesc}</p>
         </div>
         <button
           type="button"
@@ -881,7 +883,6 @@ export function PlaybookView({
           <div className="blueprint-empty">
             <span className="widget-icon green"><Compass size={19} /></span>
             <strong>{copy.blueprintsEmptyTitle}</strong>
-            <p>{copy.blueprintsEmptyBody}</p>
             <div className="blueprint-empty-actions">
               <button type="button" className="button-primary" onClick={openNewBlueprint}>
                 <Plus size={15} /> {copy.newBlueprintBtn}
@@ -904,10 +905,10 @@ export function MindsetView({ settings, trades, onMood, onSaveMoodNote, onBreath
   const [note, setNote] = useState(todayMood?.note ?? ""); const [wentWell, setWentWell] = useState(""); const [learned, setLearned] = useState(""); const [nextWeek, setNextWeek] = useState(""); const [saving, setSaving] = useState(false);
   const moodGroups = groupTrades(trades, (trade) => translateMood(trade.mood, locale), copy.notSpecified);
   async function saveReflection(event: React.FormEvent) { event.preventDefault(); if (!wentWell.trim() && !learned.trim() && !nextWeek.trim()) return; setSaving(true); const ok = await onSaveReflection({ id: crypto.randomUUID(), date: today, wentWell: wentWell.trim(), learned: learned.trim(), nextWeek: nextWeek.trim() }); setSaving(false); if (ok) { setWentWell(""); setLearned(""); setNextWeek(""); } }
-  return <div className="view-stack"><section className="mindset-hero"><div><h2>{copy.breathingHeroTitle}</h2><p>{copy.breathingHeroDesc}</p><div className="mindset-hero-actions"><button type="button" className="button-primary" onClick={onBreath}><Wind size={16}/> {copy.startBreathing}</button>{onPatience && <button type="button" className="button-secondary" onClick={onPatience}>{copy.openPatience} <ArrowRight size={14}/></button>}</div></div><div className="mindset-orbit" aria-hidden="true"><span>✳</span></div></section>
-    <div className="mindset-grid"><MoodCard settings={settings} onMood={onMood} locale={locale}/><section className="card checkin-note"><CardTitle title={copy.todaysNoteTitle} description={copy.todaysNoteDesc}/><label className="sr-only" htmlFor="daily-checkin-note">{copy.todaysNoteAria}</label><textarea id="daily-checkin-note" maxLength={1000} value={note} onChange={(event) => setNote(event.target.value)} placeholder={copy.todaysNotePlaceholder}/><button type="button" className="button-secondary" disabled={!todayMood} onClick={() => onSaveMoodNote(note)}>{copy.saveTodaysNote} <ArrowRight size={14}/></button>{!todayMood && <small>{copy.chooseFeelingFirst}</small>}</section><section className="card mood-history"><CardTitle title={copy.recentCheckinsTitle} description={copy.recentCheckinsDesc}/>{settings.moodHistory?.length ? [...settings.moodHistory].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map((entry) => <div className="history-row" key={entry.date}><span className="history-dot"/><div><strong>{translateMood(entry.mood, locale)}</strong><small>{shortDate(entry.date, true, locale)}{entry.note ? ` · ${entry.note}` : ""}</small></div></div>) : <div className="simple-empty">{copy.noCheckinsYet}</div>}</section></div>
-    <div className="reflection-grid"><section className="card reflection-form"><CardTitle title={copy.weeklyReflectionTitle} description={copy.weeklyReflectionDesc}/><form onSubmit={saveReflection}><label>{copy.qWentWell}<textarea maxLength={2000} value={wentWell} onChange={(event) => setWentWell(event.target.value)} placeholder={copy.pWentWell}/></label><label>{copy.qLearned}<textarea maxLength={2000} value={learned} onChange={(event) => setLearned(event.target.value)} placeholder={copy.pLearned}/></label><label>{copy.qCarryForward}<textarea maxLength={2000} value={nextWeek} onChange={(event) => setNextWeek(event.target.value)} placeholder={copy.pCarryForward}/></label><button type="submit" className="button-primary" disabled={saving}>{saving ? copy.saving : copy.saveReflection} <ArrowRight size={15}/></button></form></section>
-      <div className="reflection-side"><section className="card mood-pattern"><CardTitle title={copy.tradesByMoodTitle} description={copy.tradesByMoodDesc}/>{moodGroups.length ? moodGroups.map((group) => <div className="mood-pattern-row" key={group.name}><span>{group.name}</span><small>{group.count} {locale === "id" ? "trade" : group.count === 1 ? "trade" : "trades"}</small><strong>{group.wins + group.losses ? `${Math.round(group.wins / (group.wins + itemCount(group.wins, group.losses)) * 100)}%` : "—"} {copy.winsPctSuffix}</strong></div>) : <div className="simple-empty">{copy.addTradeForMoods}</div>}<p className="metric-disclaimer">{copy.moodDisclaimer}</p></section><section className="card reflection-history"><CardTitle title={copy.pastReflectionsTitle}/>{settings.reflections?.length ? [...settings.reflections].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map((item) => <article key={item.id}><div><strong>{shortDate(item.date, true, locale)}</strong><button type="button" className="icon-button" onClick={() => onDeleteReflection(item.id)} aria-label={`Delete reflection from ${shortDate(item.date, true, locale)}`}><Trash2 size={14}/></button></div><div className="reflection-answers">{item.wentWell && <p><strong>{copy.wentWellLabel}:</strong> {item.wentWell}</p>}{item.learned && <p><strong>{copy.learnedLabel}:</strong> {item.learned}</p>}{item.nextWeek && <p><strong>{copy.carryForwardLabel}:</strong> {item.nextWeek}</p>}</div></article>) : <div className="simple-empty">{copy.noReflectionsYet}</div>}</section></div></div>
+  return <div className="view-stack"><section className="mindset-hero mindset-hero-compact"><div><h2>{copy.breathingHeroTitle}</h2><div className="mindset-hero-actions"><button type="button" className="button-primary" onClick={onBreath}><Wind size={16}/> {copy.startBreathing}</button>{onPatience && <button type="button" className="button-secondary" onClick={onPatience}>{copy.openPatience} <ArrowRight size={14}/></button>}</div></div><div className="mindset-orbit" aria-hidden="true"><span>✳</span></div></section>
+    <div className="mindset-grid"><MoodCard settings={settings} onMood={onMood} locale={locale}/><section className="card checkin-note"><CardTitle title={copy.todaysNoteTitle}/><label className="sr-only" htmlFor="daily-checkin-note">{copy.todaysNoteAria}</label><textarea id="daily-checkin-note" maxLength={1000} value={note} onChange={(event) => setNote(event.target.value)} placeholder={copy.todaysNotePlaceholder}/><button type="button" className="button-secondary" disabled={!todayMood} onClick={() => onSaveMoodNote(note)}>{copy.saveTodaysNote} <ArrowRight size={14}/></button>{!todayMood && <small>{copy.chooseFeelingFirst}</small>}</section><section className="card mood-history"><CardTitle title={copy.recentCheckinsTitle}/>{settings.moodHistory?.length ? [...settings.moodHistory].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map((entry) => <div className="history-row" key={entry.date}><span className="history-dot"/><div><strong>{translateMood(entry.mood, locale)}</strong><small>{shortDate(entry.date, true, locale)}{entry.note ? ` · ${entry.note}` : ""}</small></div></div>) : <div className="simple-empty">{copy.noCheckinsYet}</div>}</section></div>
+    <div className="reflection-grid"><section className="card reflection-form"><CardTitle title={copy.weeklyReflectionTitle}/><form onSubmit={saveReflection}><label>{copy.qWentWell}<textarea maxLength={2000} value={wentWell} onChange={(event) => setWentWell(event.target.value)} placeholder={copy.pWentWell}/></label><label>{copy.qLearned}<textarea maxLength={2000} value={learned} onChange={(event) => setLearned(event.target.value)} placeholder={copy.pLearned}/></label><label>{copy.qCarryForward}<textarea maxLength={2000} value={nextWeek} onChange={(event) => setNextWeek(event.target.value)} placeholder={copy.pCarryForward}/></label><button type="submit" className="button-primary" disabled={saving}>{saving ? copy.saving : copy.saveReflection} <ArrowRight size={15}/></button></form></section>
+      <div className="reflection-side"><section className="card mood-pattern"><CardTitle title={copy.tradesByMoodTitle}/>{moodGroups.length ? moodGroups.map((group) => <div className="mood-pattern-row" key={group.name}><span>{group.name}</span><small>{group.count} {locale === "id" ? "trade" : group.count === 1 ? "trade" : "trades"}</small><strong>{group.wins + group.losses ? `${Math.round(group.wins / (group.wins + itemCount(group.wins, group.losses)) * 100)}%` : "—"} {copy.winsPctSuffix}</strong></div>) : <div className="simple-empty">{copy.addTradeForMoods}</div>}</section><section className="card reflection-history"><CardTitle title={copy.pastReflectionsTitle}/>{settings.reflections?.length ? [...settings.reflections].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map((item) => <article key={item.id}><div><strong>{shortDate(item.date, true, locale)}</strong><button type="button" className="icon-button" onClick={() => onDeleteReflection(item.id)} aria-label={`Delete reflection from ${shortDate(item.date, true, locale)}`}><Trash2 size={14}/></button></div><div className="reflection-answers">{item.wentWell && <p><strong>{copy.wentWellLabel}:</strong> {item.wentWell}</p>}{item.learned && <p><strong>{copy.learnedLabel}:</strong> {item.learned}</p>}{item.nextWeek && <p><strong>{copy.carryForwardLabel}:</strong> {item.nextWeek}</p>}</div></article>) : <div className="simple-empty">{copy.noReflectionsYet}</div>}</section></div></div>
   </div>;
 }
 
@@ -919,5 +920,5 @@ export function GoalsView({ settings, onMark, onUndo, onReset, onDelete, onAdd }
   const [text, setText] = useState(""); const [target, setTarget] = useState(5); const [busy, setBusy] = useState(false);
   async function submit(event: React.FormEvent) { event.preventDefault(); if (!text.trim()) return; setBusy(true); const ok = await onAdd({ id: crypto.randomUUID(), text: text.trim().slice(0, 100), target, progress: 0, markedDates: [] }); setBusy(false); if (ok) setText(""); }
   return <div className="goals-page"><div className="goals-list"><div className="section-heading tight"><div><h2>{copy.activeIntentionsTitle}</h2></div></div>{settings.goals?.length ? settings.goals.map((goal, index) => <section className="card goal-detail" key={goal.id}><div className="goal-detail-top"><span className="widget-icon green"><Target size={18}/></span><small>{copy.intentionIndex(String(index + 1).padStart(2, "0"))}</small><button type="button" className="icon-button" onClick={() => onDelete(goal.id)} aria-label={`Delete ${goal.text}`}><Trash2 size={15}/></button></div><h2 id={`goal-${index}`}>{goal.text}</h2><div className="goal-progress-label"><span>{copy.daysCompleted}</span><b>{goal.progress} <span>/ {goal.target}</span></b></div><div className="progress-track"><span style={{ width: `${Math.min(goal.progress / goal.target * 100, 100)}%` }}/></div><div className="goal-detail-actions"><button type="button" className="button-primary" aria-describedby={`goal-${index}`} disabled={goal.progress >= goal.target || goal.markedDates.includes(todayString())} onClick={() => onMark(goal.id)}><Check size={15}/> {goal.markedDates.includes(todayString()) ? copy.todayMarked : goal.progress >= goal.target ? copy.completeShort : copy.markToday}</button><button type="button" className="button-quiet" aria-describedby={`goal-${index}`} disabled={!goal.progress} onClick={() => onUndo(goal.id)}>{copy.undo}</button><button type="button" className="button-quiet" aria-describedby={`goal-${index}`} disabled={!goal.progress} onClick={() => { if (window.confirm(copy.confirmResetGoal(goal.text))) onReset(goal.id); }}>{copy.reset}</button></div></section>) : <div className="card simple-empty">{copy.addIntentionEmpty}</div>}</div>
-    <aside><section className="card add-goal-card"><span className="widget-icon blush"><CirclePlus size={19}/></span><h2>{copy.addIntentionCardTitle}</h2><p>{copy.addIntentionCardDesc}</p><form onSubmit={submit}><label>{copy.yourIntentionLabel}<input maxLength={100} required value={text} onChange={(event) => setText(event.target.value)} placeholder={copy.yourIntentionPlaceholder}/></label><label>{copy.targetDaysLabel}<select value={target} onChange={(event) => setTarget(Number(event.target.value))}>{[1,2,3,4,5,6,7].map((day) => <option value={day} key={day}>{day} {day === 1 ? copy.dayUnit : copy.daysUnit}</option>)}</select></label><button type="submit" className="button-primary" disabled={busy}><Plus size={16}/> {copy.addIntentionBtn}</button></form></section></aside></div>;
+    <aside><section className="card add-goal-card"><span className="widget-icon blush"><CirclePlus size={19}/></span><h2>{copy.addIntentionCardTitle}</h2><form onSubmit={submit}><label>{copy.yourIntentionLabel}<input maxLength={100} required value={text} onChange={(event) => setText(event.target.value)} placeholder={copy.yourIntentionPlaceholder}/></label><label>{copy.targetDaysLabel}<select value={target} onChange={(event) => setTarget(Number(event.target.value))}>{[1,2,3,4,5,6,7].map((day) => <option value={day} key={day}>{day} {day === 1 ? copy.dayUnit : copy.daysUnit}</option>)}</select></label><button type="submit" className="button-primary" disabled={busy}><Plus size={16}/> {copy.addIntentionBtn}</button></form></section></aside></div>;
 }

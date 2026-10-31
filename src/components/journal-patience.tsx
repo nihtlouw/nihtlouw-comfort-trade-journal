@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  ArrowRight, Check, CheckCircle2, CircleAlert, Compass, Flame, HeartHandshake,
-  Hourglass, Pause, Play, RotateCcw, ShieldCheck, Sparkles, Trash2, TrendingUp, Wind,
+  ArrowRight, Check, CheckCircle2, CircleAlert, Flame, HeartHandshake,
+  Hourglass, Pause, Play, RotateCcw, ShieldCheck, Trash2, TrendingUp, Wind,
 } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { compactCurrency, currency, shortDate, todayString } from "@/lib/format";
@@ -520,9 +520,7 @@ export function PatienceView({
       <section className="card patience-intro">
         <div className="patience-intro-top">
           <div className="patience-intro-copy">
-            <span className="card-eyebrow"><Sparkles size={13}/> {t.eyebrow}</span>
             <h2>{t.heroTitle}</h2>
-            <p>{t.heroBody}</p>
           </div>
           <div className="segment-control patience-lang" role="group" aria-label={t.langLabel}>
             <button type="button" className={locale === "en" ? "selected" : ""} aria-pressed={locale === "en"} onClick={() => changeLocale("en")}>EN</button>
@@ -679,7 +677,6 @@ export function PatienceView({
               )}
             </div>
           </form>
-          <p className="review-footnote">{t.walkHonestNote}</p>
 
           <div className="patience-walk-history">
             <strong>{t.recentWalkHeading}</strong>
@@ -778,7 +775,6 @@ export function PatienceView({
                   : t.mirrorExtraGain(maxDailyTrades, currency(mirror.overCapNet, mirror.overCapNet > 0, hidden))}
             </p>
           </div>
-          <p className="review-footnote">{t.mirrorFootnote}</p>
         </section>
 
         <section className="card patience-card">
@@ -1032,12 +1028,11 @@ export function PatienceView({
             </table>
           </div>
         </details>
-        <p className="metric-disclaimer">{t.simDisclaimer}</p>
       </section>
 
       {/* Module 3b: Asymmetric Drawdown Recovery Math */}
       <section className="card patience-card">
-        <CardTitle eyebrow={t.ddEyebrow} title={t.ddTitle} description={t.ddDesc} />
+        <CardTitle title={t.ddTitle} />
         <div className="patience-dd-table" role="table" aria-label={t.ddTitle}>
           <div className="patience-dd-head" role="row">
             <span role="columnheader">{t.ddColLoss}</span>
@@ -1061,20 +1056,6 @@ export function PatienceView({
                 <span><Flame size={13} aria-hidden="true"/> {t.ddWinsValue(row.winsToRecover)}</span>
               </div>
             </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Module 4: 4 Grounded Compounding Lessons */}
-      <section className="card patience-card">
-        <CardTitle eyebrow={t.lessonsEyebrow} title={t.lessonsTitle} description={t.lessonsDesc} />
-        <div className="patience-lessons-grid">
-          {t.lessons.map((lesson) => (
-            <article className="patience-lesson" key={lesson.tag}>
-              <span className="card-eyebrow"><Compass size={13}/> {lesson.tag}</span>
-              <h3>{lesson.heading}</h3>
-              <p>{lesson.body}</p>
-            </article>
           ))}
         </div>
       </section>
