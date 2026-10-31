@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight, Check, CheckCircle2, CircleAlert, Flame, HeartHandshake,
-  Hourglass, Pause, Play, RotateCcw, ShieldCheck, Trash2, TrendingUp, Wind,
+  Hourglass, Pause, Play, RotateCcw, ShieldCheck, Trash2, TrendingUp,
 } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { compactCurrency, currency, shortDate, todayString } from "@/lib/format";
@@ -338,7 +338,6 @@ export function PatienceView({
   settings,
   accountFilter,
   hidden,
-  onBreath,
   onDay,
   onUpdateSettings,
 }: {
@@ -346,7 +345,6 @@ export function PatienceView({
   settings: JournalSettings;
   accountFilter: string;
   hidden: boolean;
-  onBreath: () => void;
   onDay: (date: string) => void;
   onUpdateSettings: (patch: Partial<JournalSettings>, message?: string) => Promise<boolean>;
 }) {
@@ -599,9 +597,6 @@ export function PatienceView({
                   <RotateCcw size={14}/> {t.resetTimer}
                 </button>
               )}
-              <button type="button" className="button-secondary" onClick={onBreath}>
-                <Wind size={15}/> {t.breathButton}
-              </button>
             </div>
           </div>
 

@@ -253,7 +253,8 @@ try {
   await motion.getByRole("button", { name: "Close", exact: true }).click(); await motion.locator(".modal").waitFor({ state: "detached" });
   await motion.locator(".calendar-day").first().hover();
   assert.equal(await motion.locator(".calendar-day").first().evaluate((element) => getComputedStyle(element).transform), "none");
-  await motion.getByRole("button", { name: "Take a breath", exact: true }).click();
+  await motion.locator(".sidebar-nav").getByRole("button", { name: "Mindset", exact: true }).click();
+  await motion.getByRole("button", { name: "Start breathing", exact: true }).click();
   await motion.getByRole("button", { name: "Begin breathing", exact: true }).click();
   assert.equal(await motion.locator(".breathing-orb").evaluate((element) => getComputedStyle(element).transform), "none");
   await motion.getByRole("button", { name: "Close", exact: true }).click(); await motion.locator(".modal").waitFor({ state: "detached" });
