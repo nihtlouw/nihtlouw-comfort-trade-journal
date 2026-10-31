@@ -34,6 +34,11 @@ export async function testAndroid(browser, url, errors, apiRequests) {
       await page.getByRole("button", { name: "Close", exact: true }).click();
       await page.locator(".modal").waitFor({ state: "detached" });
     }
+    async function openMobileSettings() {
+      await page.locator(".mobile-bottom-nav").getByRole("button", { name: "More", exact: true }).click();
+      await page.locator("#primary-sidebar.mobile-open").waitFor();
+      await page.getByLabel("Open settings").click();
+    }
     async function assertVisibleRow(row, amount) {
       await row.scrollIntoViewIfNeeded();
       assert.equal(await row.locator(".amount-cell").innerText(), amount);
@@ -60,8 +65,9 @@ export async function testAndroid(browser, url, errors, apiRequests) {
         await page.getByRole("group", { name: "Bahasa halaman Patience" }).getByRole("button", { name: "EN", exact: true }).click();
       }
     }
-    assert.equal(await page.locator(".mobile-top-brand").isVisible(), true);
-    assert.equal(await page.getByLabel("Take a breath").isVisible(), true);
+    assert.equal(await page.locator(".topbar").count(), 0, "redundant upper navigation bar removed");
+    assert.equal(await page.getByLabel("Open navigation").count(), 0, "no duplicate top hamburger menu");
+    assert.equal(await page.locator(".page-heading .new-trade-button").isVisible(), false, "no duplicate top + trade button on mobile");
     assert.ok((await page.getByLabel("Filter by trading account").boundingBox()).height >= 44);
     assert.ok((await page.locator(".mobile-bottom-nav button").first().boundingBox()).height >= 44);
 
@@ -194,7 +200,7 @@ export async function testAndroid(browser, url, errors, apiRequests) {
     await goal.getByRole("button", { name: "Reset", exact: true }).click();
     assert.match(await goal.locator(".goal-progress-label").innerText(), /0\s*\/\s*5/);
 
-    await page.getByLabel("Open settings").click();
+    await openMobileSettings();
     await page.getByRole("button", { name: "☾ Dark mode", exact: true }).click();
     assert.equal(await page.locator(".app-shell").getAttribute("data-theme"), "dark");
     await page.getByRole("button", { name: "Data", exact: true }).click();
@@ -206,7 +212,7 @@ export async function testAndroid(browser, url, errors, apiRequests) {
     assert.equal(await page.locator(".app-shell").getAttribute("data-theme"), "dark");
     await page.getByLabel("Previous week").click(); assert.ok(await page.getByRole("button", { name: "This week" }).isEnabled());
     await page.getByRole("button", { name: "This week" }).click();
-    await page.getByLabel("Open settings").click(); await page.getByRole("button", { name: "Risk", exact: true }).click();
+    await openMobileSettings(); await page.getByRole("button", { name: "Risk", exact: true }).click();
     assert.equal(await page.getByLabel("Initial risk per trade (USD)").evaluate((el) => getComputedStyle(el).fontSize), "16px");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width); await closeModal();
     await navigate("Trade journal");
@@ -250,6 +256,8 @@ export async function testAndroid(browser, url, errors, apiRequests) {
     await page.locator(".sidebar-nav").getByRole("button", { name: "Weekly review", exact: true }).click();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
     await page.getByLabel("Previous week").click(); await page.getByRole("button", { name: "This week" }).click();
+    await page.locator(".mobile-bottom-nav").getByRole("button", { name: "More", exact: true }).click();
+    await page.locator("#primary-sidebar.mobile-open").waitFor();
     await page.getByLabel("Open settings").click(); await page.getByRole("button", { name: "Risk", exact: true }).click();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
     console.log(`PASS: ${width}×360 Android landscape trade details, forms, calendar and weekly review.`);

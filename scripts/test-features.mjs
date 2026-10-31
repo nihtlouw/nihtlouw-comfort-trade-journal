@@ -63,7 +63,12 @@ try {
     await page.locator(`.view-motion[data-view="${view}"]`).waitFor();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, `${view} fits the Android viewport`);
   };
-  const openSettings = async (tab) => { await page.getByLabel("Open settings").click(); await page.getByRole("button", { name: tab, exact: true }).click(); };
+  const openDrawer = async () => {
+    await page.locator(".mobile-bottom-nav").getByRole("button", { name: "More", exact: true }).click();
+    await page.locator("#primary-sidebar.mobile-open").waitFor();
+  };
+  const openSettings = async (tab) => { await openDrawer(); await page.getByLabel("Open settings").click(); await page.getByRole("button", { name: tab, exact: true }).click(); };
+  const openCassette = async () => { await openDrawer(); await page.locator(".cassette-mini-body").click(); };
   const close = async () => { await page.getByRole("button", { name: "Close", exact: true }).click(); await page.locator(".modal").waitFor({ state: "detached" }); };
   await openSettings("Risk");
   await page.getByLabel("Initial risk per trade (USD)").fill("50"); await page.getByLabel("Daily realized net loss per account (USD)").fill("100");
@@ -268,7 +273,7 @@ try {
     return buf;
   }
   const wavBuf = makePlayableWavBuffer(1.8);
-  await page.locator(".cassette-top-btn").click();
+  await openCassette();
   await page.getByRole("heading", { name: "Cassette player" }).waitFor();
   for (let i = 1; i <= 5; i++) {
     await page.locator(".cassette-add-btn input").setInputFiles({
@@ -292,8 +297,9 @@ try {
   // Navigate across views and verify audio element stays mounted & playing!
   await navigate("Calendar");
   await navigate("Overview");
-  assert.equal(await page.locator(".cassette-top-btn.is-playing").count(), 1, "playback persists across view changes");
-  await page.locator(".cassette-top-btn").click();
+  assert.equal(await page.locator(".mobile-audio-dot").count(), 1, "active audio indicator dot shows on More tab");
+  assert.equal(await page.locator(".cassette-mini.is-playing").count(), 1, "playback persists across view changes");
+  await openCassette();
   await page.locator(".modal").getByLabel("Stop", { exact: true }).click();
   assert.equal(await page.locator(".cassette-reel-svg.is-spinning").count(), 0, "Stop halts cassette reel spin");
   assert.equal(await page.locator(".cassette-timeline > span").first().innerText(), "0:00");
@@ -434,7 +440,7 @@ try {
 
   // Exercise Tahap C (#5 + #9 + #10):
   // 1) #5 Built-in 0 MB Ambient Soundscape in Cassette Deck
-  await page.locator(".cassette-top-btn").click();
+  await openCassette();
   await page.getByRole("group", { name: "Built-in ambient soundscapes" }).getByRole("button", { name: "Soft Rain", exact: true }).click();
   await page.locator(".cassette-shell.status-playing").waitFor();
   assert.equal(await page.locator(".cassette-reel-svg.is-spinning").count(), 2, "0 MB Ambient preset spins cassette reels");
@@ -443,8 +449,8 @@ try {
   await page.locator(".modal-close").click();
   await page.locator(".modal").waitFor({ state: "detached" });
   await navigate("Playbook");
-  assert.equal(await page.locator(".cassette-top-btn.is-playing").count(), 1, "Ambient soundscape persists across views");
-  await page.locator(".cassette-top-btn").click();
+  assert.equal(await page.locator(".cassette-mini.is-playing").count(), 1, "Ambient soundscape persists across views");
+  await openCassette();
   await page.locator(".modal").getByLabel("Stop", { exact: true }).click();
   assert.equal(await page.locator(".cassette-reel-svg.is-spinning").count(), 0);
   assert.equal(await page.locator(".cassette-timeline > span").first().innerText(), "0:00");
@@ -546,17 +552,28 @@ try {
   await page.locator(".modal").waitFor({ state: "detached" });
 
   // Toggle Zen Review Mode via mobile sidebar tools & exit via floating bar
-  await page.getByLabel("Open navigation").click();
-  await page.locator("#primary-sidebar.mobile-open").waitFor();
+  await openDrawer();
   await page.locator(".sidebar-mobile-tools").getByRole("button", { name: "Zen mode", exact: true }).click();
   assert.equal(await page.locator(".app-shell").getAttribute("data-zen"), "true");
   await page.locator(".zen-floating-bar").waitFor();
-  assert.equal(await page.locator(".topbar").isVisible(), false, "Topbar hides in Zen review mode");
+  assert.equal(await page.locator(".mobile-bottom-nav").isVisible(), false, "Bottom nav hides in Zen review mode");
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Zen mode fits 360px cleanly");
   await page.locator(".zen-bar-exit").click();
   assert.equal(await page.locator(".app-shell").getAttribute("data-zen"), null);
-  assert.equal(await page.locator(".topbar").isVisible(), true, "Topbar restores cleanly on exiting Zen mode");
+  assert.equal(await page.locator(".mobile-bottom-nav").isVisible(), true, "Bottom nav restores cleanly on exiting Zen mode");
   console.log("PASS: Command Palette (Ctrl/Cmd+K), Zen Review Mode, and 1200x630 Privacy-Safe PNG Recap Card work offline.");
+
+  // =========================================================================
+  // Zero-Duplicate Navigation & Single-Home Controls
+  // =========================================================================
+  assert.equal(await page.locator(".topbar").count(), 0, "Redundant upper navigation bar removed");
+  assert.equal(await page.getByLabel("Open navigation").count(), 0, "No duplicate top hamburger button");
+  assert.equal(await page.getByLabel("Open settings").count(), 1, "Strictly 1 Settings trigger in the entire app");
+  assert.equal(await page.locator(".sidebar-settings").count(), 0, "Duplicate sidebar Settings button removed");
+  assert.equal(await page.locator(".cassette-top-btn").count(), 0, "Duplicate topbar Cassette button removed");
+  assert.equal(await page.locator(".cassette-mini-body").count(), 1, "Strictly 1 Cassette player trigger in the entire app");
+  assert.equal(await page.locator(".breath-link").count(), 0, "Duplicate topbar Breathing button removed");
+  assert.equal(await page.locator(".page-heading .new-trade-button").isVisible(), false, "Duplicate top + trade button hidden on mobile");
 
   // =========================================================================
   // Strict Minimal UX: 1-line headers, data-first Overview & 1-tap '+' bottom nav

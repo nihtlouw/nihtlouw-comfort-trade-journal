@@ -3403,6 +3403,149 @@ input:not([type="checkbox"]):not([type="file"]), select, textarea { min-width: 0
   }
 }
 
+/* ==========================================================================
+   Unified Single-Bar Navigation & Zero-Duplicate Controls
+   ========================================================================== */
+
+.sidebar {
+  padding: 18px 15px 12px;
+}
+
+.sidebar-scroll {
+  margin-top: 16px;
+  padding-bottom: 6px;
+}
+
+.nav-label {
+  margin-bottom: 6px;
+}
+
+.personal-label {
+  margin-top: 14px;
+}
+
+.sidebar-nav {
+  gap: 2px;
+}
+
+.sidebar-nav button {
+  min-height: 36px;
+}
+
+.sidebar-mobile-tools {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.sidebar-tool-btn {
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 7px;
+  font-size: 10.5px;
+  gap: 5px;
+}
+
+.sidebar-tool-btn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-tool-kbd {
+  display: none;
+}
+
+.sidebar-mobile-lang {
+  display: block;
+  margin-top: 8px;
+  padding: 0;
+}
+
+.sidebar-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+.profile-button {
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-alt);
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.profile-button:hover {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.page-content {
+  padding-top: 30px;
+}
+
+.mobile-more-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-audio-dot {
+  position: absolute;
+  top: -1px;
+  right: -4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--sidebar);
+}
+
+@media (max-width: 900px) {
+  .page-content {
+    padding-top: calc(18px + env(safe-area-inset-top));
+  }
+
+  .page-heading {
+    align-items: center;
+    margin-bottom: 14px;
+  }
+
+  .page-heading .new-trade-button {
+    display: none;
+  }
+
+  .sidebar-nav button {
+    min-height: 40px;
+  }
+
+  .sidebar-tool-btn {
+    min-height: 40px;
+  }
+
+  .mobile-close {
+    top: 18px;
+  }
+}
+
+@media (max-width: 650px) {
+  .page-content {
+    padding-top: calc(16px + env(safe-area-inset-top));
+  }
+
+  .privacy-button {
+    width: 44px;
+    height: 44px;
+  }
+}
+
 
 
 

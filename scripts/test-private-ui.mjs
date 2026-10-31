@@ -47,6 +47,8 @@ try {
 
   // The private account boundary and its forms must also work on a narrow phone.
   await page.setViewportSize({ width: 320, height: 800 });
+  await page.locator(".mobile-bottom-nav").getByRole("button", { name: "More", exact: true }).click();
+  await page.locator("#primary-sidebar.mobile-open").waitFor();
   await page.getByLabel("Open settings").click();
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await page.getByRole("heading", { name: "Sign in", exact: true }).waitFor();
