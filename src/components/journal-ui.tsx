@@ -3,13 +3,14 @@
 import { useMemo, useState } from "react";
 import {
   ArrowDownRight, ArrowRight, ArrowUpRight, BookOpenText,
-  ChevronLeft, ChevronRight, Images, Leaf, Pencil, Plus, Sparkles, Target, TrendingUp, Wallet,
+  ChevronLeft, ChevronRight, Images, Leaf, Pencil, Plus, Target, TrendingUp, Wallet,
 } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { AppLocale, DayJournalEntry, JournalSettings, Trade } from "@/lib/types";
 import {
   compactCurrency,
   currency,
+  formatRMultiple,
   getStats,
   shortDate,
   todayString,
@@ -19,8 +20,8 @@ import {
 import { monthGrid, monthTitle, performanceSeries } from "@/lib/analytics";
 import { translateMarket, translateMood, translateSide, UI_COPY } from "@/lib/i18n";
 
-export function CardTitle({ eyebrow, title, description, action }: { eyebrow?: string; title: string; description?: string; action?: React.ReactNode }) {
-  return <div className="card-title"><div>{eyebrow && <span className="card-eyebrow">{eyebrow}</span>}<h2>{title}</h2>{description && <p>{description}</p>}</div>{action}</div>;
+export function CardTitle({ title, action }: { eyebrow?: string; title: string; description?: string; action?: React.ReactNode }) {
+  return <div className="card-title"><div><h2>{title}</h2></div>{action}</div>;
 }
 
 export function AccountBalanceCard({
@@ -44,9 +45,7 @@ export function AccountBalanceCard({
             <Wallet size={17} strokeWidth={1.8} />
           </span>
           <div>
-            <span className="card-eyebrow">{copy.balanceEyebrow}</span>
             <strong>{copy.balanceTitle}</strong>
-            <p>{copy.balanceUnsetNote}</p>
           </div>
         </div>
         <button type="button" className="button-secondary" onClick={onOpenAccounts}>
@@ -63,16 +62,10 @@ export function AccountBalanceCard({
         ? "••••"
         : `${summary.returnPct < 0 ? "−" : summary.returnPct > 0 ? "+" : ""}${Math.abs(summary.returnPct).toFixed(2)}%`;
 
-  const footnote =
-    summary.totalAccounts > 1
-      ? copy.balanceFootnoteMulti(summary.configuredCount, summary.totalAccounts)
-      : copy.balanceFootnoteSingle;
-
   return (
     <section className="card balance-banner">
       <div className="balance-head">
         <div>
-          <span className="card-eyebrow">{copy.balanceEyebrow}</span>
           <h2>
             {copy.balanceTitle}
             {summary.accountName ? <span> · {summary.accountName}</span> : null}
@@ -88,7 +81,6 @@ export function AccountBalanceCard({
           <strong className={summary.currentBalance < 0 ? "loss-text" : ""}>
             {currency(summary.currentBalance, false, hidden)}
           </strong>
-          <small>{footnote}</small>
         </div>
         <div className="balance-breakdown">
           <div>
@@ -117,14 +109,14 @@ export function StatsCards({ trades, hidden, locale = "en" }: { trades: Trade[];
   const copy = UI_COPY[locale];
   const stats = getStats(trades);
   const items = [
-    { label: copy.statNetPnl, value: currency(stats.net, stats.net > 0, hidden), icon: Wallet, tint: "sage", note: copy.statNetNote, className: stats.net < 0 ? "loss-text" : "" },
-    { label: copy.statWinRate, value: stats.count && stats.wins + stats.losses ? `${stats.winRate}%` : "—", icon: Target, tint: "lavender", note: copy.statWinLossNote(stats.wins, stats.losses), className: "" },
-    { label: copy.statProfitFactor, value: stats.profitFactor, icon: TrendingUp, tint: "peach", note: copy.statPfNote, className: "" },
-    { label: copy.statTradesLogged, value: String(stats.count), icon: BookOpenText, tint: "butter", note: copy.statTradesNote, className: "" },
+    { label: copy.statNetPnl, value: currency(stats.net, stats.net > 0, hidden), icon: Wallet, tint: "sage", note: stats.avgR !== null ? `${formatRMultiple(stats.avgR)} avg` : null, className: stats.net < 0 ? "loss-text" : "" },
+    { label: copy.statWinRate, value: stats.count && stats.wins + stats.losses ? `${stats.winRate}%` : "—", icon: Target, tint: "lavender", note: stats.count ? copy.statWinLossNote(stats.wins, stats.losses) : null, className: "" },
+    { label: copy.statProfitFactor, value: stats.profitFactor, icon: TrendingUp, tint: "peach", note: null, className: "" },
+    { label: copy.statTradesLogged, value: String(stats.count), icon: BookOpenText, tint: "butter", note: null, className: "" },
   ];
   return <div className="stats-grid">{items.map(({ label, value, icon: Icon, tint, note, className }) => <article className="stat-card card" key={label}>
     <div className="stat-top"><span>{label}</span><span className={`stat-icon ${tint}`}><Icon size={17} strokeWidth={1.8} /></span></div>
-    <strong className={className}>{value}</strong><div className="stat-note"><span className={`stat-note-dot ${tint}`} />{note}</div>
+    <strong className={className}>{value}</strong>{note && <div className="stat-note"><span className={`stat-note-dot ${tint}`} />{note}</div>}
   </article>)}</div>;
 }
 
@@ -156,8 +148,8 @@ export function PerformanceChart({ trades, period, onPeriodChange, hidden, compa
         }} />
         <Area type="stepAfter" dataKey="pnl" stroke="var(--chart-line)" strokeWidth={2.5} fill="url(#pnl-gradient)" activeDot={{ r: 5, fill: "var(--chart-line)", stroke: "var(--surface)", strokeWidth: 3 }} isAnimationActive={false}/>
       </AreaChart></ResponsiveContainer>
-    </div> : <div className="chart-empty"><span><TrendingUp size={20}/></span><strong>{copy.noChartTitle}</strong><p>{copy.noChartBody}</p></div>}
-    {trades.length > 0 && <details className="chart-data"><summary>{copy.viewChartTable}</summary><p>{copy.chartTableNote}</p><div><table><thead><tr><th>{copy.colDate}</th><th>{copy.colTrades}</th><th>{copy.colDailyPnl}</th><th>{copy.colCumulative}</th></tr></thead><tbody>{data.slice(-60).map((point) => <tr key={point.date}><td>{shortDate(point.date, true, locale)}</td><td>{point.trades}</td><td>{currency(point.daily, point.daily > 0, hidden)}</td><td>{currency(point.pnl, point.pnl > 0, hidden)}</td></tr>)}</tbody></table></div></details>}
+    </div> : <div className="chart-empty"><span><TrendingUp size={20}/></span><strong>{copy.noChartTitle}</strong></div>}
+    {trades.length > 0 && <details className="chart-data"><summary>{copy.viewChartTable}</summary><div><table><thead><tr><th>{copy.colDate}</th><th>{copy.colTrades}</th><th>{copy.colDailyPnl}</th><th>{copy.colCumulative}</th></tr></thead><tbody>{data.slice(-60).map((point) => <tr key={point.date}><td>{shortDate(point.date, true, locale)}</td><td>{point.trades}</td><td>{currency(point.daily, point.daily > 0, hidden)}</td><td>{currency(point.pnl, point.pnl > 0, hidden)}</td></tr>)}</tbody></table></div></details>}
   </section>;
 }
 
@@ -169,8 +161,7 @@ export function MoodCard({ settings, onMood, onOpen, locale }: { settings: Journ
   const copy = UI_COPY[lang];
   const current = settings.moodDate === todayString() ? settings.mood : null;
   return <section className="card mood-card">
-    <div className="widget-top"><span className="widget-icon blush"><span>♡</span></span><span className="widget-overline">{copy.dailyCheckinOverline}</span><Sparkles size={15} className="soft-icon" /></div>
-    <h2>{copy.howFeelingTitle}</h2><p>{copy.howFeelingDesc}</p>
+    <div className="widget-top"><span className="widget-icon blush"><span>♡</span></span><h2>{copy.howFeelingTitle}</h2></div>
     <div className="mood-options">{moodOptions.map((item) => {
       const displayMood = translateMood(item.label, lang);
       return <button type="button" key={item.label} aria-label={displayMood} onClick={() => onMood(item.label)} className={current === item.label ? "selected" : ""} aria-pressed={current === item.label}><span>{item.emoji}</span><small>{displayMood}</small></button>;
@@ -184,8 +175,7 @@ export function GoalCard({ settings, onMark, onOpen, locale }: { settings: Journ
   const lang = locale ?? settings.locale ?? "en";
   const copy = UI_COPY[lang];
   const goal = settings.goals?.[0];
-  return <section className="card goal-card"><div className="widget-top"><span className="widget-icon green"><Target size={17}/></span><span className="widget-overline">{copy.dailyHabitOverline}</span><Sparkles size={15} className="soft-icon" /></div>
-    <h2>{copy.intentionsTitle}</h2><p>{copy.intentionsDesc}</p>
+  return <section className="card goal-card"><div className="widget-top"><span className="widget-icon green"><Target size={17}/></span><h2>{copy.intentionsTitle}</h2></div>
     {goal ? <><div className="goal-block"><div className="goal-name"><span>✳</span><strong id="overview-goal-name">{goal.text}</strong></div><div className="goal-progress-label"><span>{copy.daysCompleted}</span><b>{goal.progress}<span> / {goal.target} {copy.daysUnit}</span></b></div><div className="progress-track"><span style={{ width: `${Math.min(goal.progress / goal.target * 100, 100)}%` }}/></div></div>
       <button type="button" className="goal-button" aria-describedby="overview-goal-name" disabled={goal.progress >= goal.target || goal.markedDates.includes(todayString())} onClick={() => onMark(goal.id)}><Plus size={15}/>{goal.progress >= goal.target ? copy.intentionComplete : goal.markedDates.includes(todayString()) ? copy.todayMarked : copy.markToday}</button></>
       : <p className="goal-empty">{copy.noIntentionsYet}</p>}
@@ -214,7 +204,7 @@ export function TradeTable({ trades, hidden, onEdit, onNew, onViewAll, onPreview
         <td role="cell" className="trade-action"><div className="trade-action-group">{shotCount > 0 && onPreviewCharts && <button type="button" className="row-chart-pill" onClick={() => onPreviewCharts(trade)} aria-label={copy.viewTradeChartsAria(trade.symbol, shotCount)}><Images size={13}/><span>{shotCount}</span></button>}<button type="button" className="row-more" onClick={() => onEdit(trade)} aria-label={copy.editTradeAria(trade.symbol)}><Pencil size={14}/><span>{copy.edit}</span></button></div></td>
       </tr>; })}
     </tbody></table></div>
-    {!trades.length && <div className="empty-state"><span><BookOpenText size={20}/></span><strong>{copy.noTradesTitle}</strong><p>{copy.noTradesBody}</p><button type="button" className="text-link" onClick={onNew}><Plus size={14}/> {copy.logATrade}</button></div>}
+    {!trades.length && <div className="empty-state"><span><BookOpenText size={20}/></span><strong>{copy.noTradesTitle}</strong><button type="button" className="text-link" onClick={onNew}><Plus size={14}/> {copy.logATrade}</button></div>}
   </section>;
 }
 
@@ -241,8 +231,7 @@ export function TradingCalendar({ trades, dayJournals = [], hidden, onDay, compa
   }
   const monthTrades = trades.filter((trade) => trade.tradeDate.startsWith(`${month.year}-${String(month.month + 1).padStart(2, "0")}`));
   return <section className={`card calendar-card ${compact ? "calendar-compact" : ""}`}>
-    <CardTitle title={compact ? copy.tradingActivity : copy.monthlyActivity} description={copy.selectDayDesc} action={<div className="calendar-nav"><button type="button" onClick={() => shift(-1)} aria-label={copy.prevMonth}><ChevronLeft size={16}/></button><strong aria-live="polite" aria-atomic="true">{monthTitle(month.year, month.month, locale)}</strong><button type="button" onClick={() => shift(1)} aria-label={copy.nextMonth}><ChevronRight size={16}/></button></div>}/>
-    <p className="calendar-mobile-hint">{hidden ? copy.calMobileHintHidden : copy.calMobileHintVisible}</p>
+    <CardTitle title={compact ? copy.tradingActivity : copy.monthlyActivity} action={<div className="calendar-nav"><button type="button" onClick={() => shift(-1)} aria-label={copy.prevMonth}><ChevronLeft size={16}/></button><strong aria-live="polite" aria-atomic="true">{monthTitle(month.year, month.month, locale)}</strong><button type="button" onClick={() => shift(1)} aria-label={copy.nextMonth}><ChevronRight size={16}/></button></div>}/>
     <div className="calendar-weekdays">{copy.weekdays.map((day) => <span key={day}>{day}</span>)}</div>
     <div className="calendar-grid" data-direction={month.direction < 0 ? "previous" : month.direction > 0 ? "next" : "initial"} key={`${month.year}-${month.month}`}>{days.map((day, index) => { if (!day) return <span className="calendar-blank" key={`blank-${index}`}/>;
       const result = byDay.get(day); const value = result?.pnl ?? 0;

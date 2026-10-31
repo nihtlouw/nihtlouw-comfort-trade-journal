@@ -470,8 +470,8 @@ export const UI_COPY = {
     riskInRecordsTitle: "Risk in your records",
     riskInRecordsDesc: "A check-in, not live brokerage monitoring.",
     initialRiskRecorded: "Initial risk recorded",
-    avgInitialRiskUpper: "AVERAGE INITIAL RISK",
-    avgRUpper: "AVERAGE R",
+    avgInitialRiskUpper: "AVG RISK",
+    avgRUpper: "AVG R",
     riskCoverageFootnote: (missing: number) =>
       `Based only on positive initial risk entries. ${missing} ${missing === 1 ? "trade has" : "trades have"} no positive risk recorded. Coverage includes samples when shown.`,
     limitRemindersHeading: "Limit reminders",
@@ -898,6 +898,7 @@ export const UI_COPY = {
     zenModeBtn: "Zen mode",
     zenExitBtn: "Exit Zen",
     zenModeActiveBadge: "Zen review",
+    dismissBannerAria: "Dismiss banner",
   },
   id: {
     brandSub: "JURNAL TRADING",
@@ -1225,7 +1226,7 @@ export const UI_COPY = {
     riskInRecordsTitle: "Risiko dalam catatanmu",
     riskInRecordsDesc: "Evaluasi mandiri, bukan pemantauan broker langsung.",
     initialRiskRecorded: "Risiko awal tercatat",
-    avgInitialRiskUpper: "RATA-RATA RISIKO AWAL",
+    avgInitialRiskUpper: "RATA-RATA RISIKO",
     avgRUpper: "RATA-RATA R",
     riskCoverageFootnote: (missing: number) =>
       `Hanya berdasarkan input risiko awal positif. ${missing} trade belum memiliki catatan risiko positif. Cakupan menyertakan contoh saat ditampilkan.`,
@@ -1652,6 +1653,7 @@ export const UI_COPY = {
     zenModeBtn: "Mode Zen",
     zenExitBtn: "Keluar Zen",
     zenModeActiveBadge: "Fokus Zen",
+    dismissBannerAria: "Tutup pemberitahuan",
   },
 } as const;
 
