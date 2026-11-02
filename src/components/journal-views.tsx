@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, CirclePlus, Compass, Download, Filter, Images, Leaf, List, Pencil, Plus, RotateCcw, Search, Sparkles, Target, Trash2, Upload, Wind, X } from "lucide-react";
+import { ArrowRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, CirclePlus, Compass, Download, FileSpreadsheet, Filter, Images, Leaf, List, Pencil, Plus, RotateCcw, Search, Sparkles, Target, Trash2, Upload, Wind, X } from "lucide-react";
 import type { StorageMode } from "@/lib/attachments";
 import { evaluateTradeProcess, getProcessMatrix, getSetupBlueprintStats, groupTrades, groupTradesByTag, maxRealizedDrawdown, previousPeriodTrades } from "@/lib/analytics";
 import { currency, filterTrades, formatRMultiple, getAccountBalanceSummary, getStats, shortDate, todayString, type Period } from "@/lib/format";
@@ -82,6 +82,7 @@ export function JournalView({
   onNewTrade,
   onImport,
   onExport,
+  onExportXlsx,
   onPreviewCharts,
   onOpenSlides,
   selectedDay,
@@ -96,6 +97,7 @@ export function JournalView({
   onNewTrade: () => void;
   onImport: () => void;
   onExport: (trades: Trade[]) => void;
+  onExportXlsx?: (trades: Trade[]) => void;
   onPreviewCharts?: (trade: Trade) => void;
   onOpenSlides?: (slides: ChartLightboxSlide[], index: number) => void;
   selectedDay: string;
@@ -123,7 +125,7 @@ export function JournalView({
   const chartCount = useMemo(() => filtered.reduce((sum, trade) => sum + (trade.attachments?.length ?? 0), 0), [filtered]);
   const selectedDayNote = selectedDay ? dayJournals.find((entry) => entry.date === selectedDay) : undefined;
   return <div className="view-stack">
-    <div className="journal-toolbar card"><div className="toolbar-primary"><label className="search-box"><Search size={17}/><span className="sr-only">{copy.searchTrades}</span><input type="search" enterKeyHint="search" placeholder={copy.searchTrades} value={query} onChange={(event) => setQuery(event.target.value)}/></label><div className="segment-control journal-view-switch" role="group" aria-label={copy.journalViewModeAria}><button type="button" className={viewMode === "table" ? "selected" : ""} aria-pressed={viewMode === "table"} onClick={() => setViewMode("table")}><List size={14}/><span>{copy.journalViewTable}</span></button><button type="button" className={viewMode === "chartbook" ? "selected" : ""} aria-pressed={viewMode === "chartbook"} onClick={() => setViewMode("chartbook")}><Images size={14}/><span>{copy.journalViewChartbook}</span>{chartCount > 0 && <b className="chart-switch-count">{chartCount}</b>}</button></div><button type="button" className="button-secondary" onClick={onImport}><Upload size={15}/> {copy.importCsv}</button><button type="button" className="button-secondary" onClick={() => onExport(filtered)}><Download size={15}/> {copy.exportCsv}</button></div>
+    <div className="journal-toolbar card"><div className="toolbar-primary"><label className="search-box"><Search size={17}/><span className="sr-only">{copy.searchTrades}</span><input type="search" enterKeyHint="search" placeholder={copy.searchTrades} value={query} onChange={(event) => setQuery(event.target.value)}/></label><div className="segment-control journal-view-switch" role="group" aria-label={copy.journalViewModeAria}><button type="button" className={viewMode === "table" ? "selected" : ""} aria-pressed={viewMode === "table"} onClick={() => setViewMode("table")}><List size={14}/><span>{copy.journalViewTable}</span></button><button type="button" className={viewMode === "chartbook" ? "selected" : ""} aria-pressed={viewMode === "chartbook"} onClick={() => setViewMode("chartbook")}><Images size={14}/><span>{copy.journalViewChartbook}</span>{chartCount > 0 && <b className="chart-switch-count">{chartCount}</b>}</button></div><button type="button" className="button-secondary" onClick={onImport}><Upload size={15}/> {copy.importCsv}</button><button type="button" className="button-secondary" onClick={() => onExport(filtered)}><Download size={15}/> {copy.exportCsv}</button>{onExportXlsx && <button type="button" className="button-secondary" onClick={() => onExportXlsx(filtered)}><FileSpreadsheet size={15}/> {copy.exportXlsx}</button>}</div>
       <button type="button" className="filters-toggle" aria-expanded={filtersOpen} aria-controls="journal-filters" onClick={() => setFiltersOpen(!filtersOpen)}><span><Filter size={16}/> {copy.filters} {activeFilters > 0 && <b>{activeFilters}</b>}</span><ChevronDown size={17} className={filtersOpen ? "rotated" : ""}/></button>
       <div className={`filter-row ${filtersOpen ? "is-open" : ""}`} id="journal-filters"><span className="filter-label"><Filter size={14}/> {copy.filterBy}</span>
         <select aria-label={copy.filterMarketAria} value={market} onChange={(event) => setMarket(event.target.value)}><option value="All markets">{copy.allMarkets}</option>{MARKETS.map((item) => <option key={item} value={item}>{translateMarket(item, locale)}</option>)}</select>

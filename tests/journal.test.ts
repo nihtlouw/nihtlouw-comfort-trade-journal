@@ -6,7 +6,9 @@ import { isDate, normalizeJournalData } from "@/lib/journal-data";
 import { calendarDayCurrency, getStats, todayString, dateFromString } from "@/lib/format";
 import { readLimitedBody } from "@/lib/request-body";
 import { groupTrades, maxRealizedDrawdown, monthGrid, performanceSeries, previousPeriodTrades } from "@/lib/analytics";
-import { csvRowsToTrades, exportTradesCsv, parseCsv } from "@/lib/csv";
+import { collectNewAccountsFromRows, csvRowsToTrades, exportTradesCsv, parseCsv, parseSpreadsheetMatrix } from "@/lib/csv";
+import { createThreeMonthDummyData } from "@/lib/dummy-dataset";
+import { exportTradesXlsx, parseXlsxBuffer } from "@/lib/xlsx-report";
 import { parseBackup } from "@/lib/backup";
 import { validateImage } from "@/lib/attachments";
 import { buildRecapSummary } from "@/lib/recap-card";
@@ -714,6 +716,149 @@ test("calendarDayCurrency formats compact signed daily total P&L cleanly for nar
   assert.equal(calendarDayCurrency(285, true), "•••");
   assert.equal(calendarDayCurrency(-180, true), "•••");
 });
+
+test("3-month dummy dataset covers 90-day span, all 5 markets, 2 accounts, 2x2 process quadrants, blueprints, rest days, and patience giveback", async () => {
+  const { getProcessMatrix } = await import("@/lib/analytics");
+  const { getPatienceMirror } = await import("@/lib/patience");
+
+  for (const locale of ["en", "id"] as const) {
+    const raw = createThreeMonthDummyData(locale, new Date("2026-11-02T12:00:00Z"));
+    const normalized = normalizeJournalData(raw);
+    assert.ok(normalized.trades.length >= 40);
+    assert.ok(normalized.trades.every((t) => !t.isDemo));
+
+    const dates = normalized.trades.map((t) => t.tradeDate).sort();
+    assert.equal(dates[dates.length - 1], "2026-11-02");
+    assert.ok(dates[0] <= "2026-08-10", `Expected earliest trade <= 2026-08-10, got ${dates[0]}`);
+
+    const markets = new Set(normalized.trades.map((t) => t.market));
+    assert.deepEqual(
+      [...markets].sort(),
+      ["Commodities", "Crypto", "Forex", "Futures", "Stocks"],
+    );
+
+    assert.equal(normalized.settings.accounts?.length, 2);
+    assert.equal(normalized.settings.accounts?.[0].startingBalance, 10000);
+    assert.equal(normalized.settings.accounts?.[1].startingBalance, 5000);
+
+    const matrix = getProcessMatrix(normalized.trades);
+    assert.ok(matrix.modelWin.count > 0);
+    assert.ok(matrix.goodLoss.count > 0);
+    assert.ok(matrix.badWin.count > 0);
+    assert.ok(matrix.unforcedLoss.count > 0);
+    assert.ok(matrix.unratedCount > 0);
+
+    const mainTrades = normalized.trades.filter((t) => t.accountId === "main");
+    const patience = getPatienceMirror(mainTrades, normalized.settings.patienceMaxTrades ?? 3);
+    assert.ok(patience.greenToRedCount >= 2, "Expected >= 2 green-to-red giveback days");
+    assert.ok(patience.overCap.count >= 1, "Expected >= 1 over-cap trade");
+
+    assert.ok((normalized.settings.setupBlueprints?.length ?? 0) >= 4);
+    assert.ok((normalized.settings.dayJournals?.filter((d) => d.intentionalNoTrade).length ?? 0) >= 6);
+    assert.ok((normalized.settings.reflections?.length ?? 0) >= 6);
+    assert.ok((normalized.settings.walkAwayLogs?.length ?? 0) >= 6);
+    assert.ok((normalized.settings.goals?.length ?? 0) >= 3);
+  }
+});
+
+test("report-grade CSV export & import round-trips exact trade structure losslessly in EN and ID", () => {
+  for (const locale of ["en", "id"] as const) {
+    const dummy = normalizeJournalData(createThreeMonthDummyData(locale, new Date("2026-11-02T12:00:00Z")));
+    // Inject an edge-case formula-like note on one trade to test injection-safe lossless round-trip
+    dummy.trades[0] = { ...dummy.trades[0], notes: "=2+2 plan note, with commas | and quotes \"ok\"" };
+    const accounts = dummy.settings.accounts!;
+
+    const csvReport = exportTradesCsv(dummy.trades, accounts, locale);
+    assert.ok(csvReport.startsWith("\uFEFF"), "Expected UTF-8 BOM for Excel");
+    assert.match(csvReport, /BLOOM TRADING JOURNAL/);
+    assert.match(csvReport, /TOTAL/);
+    assert.match(csvReport, /'=2\+2 plan note/);
+
+    // Import into a brand-new journal that only has Main account -> should auto-discover Swing & Crypto!
+    const preview = parseCsv(csvReport);
+    const freshAccounts = [{ id: "main", name: "Main account", startingBalance: null }];
+    const parsedRows = csvRowsToTrades(preview, preview.mapping, freshAccounts, "main", []);
+    const errors = parsedRows.filter((r) => r.error);
+    assert.equal(errors.length, 0, `Expected 0 import errors in ${locale}, got: ${JSON.stringify(errors)}`);
+    assert.equal(parsedRows.length, dummy.trades.length);
+
+    const newAccounts = collectNewAccountsFromRows(parsedRows, freshAccounts);
+    assert.equal(newAccounts.length, 1);
+    assert.equal(newAccounts[0].name, "Swing & Crypto");
+    const allAccounts = [...freshAccounts, ...newAccounts];
+
+    const sortedOriginal = [...dummy.trades].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate) || a.id - b.id);
+    parsedRows.forEach((row, idx) => {
+      const orig = sortedOriginal[idx];
+      const imp = row.trade!;
+      assert.equal(imp.symbol, orig.symbol);
+      assert.equal(imp.tradeDate, orig.tradeDate);
+      assert.equal(Number(imp.pnl).toFixed(2), Number(orig.pnl).toFixed(2));
+      assert.equal(imp.market, orig.market);
+      assert.equal(imp.side, orig.side);
+      assert.equal(imp.setup, orig.setup);
+      assert.equal(imp.session ?? "", orig.session ?? "");
+      assert.equal(imp.timeframe ?? "", orig.timeframe ?? "");
+      assert.equal(Number(imp.entryPrice), Number(orig.entryPrice));
+      assert.equal(Number(imp.exitPrice), Number(orig.exitPrice));
+      assert.equal(Number(imp.stopLoss), Number(orig.stopLoss));
+      assert.equal(Number(imp.takeProfit), Number(orig.takeProfit));
+      assert.equal(Number(imp.positionSize), Number(orig.positionSize));
+      assert.equal(Number(imp.initialRisk), Number(orig.initialRisk));
+      assert.equal(Number(imp.fees || "0"), Number(orig.fees || "0"));
+      assert.equal(imp.followedPlan, orig.followedPlan);
+      assert.equal((imp.checklist ?? []).length, (orig.checklist ?? []).length);
+      (orig.checklist ?? []).forEach((item, cIdx) => {
+        assert.equal(imp.checklist![cIdx].checked, item.checked);
+        assert.equal(imp.checklist![cIdx].text, item.text);
+      });
+      assert.equal(imp.mood, orig.mood);
+      assert.deepEqual(imp.tags ?? [], orig.tags ?? []);
+      assert.equal(imp.notes, orig.notes);
+
+      const origAccName = accounts.find((a) => a.id === orig.accountId)?.name;
+      const impAccName = allAccounts.find((a) => a.id === imp.accountId)?.name;
+      assert.equal(impAccName, origAccName);
+    });
+  }
+});
+
+test("styled OpenXML .xlsx report export & import round-trips losslessly in EN and ID", async () => {
+  for (const locale of ["en", "id"] as const) {
+    const dummy = normalizeJournalData(createThreeMonthDummyData(locale, new Date("2026-11-02T12:00:00Z")));
+    const accounts = dummy.settings.accounts!;
+
+    const xlsxBytes = exportTradesXlsx(dummy.trades, accounts, locale);
+    // Verify valid ZIP local header signature PK\x03\x04
+    assert.equal(xlsxBytes[0], 0x50);
+    assert.equal(xlsxBytes[1], 0x4b);
+    assert.equal(xlsxBytes[2], 0x03);
+    assert.equal(xlsxBytes[3], 0x04);
+
+    const matrix = await parseXlsxBuffer(
+      xlsxBytes.buffer.slice(xlsxBytes.byteOffset, xlsxBytes.byteOffset + xlsxBytes.byteLength) as ArrayBuffer,
+    );
+    const preview = parseSpreadsheetMatrix(matrix);
+    const parsedRows = csvRowsToTrades(preview, preview.mapping, accounts, "main", []);
+    assert.equal(parsedRows.filter((r) => r.error).length, 0);
+    assert.equal(parsedRows.length, dummy.trades.length);
+
+    const sortedOriginal = [...dummy.trades].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate) || a.id - b.id);
+    parsedRows.forEach((row, idx) => {
+      const orig = sortedOriginal[idx];
+      const imp = row.trade!;
+      assert.equal(imp.symbol, orig.symbol);
+      assert.equal(imp.tradeDate, orig.tradeDate);
+      assert.equal(Number(imp.pnl).toFixed(2), Number(orig.pnl).toFixed(2));
+      assert.equal(imp.accountId, orig.accountId);
+      assert.equal(imp.followedPlan, orig.followedPlan);
+      assert.equal((imp.checklist ?? []).length, (orig.checklist ?? []).length);
+      assert.deepEqual(imp.tags ?? [], orig.tags ?? []);
+      assert.equal(imp.notes, orig.notes);
+    });
+  }
+});
+
 
 
 

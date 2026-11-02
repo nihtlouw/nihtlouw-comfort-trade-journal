@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import Image from "next/image";
-import { Check, ChevronDown, CircleHelp, Download, FileImage, ImagePlus, Maximize2, Pause, Pencil, Play, Plus, RotateCcw, ShieldCheck, Trash2, Upload, X } from "lucide-react";
+import { Check, ChevronDown, CircleHelp, Download, FileImage, FileSpreadsheet, ImagePlus, Maximize2, Pause, Pencil, Play, Plus, RotateCcw, ShieldCheck, Sparkles, Trash2, Upload, X } from "lucide-react";
 import { getAttachment, type StorageMode } from "@/lib/attachments";
-import { CSV_FIELDS, csvRowsToTrades, parseCsv, type CsvMapping, type CsvPreview } from "@/lib/csv";
+import { collectNewAccountsFromRows, CSV_FIELDS, csvRowsToTrades, exportTradesCsv, parseImportFile, type CsvMapping, type CsvPreview } from "@/lib/csv";
+import { createThreeMonthDummyData } from "@/lib/dummy-dataset";
 import { currency, todayString } from "@/lib/format";
+import { exportTradesXlsx } from "@/lib/xlsx-report";
 import { csvFieldLabel, translateAccountName, translateAttachmentStage, translateMarket, translateMood, translateSide, UI_COPY } from "@/lib/i18n";
 import {
   ATTACHMENT_STAGES,
@@ -462,16 +464,196 @@ export function TradeModal({ trade, trades, limits, hidden, accounts, playbook, 
   </ModalShell>;
 }
 
-export function ImportModal({ trades, accounts, defaultAccount, locale = "en", onClose, onImport }: { trades: Trade[]; accounts: TradingAccount[]; defaultAccount: string; locale?: AppLocale; onClose: () => void; onImport: (trades: Trade[]) => Promise<boolean> }) {
+export function ImportModal({
+  trades,
+  accounts,
+  defaultAccount,
+  locale = "en",
+  onClose,
+  onImport,
+}: {
+  trades: Trade[];
+  accounts: TradingAccount[];
+  defaultAccount: string;
+  locale?: AppLocale;
+  onClose: () => void;
+  onImport: (trades: Trade[], newAccounts?: TradingAccount[]) => Promise<boolean>;
+}) {
   const copy = UI_COPY[locale];
-  const [preview, setPreview] = useState<CsvPreview | null>(null); const [mapping, setMapping] = useState<CsvMapping | null>(null); const [skipDuplicates, setSkipDuplicates] = useState(true); const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
-  const rows = useMemo(() => { if (!preview || !mapping) return []; try { return csvRowsToTrades(preview, mapping, accounts, defaultAccount, trades); } catch { return []; } }, [preview, mapping, accounts, defaultAccount, trades]);
+  const [preview, setPreview] = useState<CsvPreview | null>(null);
+  const [mapping, setMapping] = useState<CsvMapping | null>(null);
+  const [skipDuplicates, setSkipDuplicates] = useState(true);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const rows = useMemo(() => {
+    if (!preview || !mapping) return [];
+    try {
+      return csvRowsToTrades(preview, mapping, accounts, defaultAccount, trades);
+    } catch {
+      return [];
+    }
+  }, [preview, mapping, accounts, defaultAccount, trades]);
   const valid = rows.filter((row) => row.trade && (!row.duplicate || !skipDuplicates));
-  async function choose(event: React.ChangeEvent<HTMLInputElement>) { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; try { if (file.size > 3_000_000) throw new Error("CSV files must be under 3 MB."); const data = parseCsv(await file.text()); setPreview(data); setMapping(data.mapping); setError(""); } catch (caught) { setError(caught instanceof Error ? caught.message : "Couldn't read this CSV."); } }
-  async function submit() { if (!preview || !mapping) return; try { csvRowsToTrades(preview, mapping, accounts, defaultAccount, trades); if (!valid.length) throw new Error(locale === "id" ? "Tidak ada baris valid untuk diimpor. Periksa pemetaan kolom dan pesan error." : "There are no valid rows to import. Check the column mapping and row errors."); setBusy(true); const ok = await onImport(valid.map((row) => row.trade!)); setBusy(false); if (ok) onClose(); } catch (caught) { setBusy(false); setError(caught instanceof Error ? caught.message : "Couldn't import."); } }
-  return <ModalShell onClose={onClose} label="import-modal-title" wide><ModalHeader id="import-modal-title" title={copy.importCsvTitle} description={copy.importCsvDesc} onClose={onClose} closeLabel={copy.close}/><div className="modal-form import-content"><div className="import-help"><ShieldCheck size={18}/><span>{copy.importHelp}</span></div><label className="csv-upload"><Upload size={20}/><strong>{preview ? copy.chooseAnotherCsv : copy.chooseCsvFile}</strong><span>{copy.csvLimitSub}</span><input type="file" accept=".csv,text/csv" onChange={choose}/></label>
-    {preview && mapping && <><div className="form-subheading"><strong>{copy.mapColumnsTitle}</strong><span>{copy.mapColumnsSub}</span></div><div className="mapping-grid">{CSV_FIELDS.map((field) => <label key={field}>{csvFieldLabel(field, locale)}<select value={mapping[field]} onChange={(event) => setMapping({ ...mapping, [field]: event.target.value })}><option value="">{copy.notMapped}</option>{preview.headers.map((header) => <option key={header} value={header}>{header}</option>)}</select></label>)}</div><label className="check-line"><input type="checkbox" checked={skipDuplicates} onChange={(event) => setSkipDuplicates(event.target.checked)}/> {copy.skipDuplicatesLabel}</label><div className="import-summary"><strong>{copy.readyToImport(valid.length)}</strong><span>{copy.importCounts(rows.filter((row) => row.error).length, rows.filter((row) => row.duplicate).length)}</span></div>{rows.some((row) => row.error) && <div className="import-errors" role="status"><strong>{copy.invalidRowsSkipped}</strong>{rows.filter((row) => row.error).slice(0, 5).map((row) => <span key={row.row}>Row {row.row}: {row.error}</span>)}{rows.filter((row) => row.error).length > 5 && <span>{copy.additionalSkipped}</span>}</div>}<div className="import-preview">{rows.slice(0, 6).map((row) => <div key={row.row}><span>Row {row.row}</span><strong>{row.trade ? `${row.trade.symbol} · ${row.trade.tradeDate} · ${currency(Number(row.trade.pnl))}` : copy.needsAttention}</strong><small className={row.error ? "loss-text" : ""}>{row.error || (row.duplicate ? copy.possibleDuplicate : copy.readyRow)}</small></div>)}{rows.length > 6 && <small>{copy.showingFirst6(rows.length)}</small>}</div></>}
-    {error && <div className="form-error" role="alert">{error}</div>}<div className="modal-actions"><span className="actions-spacer"/><button type="button" className="button-secondary" onClick={onClose}>{copy.cancel}</button><button type="button" className="button-primary" disabled={!preview || busy} onClick={submit}><Upload size={16}/> {busy ? copy.importing : copy.importNTrades(valid.length)}</button></div></div></ModalShell>;
+
+  function triggerBlobDownload(filename: string, blob: Blob) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function downloadSampleReport(kind: "xlsx" | "csv") {
+    const dummy = createThreeMonthDummyData(locale);
+    const dummyAccounts = dummy.settings.accounts ?? [DEFAULT_ACCOUNT];
+    if (kind === "xlsx") {
+      const bytes = exportTradesXlsx(dummy.trades, dummyAccounts, locale);
+      triggerBlobDownload(
+        `bloom-3m-sample-report-${todayString()}.xlsx`,
+        new Blob([bytes.buffer as ArrayBuffer], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
+      );
+    } else {
+      const csvText = exportTradesCsv(dummy.trades, dummyAccounts, locale);
+      triggerBlobDownload(
+        `bloom-3m-sample-report-${todayString()}.csv`,
+        new Blob([csvText], { type: "text/csv;charset=utf-8" }),
+      );
+    }
+  }
+
+  async function choose(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const data = await parseImportFile(file);
+      setPreview(data);
+      setMapping(data.mapping);
+      setError("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Couldn't read this file.");
+    }
+  }
+  async function submit() {
+    if (!preview || !mapping) return;
+    try {
+      csvRowsToTrades(preview, mapping, accounts, defaultAccount, trades);
+      if (!valid.length) {
+        throw new Error(
+          locale === "id"
+            ? "Tidak ada baris valid untuk diimpor. Periksa pemetaan kolom dan pesan error."
+            : "There are no valid rows to import. Check the column mapping and row errors.",
+        );
+      }
+      const newAccounts = collectNewAccountsFromRows(valid, accounts);
+      setBusy(true);
+      const ok = await onImport(valid.map((row) => row.trade!), newAccounts);
+      setBusy(false);
+      if (ok) onClose();
+    } catch (caught) {
+      setBusy(false);
+      setError(caught instanceof Error ? caught.message : "Couldn't import.");
+    }
+  }
+  return (
+    <ModalShell onClose={onClose} label="import-modal-title" wide>
+      <ModalHeader id="import-modal-title" title={copy.importCsvTitle} description={copy.importCsvDesc} onClose={onClose} closeLabel={copy.close} />
+      <div className="modal-form import-content">
+        <div className="import-help">
+          <ShieldCheck size={18} />
+          <span>{copy.importHelp}</span>
+        </div>
+        <label className="csv-upload">
+          <Upload size={20} />
+          <strong>{preview ? copy.chooseAnotherCsv : copy.chooseCsvFile}</strong>
+          <span>{copy.csvLimitSub}</span>
+          <input
+            type="file"
+            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            onChange={choose}
+          />
+        </label>
+        <div className="import-sample-bar">
+          <button type="button" className="button-quiet" onClick={() => downloadSampleReport("xlsx")}>
+            <FileSpreadsheet size={14} /> {copy.downloadSampleXlsx}
+          </button>
+          <button type="button" className="button-quiet" onClick={() => downloadSampleReport("csv")}>
+            <Download size={14} /> {copy.downloadSampleCsv}
+          </button>
+        </div>
+        {preview && mapping && (
+          <>
+            <div className="form-subheading">
+              <strong>{copy.mapColumnsTitle}</strong>
+              <span>{copy.mapColumnsSub}</span>
+            </div>
+            <div className="mapping-grid">
+              {CSV_FIELDS.map((field) => (
+                <label key={field}>
+                  {csvFieldLabel(field, locale)}
+                  <select value={mapping[field]} onChange={(event) => setMapping({ ...mapping, [field]: event.target.value })}>
+                    <option value="">{copy.notMapped}</option>
+                    {preview.headers.map((header) => (
+                      <option key={header} value={header}>
+                        {header}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+            <label className="check-line">
+              <input type="checkbox" checked={skipDuplicates} onChange={(event) => setSkipDuplicates(event.target.checked)} /> {copy.skipDuplicatesLabel}
+            </label>
+            <div className="import-summary">
+              <strong>{copy.readyToImport(valid.length)}</strong>
+              <span>{copy.importCounts(rows.filter((row) => row.error).length, rows.filter((row) => row.duplicate).length)}</span>
+            </div>
+            {rows.some((row) => row.error) && (
+              <div className="import-errors" role="status">
+                <strong>{copy.invalidRowsSkipped}</strong>
+                {rows
+                  .filter((row) => row.error)
+                  .slice(0, 5)
+                  .map((row) => (
+                    <span key={row.row}>
+                      Row {row.row}: {row.error}
+                    </span>
+                  ))}
+                {rows.filter((row) => row.error).length > 5 && <span>{copy.additionalSkipped}</span>}
+              </div>
+            )}
+            <div className="import-preview">
+              {rows.slice(0, 6).map((row) => (
+                <div key={row.row}>
+                  <span>Row {row.row}</span>
+                  <strong>{row.trade ? `${row.trade.symbol} · ${row.trade.tradeDate} · ${currency(Number(row.trade.pnl))}` : copy.needsAttention}</strong>
+                  <small className={row.error ? "loss-text" : ""}>{row.error || (row.duplicate ? copy.possibleDuplicate : copy.readyRow)}</small>
+                </div>
+              ))}
+              {rows.length > 6 && <small>{copy.showingFirst6(rows.length)}</small>}
+            </div>
+          </>
+        )}
+        {error && (
+          <div className="form-error" role="alert">
+            {error}
+          </div>
+        )}
+        <div className="modal-actions">
+          <span className="actions-spacer" />
+          <button type="button" className="button-secondary" onClick={onClose}>
+            {copy.cancel}
+          </button>
+          <button type="button" className="button-primary" disabled={!preview || busy} onClick={submit}>
+            <Upload size={16} /> {busy ? copy.importing : copy.importNTrades(valid.length)}
+          </button>
+        </div>
+      </div>
+    </ModalShell>
+  );
 }
 
 function parseBalanceField(raw: string): { ok: true; value: number | null } | { ok: false } {
@@ -498,7 +680,9 @@ export function SettingsModal({
   onBackup,
   onRestore,
   onExportCsv,
+  onExportXlsx,
   onImportCsv,
+  onLoadDummyData,
   onAddAccount,
   onUpdateAccount,
   onRemoveAccount,
@@ -518,7 +702,9 @@ export function SettingsModal({
   onBackup: () => Promise<void>;
   onRestore: (file: File) => Promise<boolean>;
   onExportCsv: () => void;
+  onExportXlsx?: () => void;
   onImportCsv: () => void;
+  onLoadDummyData?: () => Promise<boolean>;
   onAddAccount: (name: string, startingBalance: number | null) => Promise<boolean>;
   onUpdateAccount: (id: string, patch: { name: string; startingBalance: number | null }) => Promise<boolean>;
   onRemoveAccount: (id: string) => Promise<boolean>;
@@ -798,14 +984,41 @@ export function SettingsModal({
                 <p>{copy.tradeCsvDesc}</p>
               </div>
               <div className="settings-actions">
+                {onExportXlsx && (
+                  <button type="button" className="button-secondary" onClick={onExportXlsx}>
+                    <FileSpreadsheet size={15} /> {copy.exportExcelBtn}
+                  </button>
+                )}
                 <button type="button" className="button-secondary" onClick={onExportCsv}>
-                  {copy.exportBtn}
+                  <Download size={15} /> {copy.exportBtn}
                 </button>
                 <button type="button" className="button-secondary" onClick={onImportCsv}>
-                  {copy.importBtn}
+                  <Upload size={15} /> {copy.importBtn}
                 </button>
               </div>
             </div>
+            {onLoadDummyData && (
+              <div className="settings-row">
+                <div>
+                  <strong>{copy.dummyDatasetTitle}</strong>
+                  <p>{copy.dummyDatasetDesc}</p>
+                </div>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  disabled={busy}
+                  onClick={async () => {
+                    if (!window.confirm(copy.confirmLoadDummy)) return;
+                    setBusy(true);
+                    const ok = await onLoadDummyData();
+                    setBusy(false);
+                    if (ok) onClose();
+                  }}
+                >
+                  <Sparkles size={15} /> {busy ? copy.loadingDummyBtn : copy.loadDummyDatasetBtn}
+                </button>
+              </div>
+            )}
             <div className="data-warning">
               <CircleHelp size={15} /> {copy.dataWarning}
             </div>
