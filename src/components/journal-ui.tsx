@@ -115,7 +115,7 @@ export function StatsCards({ trades, hidden, locale = "en" }: { trades: Trade[];
     { label: copy.statProfitFactor, value: stats.profitFactor, icon: TrendingUp, tint: "peach", note: null, className: "" },
     { label: copy.statTradesLogged, value: String(stats.count), icon: BookOpenText, tint: "butter", note: null, className: "" },
   ];
-  return <div className="stats-grid">{items.map(({ label, value, icon: Icon, tint, note, className }) => <article className="stat-card card" key={label}>
+  return <div className="stats-grid">{items.map(({ label, value, icon: Icon, tint, note, className }) => <article className={`stat-card card stat-card-${tint}`} key={label}>
     <div className="stat-top"><span>{label}</span><span className={`stat-icon ${tint}`}><Icon size={17} strokeWidth={1.8} /></span></div>
     <strong className={className}>{value}</strong>{note && <div className="stat-note"><span className={`stat-note-dot ${tint}`} />{note}</div>}
   </article>)}</div>;
@@ -130,15 +130,39 @@ export function PerformanceChart({ trades, period, onPeriodChange, hidden, compa
   const copy = UI_COPY[locale];
   const data = useMemo(() => performanceSeries(trades, period), [trades, period]);
   const stats = getStats(trades);
+  const isNegative = stats.net < 0;
+  const fillGradientId = isNegative ? "pnl-gradient-loss" : "pnl-gradient";
+  const strokeGradientId = isNegative ? "pnl-stroke-loss" : "pnl-stroke";
+  const dotFill = isNegative ? "var(--loss)" : "var(--chart-line)";
   const startTime = data[0]?.time || 0; const endTime = data.at(-1)?.time || startTime;
   const ticks = [...new Set(Array.from({ length: 5 }, (_, index) => startTime + Math.round((endTime - startTime) * index / 4 / 86_400_000) * 86_400_000))];
   const intlTag = locale === "id" ? "id-ID" : "en-US";
   return <section className={`card performance-card ${compact ? "compact-chart" : ""}`}>
     <CardTitle title={copy.perfTitle} description={copy.perfDesc} action={<PeriodControl value={period} onChange={onPeriodChange} locale={locale} />} />
-    <div className="chart-headline"><strong>{currency(stats.net, stats.net > 0, hidden)}</strong><span><i /> {copy.cumNetPnl}</span></div>
+    <div className="chart-headline"><strong className={isNegative ? "loss-text" : ""}>{currency(stats.net, stats.net > 0, hidden)}</strong><span><i className={isNegative ? "loss-dot" : ""} /> {copy.cumNetPnl}</span></div>
     {trades.length ? <div className="chart-wrap" key={period} role="img" aria-label={`Cumulative realized P and L for ${trades.length} trades: ${hidden ? "amount hidden" : currency(stats.net)}. The chart starts at zero for the selected period.`}>
       <ResponsiveContainer width="100%" height="100%"><AreaChart data={data} margin={{ top: 10, right: 6, left: -19, bottom: 0 }}>
-        <defs><linearGradient id="pnl-gradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--chart-line)" stopOpacity={0.3}/><stop offset="95%" stopColor="var(--chart-line)" stopOpacity={0.015}/></linearGradient></defs>
+        <defs>
+          <linearGradient id="pnl-gradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--chart-glow-top)" stopOpacity={0.38}/>
+            <stop offset="48%" stopColor="var(--chart-glow-mid)" stopOpacity={0.14}/>
+            <stop offset="98%" stopColor="var(--chart-line)" stopOpacity={0.01}/>
+          </linearGradient>
+          <linearGradient id="pnl-stroke" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="var(--chart-stroke-start)"/>
+            <stop offset="55%" stopColor="var(--chart-line)"/>
+            <stop offset="100%" stopColor="var(--chart-stroke-end)"/>
+          </linearGradient>
+          <linearGradient id="pnl-gradient-loss" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--loss)" stopOpacity={0.28}/>
+            <stop offset="52%" stopColor="var(--loss)" stopOpacity={0.1}/>
+            <stop offset="98%" stopColor="var(--loss)" stopOpacity={0.01}/>
+          </linearGradient>
+          <linearGradient id="pnl-stroke-loss" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="var(--loss)"/>
+            <stop offset="100%" stopColor="var(--chart-loss-end)"/>
+          </linearGradient>
+        </defs>
         <CartesianGrid vertical={false} stroke="var(--chart-grid)" strokeDasharray="3 5" />
         <XAxis dataKey="time" type="number" scale="time" domain={["dataMin", "dataMax"]} ticks={ticks} tickFormatter={(value: number) => new Date(value).toLocaleDateString(intlTag, { month: "short", day: "numeric", timeZone: "UTC" })} axisLine={false} tickLine={false} minTickGap={30} tick={{ fill: "var(--muted)", fontSize: 11 }} dy={10}/>
         <YAxis axisLine={false} tickLine={false} tickFormatter={(value: number) => compactCurrency(value, hidden)} tick={{ fill: "var(--muted)", fontSize: 11 }} width={64} domain={["auto", "auto"]}/>
@@ -147,7 +171,7 @@ export function PerformanceChart({ trades, period, onPeriodChange, hidden, compa
           const point = payload[0].payload as { date: string; pnl: number; daily: number; trades: number };
           return <div className="chart-tooltip"><strong>{shortDate(point.date, true, locale)}</strong><span>{copy.tooltipCumulative} {currency(point.pnl, point.pnl > 0, hidden)}</span><small>{copy.tooltipOnDay(point.trades, currency(point.daily, point.daily > 0, hidden))}</small></div>;
         }} />
-        <Area type="stepAfter" dataKey="pnl" stroke="var(--chart-line)" strokeWidth={2.5} fill="url(#pnl-gradient)" activeDot={{ r: 5, fill: "var(--chart-line)", stroke: "var(--surface)", strokeWidth: 3 }} isAnimationActive={false}/>
+        <Area type="stepAfter" dataKey="pnl" stroke={`url(#${strokeGradientId})`} strokeWidth={2.65} fill={`url(#${fillGradientId})`} activeDot={{ r: 5, fill: dotFill, stroke: "var(--surface)", strokeWidth: 3 }} isAnimationActive={false}/>
       </AreaChart></ResponsiveContainer>
     </div> : <div className="chart-empty"><span><TrendingUp size={20}/></span><strong>{copy.noChartTitle}</strong></div>}
     {trades.length > 0 && <details className="chart-data"><summary>{copy.viewChartTable}</summary><div><table><thead><tr><th>{copy.colDate}</th><th>{copy.colTrades}</th><th>{copy.colDailyPnl}</th><th>{copy.colCumulative}</th></tr></thead><tbody>{data.slice(-60).map((point) => <tr key={point.date}><td>{shortDate(point.date, true, locale)}</td><td>{point.trades}</td><td>{currency(point.daily, point.daily > 0, hidden)}</td><td>{currency(point.pnl, point.pnl > 0, hidden)}</td></tr>)}</tbody></table></div></details>}

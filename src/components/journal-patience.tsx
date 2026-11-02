@@ -937,12 +937,19 @@ export function PatienceView({
             <AreaChart data={sim.points} margin={{ top: 10, right: 8, left: -12, bottom: 0 }}>
               <defs>
                 <linearGradient id="patience-patient-fill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--chart-line)" stopOpacity={0.28}/>
-                  <stop offset="95%" stopColor="var(--chart-line)" stopOpacity={0.02}/>
+                  <stop offset="0%" stopColor="var(--chart-glow-top)" stopOpacity={0.35}/>
+                  <stop offset="50%" stopColor="var(--chart-glow-mid)" stopOpacity={0.13}/>
+                  <stop offset="98%" stopColor="var(--chart-line)" stopOpacity={0.01}/>
+                </linearGradient>
+                <linearGradient id="patience-patient-stroke" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor="var(--chart-stroke-start)"/>
+                  <stop offset="55%" stopColor="var(--chart-line)"/>
+                  <stop offset="100%" stopColor="var(--chart-stroke-end)"/>
                 </linearGradient>
                 <linearGradient id="patience-revenge-fill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--loss)" stopOpacity={0.18}/>
-                  <stop offset="95%" stopColor="var(--loss)" stopOpacity={0.01}/>
+                  <stop offset="0%" stopColor="var(--loss)" stopOpacity={0.22}/>
+                  <stop offset="55%" stopColor="var(--loss)" stopOpacity={0.08}/>
+                  <stop offset="98%" stopColor="var(--loss)" stopOpacity={0.01}/>
                 </linearGradient>
               </defs>
               <CartesianGrid vertical={false} stroke="var(--chart-grid)" strokeDasharray="3 5" />
@@ -978,8 +985,8 @@ export function PatienceView({
               <Area
                 type="monotone"
                 dataKey="patient"
-                stroke="var(--chart-line)"
-                strokeWidth={2.5}
+                stroke="url(#patience-patient-stroke)"
+                strokeWidth={2.65}
                 fill="url(#patience-patient-fill)"
                 activeDot={{ r: 5, fill: "var(--chart-line)", stroke: "var(--surface)", strokeWidth: 3 }}
                 isAnimationActive={false}
