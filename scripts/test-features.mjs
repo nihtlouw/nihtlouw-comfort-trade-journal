@@ -822,6 +822,40 @@ try {
   assert.equal(await page.locator(".yt-watch-card h3").innerText(), "My Daily Patience Reminder");
   assert.equal(await page.locator(".yt-watch-card .yt-resume-badge").innerText(), "Resume 2:10");
   assert.equal(await page.locator("aside.overview-side .strategy-shelf-card .strategy-mini-row").count(), 5);
+
+  // Verify Gradient & Tactile Depth Polish (KPI corner radial glows, multi-stop primary button & progress bar gradients, 3-stop Equity Curve SVG gradients)
+  const gradientChecks = await page.evaluate(() => {
+    const primaryBtnBg = getComputedStyle(document.querySelector(".button-primary")).backgroundImage;
+    const sageCardBg = getComputedStyle(document.querySelector(".stat-card-sage")).backgroundImage;
+    const lavenderCardBg = getComputedStyle(document.querySelector(".stat-card-lavender")).backgroundImage;
+    const peachCardBg = getComputedStyle(document.querySelector(".stat-card-peach")).backgroundImage;
+    const butterCardBg = getComputedStyle(document.querySelector(".stat-card-butter")).backgroundImage;
+    const balancePrimaryBg = getComputedStyle(document.querySelector(".balance-primary")).backgroundImage;
+    const progressFillBg = getComputedStyle(document.querySelector(".progress-track > span")).backgroundImage;
+    const pnlStops = document.querySelectorAll("linearGradient#pnl-gradient stop").length;
+    const pnlStrokeStops = document.querySelectorAll("linearGradient#pnl-stroke stop").length;
+    return {
+      primaryBtnBg,
+      sageCardBg,
+      lavenderCardBg,
+      peachCardBg,
+      butterCardBg,
+      balancePrimaryBg,
+      progressFillBg,
+      pnlStops,
+      pnlStrokeStops,
+    };
+  });
+  assert.match(gradientChecks.primaryBtnBg, /linear-gradient/);
+  assert.match(gradientChecks.sageCardBg, /radial-gradient/);
+  assert.match(gradientChecks.lavenderCardBg, /radial-gradient/);
+  assert.match(gradientChecks.peachCardBg, /radial-gradient/);
+  assert.match(gradientChecks.butterCardBg, /radial-gradient/);
+  assert.match(gradientChecks.balancePrimaryBg, /linear-gradient/);
+  assert.match(gradientChecks.progressFillBg, /linear-gradient/);
+  assert.equal(gradientChecks.pnlStops, 3, "Equity curve area fill uses 3-stop gradient");
+  assert.equal(gradientChecks.pnlStrokeStops, 3, "Equity curve stroke uses 3-stop gradient");
+
   console.log("PASS: Simplified YouTube watch panel + right-side Strategy PDF & idea link mini-list work offline and persist.");
   if (!external) {
     const didFetch = await page.evaluate((url) => fetch(url).then(() => true).catch(() => false), new URL("api/private-test", base).href); assert.equal(didFetch, false, "API responses must not be cached");
