@@ -6,10 +6,11 @@ import type { StorageMode } from "@/lib/attachments";
 import { evaluateTradeProcess, getProcessMatrix, getSetupBlueprintStats, groupTrades, groupTradesByTag, maxRealizedDrawdown, previousPeriodTrades } from "@/lib/analytics";
 import { currency, filterTrades, formatRMultiple, getAccountBalanceSummary, getStats, shortDate, todayString, type Period } from "@/lib/format";
 import { translateAccountName, translateMarket, translateMood, translatePlaybookGroup, translateSide, UI_COPY } from "@/lib/i18n";
-import { DEFAULT_ACCOUNT, MARKETS, MOODS, type AppLocale, type DayJournalEntry, type Intention, type JournalSettings, type PlaybookRule, type SetupBlueprint, type Trade, type WeeklyReflection } from "@/lib/types";
+import { DEFAULT_ACCOUNT, MARKETS, MOODS, type AppLocale, type DayJournalEntry, type Intention, type JournalSettings, type PlaybookRule, type SavedYoutubeVideo, type SetupBlueprint, type Trade, type WeeklyReflection } from "@/lib/types";
 import { RiskOverview } from "@/components/journal-review";
 import { AccountBalanceCard, CardTitle, GoalCard, MoodCard, PerformanceChart, StatsCards, TradeTable, TradingCalendar } from "@/components/journal-ui";
 import { ChartbookGallery, type ChartLightboxSlide, type StageFilterValue } from "@/components/chart-lightbox";
+import { YoutubeWatchPanel } from "@/components/youtube-watch-panel";
 
 export type View = "Overview" | "Trade journal" | "Analytics" | "Calendar" | "Playbook" | "Mindset" | "Patience" | "Goals" | "Weekly review";
 export type CommonProps = {
@@ -27,6 +28,7 @@ export type CommonProps = {
   onRiskSettings: () => void;
   onAccountsSettings: () => void;
   onPreviewCharts?: (trade: Trade) => void;
+  onUpdateYoutubeLinks?: (links: SavedYoutubeVideo[], message?: string) => Promise<boolean> | void;
   period: Period;
   onPeriod: (period: Period) => void;
 };
@@ -62,8 +64,7 @@ export function Overview(props: CommonProps) {
     <StatsCards trades={periodTrades} hidden={props.hidden} locale={locale}/>
     <AccountBalanceCard summary={balanceSummary} hidden={props.hidden} locale={locale} onOpenAccounts={props.onAccountsSettings}/>
     <PerformanceChart trades={periodTrades} period={props.period} onPeriodChange={props.onPeriod} hidden={props.hidden} locale={locale}/>
-    <TradeTable trades={props.trades.slice(0, 5)} hidden={props.hidden} onEdit={props.onEditTrade} onNew={props.onNewTrade} onViewAll={() => props.onView("Trade journal")} onPreviewCharts={props.onPreviewCharts} compact locale={locale}/>
-    <TradingCalendar trades={props.trades} dayJournals={props.settings.dayJournals} hidden={props.hidden} onDay={props.onDay} compact locale={locale}/>
+    <YoutubeWatchPanel videos={props.settings.youtubeLinks ?? []} locale={locale} onChange={(links, message) => props.onUpdateYoutubeLinks?.(links, message)}/>
     {!welcomeDismissed && (
       <section className="welcome-banner welcome-banner-compact" style={{ backgroundImage: `linear-gradient(90deg, var(--hero-fade) 0%, var(--hero-fade-soft) 37%, transparent 80%), url('${basePath}/images/bloom-landscape.png')` }}>
         <button type="button" className="icon-button welcome-dismiss-btn" onClick={dismissWelcome} aria-label={copy.dismissBannerAria}><X size={16}/></button>

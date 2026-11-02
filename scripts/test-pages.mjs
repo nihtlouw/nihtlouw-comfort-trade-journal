@@ -45,7 +45,10 @@ try {
   page.on("request", (request) => { if (new URL(request.url()).pathname.includes("/api/")) apiRequests.push(request.url()); });
   page.on("dialog", (dialog) => dialog.accept());
   await page.goto(url, { waitUntil: "networkidle" }); await page.locator(".app-shell").waitFor();
-  assert.equal(await page.locator(".trade-row").count(), 5); assert.equal(await page.locator(".sidebar").evaluate((element) => getComputedStyle(element).position), "sticky");
+  assert.equal(await page.locator(".trade-row").count(), 0, "Recent trades panel removed from Overview");
+  assert.equal(await page.locator(".calendar-card").count(), 0, "Trading activity panel removed from Overview");
+  assert.equal(await page.locator(".yt-watch-card").count(), 1, "YouTube watch & reminders panel present on Overview");
+  assert.equal(await page.locator(".sidebar").evaluate((element) => getComputedStyle(element).position), "sticky");
   const imageUrl = await page.locator(".welcome-banner").evaluate((element) => getComputedStyle(element).backgroundImage);
   assert.match(imageUrl, /bloom-landscape\.png/);
   assert.equal((await page.request.get(new URL("images/bloom-landscape.png", url).href)).status(), 200);
@@ -60,8 +63,11 @@ try {
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg==", "base64");
   await page.locator(".upload-image input").setInputFiles({ name: "chart.png", mimeType: "image/png", buffer: png });
   await page.getByRole("button", { name: "Save trade", exact: true }).click(); await page.locator(".modal").waitFor({ state: "detached" });
-  await page.reload({ waitUntil: "networkidle" }); await page.getByLabel("Edit UI-TEST trade").waitFor();
+  await page.reload({ waitUntil: "networkidle" });
+  await page.locator(".sidebar-nav").getByRole("button", { name: "Trade journal", exact: true }).click();
+  await page.getByLabel("Edit UI-TEST trade").waitFor();
   await page.getByLabel("Edit UI-TEST trade").click(); assert.equal(await page.getByLabel("Initial risk (USD)").inputValue(), "100"); assert.equal(await page.locator(".attachment-thumb").count(), 1); await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.locator(".sidebar-nav").getByRole("button", { name: "Overview", exact: true }).click();
   await page.getByRole("button", { name: "Focused", exact: true }).click(); await page.locator(".goal-button").click();
   await page.reload({ waitUntil: "networkidle" }); assert.equal(await page.getByRole("button", { name: "Focused", exact: true }).getAttribute("aria-pressed"), "true"); assert.match(await page.locator(".goal-progress-label").first().innerText(), /1/);
   console.log("PASS: advanced trades, screenshots, mood history, and goal progress persist.");
@@ -251,6 +257,7 @@ try {
   });
   assert.equal(introHiddenWhenReduced, "none", "enabling reduced motion during the crossfade reveals the app");
   await motion.getByRole("button", { name: "Close", exact: true }).click(); await motion.locator(".modal").waitFor({ state: "detached" });
+  await motion.locator(".sidebar-nav").getByRole("button", { name: "Calendar", exact: true }).click();
   await motion.locator(".calendar-day").first().hover();
   assert.equal(await motion.locator(".calendar-day").first().evaluate((element) => getComputedStyle(element).transform), "none");
   await motion.locator(".sidebar-nav").getByRole("button", { name: "Mindset", exact: true }).click();

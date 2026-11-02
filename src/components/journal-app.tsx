@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ElementType } from "react";
 import { BarChart3, BookOpenCheck, CalendarDays, CheckCircle2, ChevronDown, CircleAlert, ClipboardList, CloudDownload, Eye, EyeOff, Heart, Hourglass, LayoutDashboard, Menu, NotebookPen, Plus, Search, Settings2, Smartphone, Sparkles, Sprout, Target, X } from "lucide-react";
-import type { AppLocale, DayJournalEntry, Intention, JournalData, JournalSettings, PlaybookRule, SetupBlueprint, Trade, TradeAttachment, TradingAccount, WeeklyReflection } from "@/lib/types";
+import type { AppLocale, DayJournalEntry, Intention, JournalData, JournalSettings, PlaybookRule, SavedYoutubeVideo, SetupBlueprint, Trade, TradeAttachment, TradingAccount, WeeklyReflection } from "@/lib/types";
 import { DEFAULT_ACCOUNT, MAX_JOURNAL_IMAGE_BYTES } from "@/lib/types";
 import { upsertDayJournal } from "@/lib/analytics";
 import { todayString, type Period } from "@/lib/format";
@@ -399,6 +399,7 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
     onRiskSettings: () => openSettings("Risk"),
     onAccountsSettings: () => openSettings("Accounts"),
     onPreviewCharts: openTradeCharts,
+    onUpdateYoutubeLinks: (youtubeLinks: SavedYoutubeVideo[], message?: string) => updateSettings({ youtubeLinks }, message),
     period,
     onPeriod: setPeriod,
   };

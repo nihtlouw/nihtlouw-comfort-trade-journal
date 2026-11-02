@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { ATTACHMENT_STAGES, DEFAULT_ACCOUNT, MAX_ATTACHMENT_BYTES, MAX_JOURNAL_IMAGE_BYTES, type JournalData } from "@/lib/types";
+import { ATTACHMENT_STAGES, DEFAULT_ACCOUNT, MAX_ATTACHMENT_BYTES, MAX_JOURNAL_IMAGE_BYTES, YOUTUBE_VIDEO_CATEGORIES, type JournalData } from "@/lib/types";
+import { YOUTUBE_ID_REGEX } from "@/lib/youtube";
 
 export function isDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -86,6 +87,17 @@ const settings = z.object({
     targetPlan: z.string().max(280).optional().default(""),
     notes: z.string().max(400).optional().default(""),
   })).max(30).optional(),
+  youtubeLinks: z.array(z.object({
+    id,
+    videoId: z.string().regex(YOUTUBE_ID_REGEX, "Invalid YouTube video ID"),
+    url: z.string().min(1).max(300),
+    title: z.string().min(1).max(140),
+    category: z.enum(YOUTUBE_VIDEO_CATEGORIES).optional().default("followup"),
+    note: z.string().max(400).optional().default(""),
+    startSeconds: z.number().int().min(1).max(86400).optional(),
+    pinned: z.boolean().optional().default(false),
+    addedAt: date,
+  })).max(30).optional(),
 });
 const journal = z.object({ trades: z.array(trade).max(10000), settings }).superRefine((value, ctx) => {
   const ids = value.trades.map((item) => item.id);
@@ -101,6 +113,8 @@ const journal = z.object({ trades: z.array(trade).max(10000), settings }).superR
   if (new Set(dayJournalDates).size !== dayJournalDates.length) ctx.addIssue({ code: "custom", message: "Duplicate day journal dates" });
   const blueprintIds = value.settings.setupBlueprints?.map((item) => item.id) ?? [];
   if (new Set(blueprintIds).size !== blueprintIds.length) ctx.addIssue({ code: "custom", message: "Duplicate setup blueprint IDs" });
+  const youtubeIds = value.settings.youtubeLinks?.map((item) => item.id) ?? [];
+  if (new Set(youtubeIds).size !== youtubeIds.length) ctx.addIssue({ code: "custom", message: "Duplicate YouTube link IDs" });
   const images = new Map<string, { name: string; type: string; size: number }>();
   for (const item of value.trades.flatMap((entry) => entry.attachments)) {
     const existing = images.get(item.id);
@@ -141,6 +155,7 @@ export function normalizeJournalData(input: unknown): JournalData {
       walkAwayLogs: data.settings.walkAwayLogs ?? [],
       dayJournals: data.settings.dayJournals ?? [],
       setupBlueprints: data.settings.setupBlueprints ?? [],
+      youtubeLinks: data.settings.youtubeLinks ?? [],
     },
   };
 }
