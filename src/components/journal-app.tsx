@@ -289,17 +289,17 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
     notify(locale === "id" ? "Laporan CSV diunduh." : "CSV report downloaded.");
   }
   function exportXlsx(trades: Trade[]) {
-    const bytes = exportTradesXlsx(trades, dataRef.current.settings.accounts ?? [DEFAULT_ACCOUNT], locale);
-    const blob = new Blob([bytes.buffer as ArrayBuffer], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `bloom-trades-${todayString()}.xlsx`;
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    notify(locale === "id" ? "Laporan Excel (.xlsx) diunduh." : "Excel (.xlsx) report downloaded.");
+    try {
+      const bytes = exportTradesXlsx(trades, dataRef.current.settings.accounts ?? [DEFAULT_ACCOUNT], locale);
+      downloadFile(
+        `bloom-trades-${todayString()}.xlsx`,
+        bytes.slice(),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      notify(locale === "id" ? "Laporan Excel (.xlsx) diunduh." : "Excel (.xlsx) report downloaded.");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Couldn’t export Excel report.", true);
+    }
   }
   async function restore(file: File) {
     let staged: TradeAttachment[] = [];

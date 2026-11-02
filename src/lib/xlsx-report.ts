@@ -1,6 +1,7 @@
 import type { AppLocale, Trade, TradingAccount } from "@/lib/types";
 import { getStats, tradeRMultiple } from "@/lib/format";
-import { groupTrades, maxRealizedDrawdown, type TradeGroupRow } from "@/lib/analytics";
+import { evaluateTradeProcess, groupTrades, maxRealizedDrawdown, type TradeGroupRow } from "@/lib/analytics";
+import { translateMarket, translateMood } from "@/lib/i18n";
 import { serializeChecklist } from "@/lib/csv";
 
 function escapeXml(value: string): string {
@@ -45,55 +46,79 @@ export function colLettersToIndex(letters: string): number {
 type CellSpec =
   | { kind: "empty"; style?: number }
   | { kind: "str"; value: string; style?: number; rawSafe?: boolean }
-  | { kind: "num"; value: number; style?: number };
+  | { kind: "num"; value: number; style?: number }
+  | { kind: "formula"; formula: string; value: number; style?: number };
 
-// Style indices in xl/styles.xml:
-// 0 = default
-// 1 = report title (14pt bold white on botanical dark green #2E5339)
-// 2 = report subtitle / meta label (bold muted)
-// 3 = KPI label (bold on soft sage #EDF5EE, thin border)
-// 4 = KPI value text/count (bold on #FFFFFF, thin border)
-// 5 = KPI currency USD ($#,##0.00;[Red]-$#,##0.00;"$0.00", bold, thin border)
-// 6 = table header (bold white on #2E5339, centered/left, border)
-// 7 = data text cell (thin border)
-// 8 = data centered text cell (thin border, centered)
-// 9 = data number generic (0.00####, thin border)
-// 10 = data USD currency ($#,##0.00;[Red]-$#,##0.00;"$0.00", thin border)
-// 11 = data R-multiple (+0.00"R";-0.00"R";0.00"R", thin border)
-// 12 = Win pill (bold green text #245A36 on #E7F4E8, centered, thin border)
-// 13 = Loss pill (bold terracotta #8F3B2B on #FBEBE7, centered, thin border)
-// 14 = Breakeven pill (bold #6E6545 on #F7F3E6, centered, thin border)
-// 15 = Total footer label (bold on #EDF5EE, top+bottom border)
-// 16 = Total footer USD (bold $#,##0.00;[Red]-$#,##0.00;"$0.00" on #EDF5EE, top+bottom border)
-// 17 = Section subheader (11pt bold #2E5339)
+// Style indices in xl/styles.xml (strictly compliant with ECMA-376 OpenXML):
+// 0  = Normal default
+// 1  = Report Banner Title (13pt bold white on deep botanical green #1F4330, v-center)
+// 2  = Report Subtitle Strip (9.5pt italic/medium #2E5339 on soft sage #EDF5EE, v-center)
+// 3  = Section Header (11pt bold #1F4330, bottom accent border)
+// 4  = Table Header Left (10pt bold white on #2E5339, wrap, thin border)
+// 5  = Table Header Center (10pt bold white on #2E5339, center, wrap, thin border)
+// 6  = Table Header Right (10pt bold white on #2E5339, right, wrap, thin border)
+// 7  = KPI Label (9.5pt bold #2E5339 on #F2F7F3, thin border)
+// 8  = KPI Value Text/Int (10.5pt bold #1F2922 on #FFFFFF, right, thin border)
+// 9  = KPI Value USD Neutral (10.5pt bold #1F2922, $#,##0.00, right, thin border)
+// 10 = KPI Value USD Positive (10.5pt bold #1B6535, +$#,##0.00, right, thin border)
+// 11 = KPI Value USD Negative (10.5pt bold #A63222, -$#,##0.00, right, thin border)
+// 12 = Data Text Odd (#FFFFFF, thin border)
+// 13 = Data Text Even (#F8FBF8, thin border)
+// 14 = Data Center Odd (#FFFFFF, center, thin border)
+// 15 = Data Center Even (#F8FBF8, center, thin border)
+// 16 = Data Price/Qty Odd (#FFFFFF, 0.00####, right, thin border)
+// 17 = Data Price/Qty Even (#F8FBF8, 0.00####, right, thin border)
+// 18 = Data USD Neutral Odd (#FFFFFF, $#,##0.00, right, thin border)
+// 19 = Data USD Neutral Even (#F8FBF8, $#,##0.00, right, thin border)
+// 20 = Data USD Positive (bold #1B6535, +$#,##0.00, right, thin border)
+// 21 = Data USD Negative (bold #A63222, -$#,##0.00, right, thin border)
+// 22 = Data R Positive (bold #1B6535, +0.00"R", right, thin border)
+// 23 = Data R Negative (bold #A63222, -0.00"R", right, thin border)
+// 24 = Win Pill (bold #1B6535 on #E7F4E8, center, thin border)
+// 25 = Loss Pill (bold #9E2F20 on #FBEBE7, center, thin border)
+// 26 = Breakeven Pill (bold #6E6545 on #F7F3E6, center, thin border)
+// 27 = Total Footer Text/Label (bold #1F4330 on #EAF3EC, top medium + bottom double border)
+// 28 = Total Footer Center (bold #1F4330 on #EAF3EC, center, top medium + bottom double border)
+// 29 = Total Footer USD Neutral (bold #1F4330 on #EAF3EC, $#,##0.00, right, top+double border)
+// 30 = Total Footer USD Positive (bold #1B6535 on #EAF3EC, +$#,##0.00, right, top+double border)
+// 31 = Total Footer USD Negative (bold #A63222 on #EAF3EC, -$#,##0.00, right, top+double border)
+// 32 = Wrapped Notes Odd (#FFFFFF, wrapText, thin border)
+// 33 = Wrapped Notes Even (#F8FBF8, wrapText, thin border)
 
 function buildStylesXml(): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <numFmts count="3">
-    <numFmt numFmtId="164" formatCode="$#,##0.00;[Red]-$#,##0.00;&quot;$0.00&quot;"/>
-    <numFmt numFmtId="165" formatCode="+0.00&quot;R&quot;;-0.00&quot;R&quot;;0.00&quot;R&quot;"/>
-    <numFmt numFmtId="166" formatCode="0.00####"/>
+  <numFmts count="4">
+    <numFmt numFmtId="164" formatCode="$#,##0.00;-$#,##0.00;&quot;$0.00&quot;"/>
+    <numFmt numFmtId="165" formatCode="+$#,##0.00;-$#,##0.00;&quot;$0.00&quot;"/>
+    <numFmt numFmtId="166" formatCode="+0.00&quot;R&quot;;-0.00&quot;R&quot;;0.00&quot;R&quot;"/>
+    <numFmt numFmtId="167" formatCode="0.00####"/>
   </numFmts>
-  <fonts count="7">
-    <font><sz val="10"/><color rgb="FF1F2922"/><name val="Calibri"/></font>
-    <font><b/><sz val="13"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
-    <font><b/><sz val="10"/><color rgb="FF2E5339"/><name val="Calibri"/></font>
-    <font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
-    <font><b/><sz val="10"/><color rgb="FF245A36"/><name val="Calibri"/></font>
-    <font><b/><sz val="10"/><color rgb="FF8F3B2B"/><name val="Calibri"/></font>
-    <font><b/><sz val="10"/><color rgb="FF6E6545"/><name val="Calibri"/></font>
+  <fonts count="10">
+    <font><sz val="10"/><color rgb="FF1F2922"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="13"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font>
+    <font><sz val="9.5"/><color rgb="FF2E5339"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="11"/><color rgb="FF1F4330"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="9.5"/><color rgb="FF2E5339"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="10"/><color rgb="FF1F2922"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="10"/><color rgb="FF1B6535"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="10"/><color rgb="FFA63222"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="10"/><color rgb="FF6E6545"/><name val="Calibri"/><family val="2"/></font>
   </fonts>
-  <fills count="7">
+  <fills count="10">
     <fill><patternFill patternType="none"/></fill>
     <fill><patternFill patternType="gray125"/></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FF2E5339"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFEDF5EE"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFE7F4E8"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFFBEBE7"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFF7F3E6"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF1F4330"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF2E5339"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFEDF5EE"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF2F7F3"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF8FBF8"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFE7F4E8"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFBEBE7"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF7F3E6"/><bgColor indexed="64"/></patternFill></fill>
   </fills>
-  <borders count="3">
+  <borders count="4">
     <border><left/><right/><top/><bottom/><diagonal/></border>
     <border>
       <left style="thin"><color rgb="FFD8E2D9"/></left>
@@ -103,50 +128,114 @@ function buildStylesXml(): string {
       <diagonal/>
     </border>
     <border>
+      <left/><right/><top/>
+      <bottom style="medium"><color rgb="FF2E5339"/></bottom>
+      <diagonal/>
+    </border>
+    <border>
       <left style="thin"><color rgb="FFB7CBB9"/></left>
       <right style="thin"><color rgb="FFB7CBB9"/></right>
-      <top style="medium"><color rgb="FF2E5339"/></top>
-      <bottom style="double"><color rgb="FF2E5339"/></bottom>
+      <top style="medium"><color rgb="FF1F4330"/></top>
+      <bottom style="double"><color rgb="FF1F4330"/></bottom>
       <diagonal/>
     </border>
   </borders>
   <cellStyleXfs count="1">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
   </cellStyleXfs>
-  <cellXfs count="18">
+  <cellXfs count="34">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
-    <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>
-    <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf>
-    <xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
-    <xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
-    <xf numFmtId="164" fontId="2" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="3" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="left" vertical="center" indent="1"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" indent="1"/></xf>
+    <xf numFmtId="0" fontId="3" fillId="0" borderId="2" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="4" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="4" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="4" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="5" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="6" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="164" fontId="6" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="165" fontId="7" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="165" fontId="8" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="6" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
     <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <xf numFmtId="166" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="6" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="167" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="167" fontId="0" fillId="6" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
     <xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
-    <xf numFmtId="165" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="4" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="5" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="6" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="2" fillId="3" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
-    <xf numFmtId="164" fontId="2" fillId="3" borderId="2" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf>
+    <xf numFmtId="164" fontId="0" fillId="6" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="165" fontId="7" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="165" fontId="8" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="166" fontId="7" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="166" fontId="8" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="7" fillId="7" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="8" fillId="8" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="9" fillId="9" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="6" fillId="4" borderId="3" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="6" fillId="4" borderId="3" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="164" fontId="6" fillId="4" borderId="3" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="165" fontId="7" fillId="4" borderId="3" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="165" fontId="8" fillId="4" borderId="3" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="6" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
   </cellXfs>
+  <cellStyles count="1">
+    <cellStyle name="Normal" xfId="0" builtinId="0"/>
+  </cellStyles>
+  <dxfs count="0"/>
+  <tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/>
 </styleSheet>`;
 }
 
-function buildWorksheetXml(
-  rows: { cells: CellSpec[]; height?: number }[],
-  colWidths: number[],
-  freezeRow?: number,
-): string {
+class SharedStringTable {
+  private map = new Map<string, number>();
+  private list: string[] = [];
+  public totalRefs = 0;
+
+  intern(raw: string): number {
+    this.totalRefs += 1;
+    const existing = this.map.get(raw);
+    if (existing !== undefined) return existing;
+    const idx = this.list.length;
+    this.list.push(raw);
+    this.map.set(raw, idx);
+    return idx;
+  }
+
+  toXml(): string {
+    const items = this.list
+      .map((s) => `<si><t xml:space="preserve">${escapeXml(s)}</t></si>`)
+      .join("");
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${this.totalRefs}" uniqueCount="${this.list.length}">${items}</sst>`;
+  }
+}
+
+type WorksheetOptions = {
+  rows: { cells: CellSpec[]; height?: number }[];
+  colWidths: number[];
+  merges?: string[];
+  freezeRow?: number;
+  autoFilterRef?: string;
+};
+
+function buildWorksheetXml(opts: WorksheetOptions, sst: SharedStringTable): string {
+  const { rows, colWidths, merges = [], freezeRow, autoFilterRef } = opts;
+  const maxColIdx = Math.max(
+    0,
+    colWidths.length - 1,
+    ...rows.map((r) => r.cells.length - 1),
+  );
+  const maxRowNum = Math.max(1, rows.length);
+  const dimRef = `A1:${colIndexToLetters(maxColIdx)}${maxRowNum}`;
+
   const colsXml = colWidths
     .map((w, idx) => `<col min="${idx + 1}" max="${idx + 1}" width="${w}" customWidth="1"/>`)
     .join("");
+
   const sheetViewXml = freezeRow
-    ? `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${freezeRow}" topLeftCell="A${freezeRow + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`
-    : `<sheetViews><sheetView workbookViewId="0"/></sheetViews>`;
+    ? `<sheetViews><sheetView showGridLines="1" workbookViewId="0"><pane ySplit="${freezeRow}" topLeftCell="A${freezeRow + 1}" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A${freezeRow + 1}" sqref="A${freezeRow + 1}"/></sheetView></sheetViews>`
+    : `<sheetViews><sheetView showGridLines="1" workbookViewId="0"/></sheetViews>`;
 
   const rowsXml = rows
     .map((row, rIdx) => {
@@ -162,10 +251,21 @@ function buildWorksheetXml(
           if (cell.kind === "num" && Number.isFinite(cell.value)) {
             return `<c r="${ref}"${sAttr}><v>${cell.value}</v></c>`;
           }
-          const text = cell.kind === "str"
-            ? (cell.rawSafe ? cell.value : sanitizeSpreadsheetText(cell.value))
-            : "";
-          return `<c r="${ref}" t="inlineStr"${sAttr}><is><t xml:space="preserve">${escapeXml(text)}</t></is></c>`;
+          if (cell.kind === "formula") {
+            const safeVal = Number.isFinite(cell.value) ? cell.value : 0;
+            return `<c r="${ref}"${sAttr}><f>${escapeXml(cell.formula)}</f><v>${safeVal}</v></c>`;
+          }
+          const text =
+            cell.kind === "str"
+              ? cell.rawSafe
+                ? cell.value
+                : sanitizeSpreadsheetText(cell.value)
+              : "";
+          if (!text) {
+            return cell.style !== undefined ? `<c r="${ref}"${sAttr}/>` : "";
+          }
+          const sIdx = sst.intern(text);
+          return `<c r="${ref}" t="s"${sAttr}><v>${sIdx}</v></c>`;
         })
         .filter(Boolean)
         .join("");
@@ -173,15 +273,27 @@ function buildWorksheetXml(
     })
     .join("");
 
+  const autoFilterXml = autoFilterRef ? `<autoFilter ref="${autoFilterRef}"/>` : "";
+  const mergeCellsXml = merges.length
+    ? `<mergeCells count="${merges.length}">${merges.map((m) => `<mergeCell ref="${m}"/>`).join("")}</mergeCells>`
+    : "";
+
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>
+  <dimension ref="${dimRef}"/>
   ${sheetViewXml}
+  <sheetFormatPr defaultRowHeight="19"/>
   <cols>${colsXml}</cols>
   <sheetData>${rowsXml}</sheetData>
+  ${autoFilterXml}
+  ${mergeCellsXml}
+  <pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.25" footer="0.25"/>
+  <pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/>
 </worksheet>`;
 }
 
-// Pure CRC-32 & uncompressed PKZIP builder (0 external dependencies)
+// Pure CRC-32 & PKZIP builder with valid MS-DOS timestamps (0 external dependencies)
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256);
   for (let i = 0; i < 256; i++) {
@@ -200,10 +312,24 @@ function crc32(bytes: Uint8Array): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
+function getValidDosDateTime(now = new Date()): { dosTime: number; dosDate: number } {
+  const year = Math.max(1980, Math.min(2107, now.getUTCFullYear()));
+  const month = Math.max(1, Math.min(12, now.getUTCMonth() + 1));
+  const day = Math.max(1, Math.min(31, now.getUTCDate()));
+  const hours = Math.max(0, Math.min(23, now.getUTCHours()));
+  const mins = Math.max(0, Math.min(59, now.getUTCMinutes()));
+  const secs = Math.floor(Math.max(0, Math.min(59, now.getUTCSeconds())) / 2);
+  return {
+    dosTime: (hours << 11) | (mins << 5) | secs,
+    dosDate: ((year - 1980) << 9) | (month << 5) | day,
+  };
+}
+
 function buildZipStore(files: { name: string; data: Uint8Array }[]): Uint8Array {
   const encoder = new TextEncoder();
   const localParts: Uint8Array[] = [];
   const centralParts: Uint8Array[] = [];
+  const { dosTime, dosDate } = getValidDosDateTime();
   let offset = 0;
 
   for (const file of files) {
@@ -217,8 +343,8 @@ function buildZipStore(files: { name: string; data: Uint8Array }[]): Uint8Array 
     lv.setUint16(4, 20, true);
     lv.setUint16(6, 0, true);
     lv.setUint16(8, 0, true); // STORE (0)
-    lv.setUint16(10, 0, true);
-    lv.setUint16(12, 0x2100, true);
+    lv.setUint16(10, dosTime, true);
+    lv.setUint16(12, dosDate, true);
     lv.setUint32(14, crc, true);
     lv.setUint32(18, size, true);
     lv.setUint32(22, size, true);
@@ -235,8 +361,8 @@ function buildZipStore(files: { name: string; data: Uint8Array }[]): Uint8Array 
     cv.setUint16(6, 20, true);
     cv.setUint16(8, 0, true);
     cv.setUint16(10, 0, true);
-    cv.setUint16(12, 0, true);
-    cv.setUint16(14, 0x2100, true);
+    cv.setUint16(12, dosTime, true);
+    cv.setUint16(14, dosDate, true);
     cv.setUint32(16, crc, true);
     cv.setUint32(20, size, true);
     cv.setUint32(24, size, true);
@@ -280,6 +406,14 @@ function buildZipStore(files: { name: string; data: Uint8Array }[]): Uint8Array 
   return out;
 }
 
+function signedUsdStyle(val: number, evenRow: boolean, isKpi = false, isTotal = false): number {
+  if (isTotal) return val > 0 ? 30 : val < 0 ? 31 : 29;
+  if (isKpi) return val > 0 ? 10 : val < 0 ? 11 : 9;
+  if (val > 0) return 20;
+  if (val < 0) return 21;
+  return evenRow ? 19 : 18;
+}
+
 export function exportTradesXlsx(
   trades: Trade[],
   accounts: TradingAccount[],
@@ -291,86 +425,233 @@ export function exportTradesXlsx(
   const maxDd = maxRealizedDrawdown(sorted);
   const grossWins = sorted.filter((t) => Number(t.pnl) > 0).reduce((s, t) => s + Number(t.pnl), 0);
   const grossLosses = sorted.filter((t) => Number(t.pnl) < 0).reduce((s, t) => s + Number(t.pnl), 0);
+  const totalFeesAll = sorted.reduce((s, t) => {
+    const f = t.fees ? Number(t.fees) : 0;
+    return s + (Number.isFinite(f) && f > 0 ? f : 0);
+  }, 0);
   const today = new Date().toISOString().slice(0, 10);
-
-  // Sheet 1: Executive Summary + Complete Trade Ledger
-  const sheet1Rows: { cells: CellSpec[]; height?: number }[] = [];
-
-  const titleBanner: CellSpec[] = Array.from({ length: 25 }, (_, idx) =>
-    idx === 0
-      ? {
-          kind: "str",
-          value: isId
-            ? "BLOOM TRADING JOURNAL — LAPORAN PERFORMA TRADING"
-            : "BLOOM TRADING JOURNAL — TRADING PERFORMANCE REPORT",
-          style: 1,
-          rawSafe: true,
-        }
-      : { kind: "empty", style: 1 },
-  );
-  sheet1Rows.push({ cells: titleBanner, height: 28 });
-
   const dateRange = sorted.length
-    ? `${sorted[0].tradeDate} → ${sorted[sorted.length - 1].tradeDate}`
+    ? `${sorted[0].tradeDate} s/d ${sorted[sorted.length - 1].tradeDate}`
     : "—";
-  sheet1Rows.push({
+  const dateRangeEn = sorted.length
+    ? `${sorted[0].tradeDate} to ${sorted[sorted.length - 1].tradeDate}`
+    : "—";
+
+  // =========================================================================
+  // SHEET 1: EXECUTIVE SUMMARY & PERFORMANCE BREAKDOWN (Presentation Sheet)
+  // =========================================================================
+  const summaryRows: { cells: CellSpec[]; height?: number }[] = [];
+  const summaryMerges: string[] = ["A1:G1", "A2:G2"];
+
+  summaryRows.push({
     cells: [
-      { kind: "str", value: isId ? "Tanggal Cetak" : "Generated Date", style: 2, rawSafe: true },
-      { kind: "str", value: today, style: 7, rawSafe: true },
-      { kind: "str", value: isId ? "Periode Data" : "Date Range", style: 2, rawSafe: true },
-      { kind: "str", value: dateRange, style: 7, rawSafe: true },
+      {
+        kind: "str",
+        value: isId
+          ? "BLOOM TRADING JOURNAL — LAPORAN EKSEKUTIF PERFORMA TRADING"
+          : "BLOOM TRADING JOURNAL — EXECUTIVE TRADING PERFORMANCE REPORT",
+        style: 1,
+        rawSafe: true,
+      },
+      ...Array.from({ length: 6 }, () => ({ kind: "empty" as const, style: 1 })),
     ],
-    height: 20,
+    height: 30,
   });
 
-  sheet1Rows.push({
+  summaryRows.push({
     cells: [
-      { kind: "str", value: isId ? "Total Trade" : "Total Trades", style: 3, rawSafe: true },
-      { kind: "num", value: sorted.length, style: 4 },
-      { kind: "str", value: isId ? "Rasio Menang" : "Win Rate", style: 3, rawSafe: true },
-      { kind: "str", value: stats.winRate === null ? "—" : `${stats.winRate}%`, style: 4, rawSafe: true },
-      { kind: "str", value: "Profit Factor", style: 3, rawSafe: true },
-      { kind: "str", value: stats.profitFactor, style: 4, rawSafe: true },
-      { kind: "str", value: isId ? "Rata-rata R" : "Average R", style: 3, rawSafe: true },
+      {
+        kind: "str",
+        value: isId
+          ? `Periode: ${dateRange}   •   Total Transaksi: ${sorted.length} Trade   •   Tanggal Cetak: ${today}   •   Mata Uang: USD`
+          : `Period: ${dateRangeEn}   •   Total Trades: ${sorted.length}   •   Generated: ${today}   •   Currency: USD`,
+        style: 2,
+        rawSafe: true,
+      },
+      ...Array.from({ length: 6 }, () => ({ kind: "empty" as const, style: 2 })),
+    ],
+    height: 22,
+  });
+
+  summaryRows.push({ cells: [], height: 10 });
+  summaryMerges.push("A4:G4");
+  summaryRows.push({
+    cells: [
+      {
+        kind: "str",
+        value: isId ? "1. IKHTISAR METRIK UTAMA (KEY PERFORMANCE INDICATORS)" : "1. KEY PERFORMANCE INDICATORS",
+        style: 3,
+        rawSafe: true,
+      },
+      ...Array.from({ length: 6 }, () => ({ kind: "empty" as const, style: 3 })),
+    ],
+    height: 23,
+  });
+
+  const kpiPairs: [CellSpec, CellSpec, CellSpec, CellSpec][] = [
+    [
+      { kind: "str", value: isId ? "Total Trade" : "Total Trades", style: 7, rawSafe: true },
+      { kind: "num", value: sorted.length, style: 8 },
+      { kind: "str", value: isId ? "P&L Bersih Realisasi (USD)" : "Net Realized P&L (USD)", style: 7, rawSafe: true },
+      { kind: "num", value: Number(stats.net.toFixed(2)), style: signedUsdStyle(stats.net, false, true) },
+    ],
+    [
+      { kind: "str", value: isId ? "Menang / Rugi / Impas" : "Wins / Losses / Breakeven", style: 7, rawSafe: true },
+      { kind: "str", value: `${stats.wins}W / ${stats.losses}L / ${stats.breakeven}BE`, style: 8, rawSafe: true },
+      { kind: "str", value: isId ? "Profit Kotor (Gross Profit)" : "Gross Profit (USD)", style: 7, rawSafe: true },
+      { kind: "num", value: Number(grossWins.toFixed(2)), style: signedUsdStyle(grossWins, false, true) },
+    ],
+    [
+      { kind: "str", value: isId ? "Rasio Menang (Win Rate)" : "Win Rate", style: 7, rawSafe: true },
+      { kind: "str", value: stats.winRate === null ? "—" : `${stats.winRate}%`, style: 8, rawSafe: true },
+      { kind: "str", value: isId ? "Rugi Kotor (Gross Loss)" : "Gross Loss (USD)", style: 7, rawSafe: true },
+      { kind: "num", value: Number(grossLosses.toFixed(2)), style: signedUsdStyle(grossLosses, false, true) },
+    ],
+    [
+      { kind: "str", value: "Profit Factor", style: 7, rawSafe: true },
+      { kind: "str", value: stats.profitFactor, style: 8, rawSafe: true },
+      { kind: "str", value: isId ? "Rata-rata Menang (Avg Win)" : "Average Win (USD)", style: 7, rawSafe: true },
+      stats.avgWin === null
+        ? { kind: "str", value: "—", style: 8, rawSafe: true }
+        : { kind: "num", value: Number(stats.avgWin.toFixed(2)), style: signedUsdStyle(stats.avgWin, false, true) },
+    ],
+    [
+      { kind: "str", value: isId ? "Rata-rata R-Multiple" : "Average R-Multiple", style: 7, rawSafe: true },
       stats.avgR !== null
-        ? { kind: "num", value: Number(stats.avgR.toFixed(2)), style: 11 }
-        : { kind: "str", value: "—", style: 4, rawSafe: true },
+        ? { kind: "num", value: Number(stats.avgR.toFixed(2)), style: stats.avgR >= 0 ? 22 : 23 }
+        : { kind: "str", value: "—", style: 8, rawSafe: true },
+      { kind: "str", value: isId ? "Rata-rata Rugi (Avg Loss)" : "Average Loss (USD)", style: 7, rawSafe: true },
+      stats.avgLoss === null
+        ? { kind: "str", value: "—", style: 8, rawSafe: true }
+        : { kind: "num", value: Number((-Math.abs(stats.avgLoss)).toFixed(2)), style: 11 },
     ],
-    height: 21,
-  });
-
-  sheet1Rows.push({
-    cells: [
-      { kind: "str", value: isId ? "Profit Kotor" : "Gross Profit", style: 3, rawSafe: true },
-      { kind: "num", value: Number(grossWins.toFixed(2)), style: 5 },
-      { kind: "str", value: isId ? "Rugi Kotor" : "Gross Loss", style: 3, rawSafe: true },
-      { kind: "num", value: Number(grossLosses.toFixed(2)), style: 5 },
-      { kind: "str", value: isId ? "P&L Bersih (USD)" : "Net P&L (USD)", style: 3, rawSafe: true },
-      { kind: "num", value: Number(stats.net.toFixed(2)), style: 5 },
-      { kind: "str", value: isId ? "Drawdown Realisasi" : "Max Drawdown", style: 3, rawSafe: true },
-      { kind: "num", value: Number(maxDd.toFixed(2)), style: 5 },
+    [
+      { kind: "str", value: "Expectancy / Trade (USD)", style: 7, rawSafe: true },
+      stats.expectancy === null
+        ? { kind: "str", value: "—", style: 8, rawSafe: true }
+        : { kind: "num", value: Number(stats.expectancy.toFixed(2)), style: signedUsdStyle(stats.expectancy, false, true) },
+      { kind: "str", value: isId ? "Max Realized Drawdown (USD)" : "Max Realized Drawdown (USD)", style: 7, rawSafe: true },
+      { kind: "num", value: Number((-Math.abs(maxDd)).toFixed(2)), style: maxDd > 0 ? 11 : 9 },
     ],
-    height: 21,
-  });
-
-  sheet1Rows.push({
-    cells: [
-      { kind: "str", value: isId ? "Menang / Rugi / Impas" : "Wins / Losses / Breakeven", style: 3, rawSafe: true },
-      { kind: "str", value: `${stats.wins}W / ${stats.losses}L / ${stats.breakeven}BE`, style: 4, rawSafe: true },
-      { kind: "str", value: isId ? "Rata-rata Menang" : "Average Win", style: 3, rawSafe: true },
-      stats.avgWin === null ? { kind: "str", value: "—", style: 4, rawSafe: true } : { kind: "num", value: Number(stats.avgWin.toFixed(2)), style: 5 },
-      { kind: "str", value: isId ? "Rata-rata Rugi" : "Average Loss", style: 3, rawSafe: true },
-      stats.avgLoss === null ? { kind: "str", value: "—", style: 4, rawSafe: true } : { kind: "num", value: Number((-Math.abs(stats.avgLoss)).toFixed(2)), style: 5 },
-      { kind: "str", value: "Expectancy", style: 3, rawSafe: true },
-      stats.expectancy === null ? { kind: "str", value: "—", style: 4, rawSafe: true } : { kind: "num", value: Number(stats.expectancy.toFixed(2)), style: 5 },
+    [
+      { kind: "str", value: isId ? "Total Biaya / Komisi (USD)" : "Total Recorded Fees (USD)", style: 7, rawSafe: true },
+      { kind: "num", value: Number(totalFeesAll.toFixed(2)), style: 9 },
+      { kind: "str", value: isId ? "Jumlah Akun Tercatat" : "Accounts Covered", style: 7, rawSafe: true },
+      { kind: "num", value: new Set(sorted.map((t) => t.accountId ?? "main")).size || accounts.length, style: 8 },
     ],
-    height: 21,
-  });
+  ];
 
-  // Blank spacer row (row 6)
-  sheet1Rows.push({ cells: [], height: 10 });
+  for (const [l1, v1, l2, v2] of kpiPairs) {
+    const rNum = summaryRows.length + 1;
+    summaryMerges.push(`B${rNum}:C${rNum}`, `E${rNum}:F${rNum}`);
+    summaryRows.push({
+      cells: [
+        l1,
+        v1,
+        { kind: "empty", style: v1.style },
+        l2,
+        v2,
+        { kind: "empty", style: v2.style },
+        { kind: "empty" },
+      ],
+      height: 21,
+    });
+  }
 
-  // Table Headers (row 7 — frozen!)
+  let sectionCounter = 2;
+  const appendBreakdownSection = (sectionTitle: string, groups: TradeGroupRow[]) => {
+    summaryRows.push({ cells: [], height: 10 });
+    const secRowNum = summaryRows.length + 1;
+    summaryMerges.push(`A${secRowNum}:G${secRowNum}`);
+    summaryRows.push({
+      cells: [
+        { kind: "str", value: `${sectionCounter++}. ${sectionTitle}`, style: 3, rawSafe: true },
+        ...Array.from({ length: 6 }, () => ({ kind: "empty" as const, style: 3 })),
+      ],
+      height: 23,
+    });
+    summaryRows.push({
+      cells: [
+        { kind: "str", value: isId ? "Kategori" : "Category", style: 4, rawSafe: true },
+        { kind: "str", value: isId ? "Trade" : "Trades", style: 5, rawSafe: true },
+        { kind: "str", value: isId ? "Menang" : "Wins", style: 5, rawSafe: true },
+        { kind: "str", value: isId ? "Rugi" : "Losses", style: 5, rawSafe: true },
+        { kind: "str", value: isId ? "Rasio Menang" : "Win Rate", style: 5, rawSafe: true },
+        { kind: "str", value: isId ? "Rata-rata R" : "Average R", style: 6, rawSafe: true },
+        { kind: "str", value: isId ? "P&L Bersih (USD)" : "Net P&L (USD)", style: 6, rawSafe: true },
+      ],
+      height: 23,
+    });
+    groups.forEach((g, idx) => {
+      const even = idx % 2 === 1;
+      const wr = g.wins + g.losses > 0 ? Math.round((g.wins / (g.wins + g.losses)) * 100) : null;
+      summaryRows.push({
+        cells: [
+          { kind: "str", value: g.name, style: even ? 13 : 12 },
+          { kind: "num", value: g.count, style: even ? 15 : 14 },
+          { kind: "num", value: g.wins, style: even ? 15 : 14 },
+          { kind: "num", value: g.losses, style: even ? 15 : 14 },
+          { kind: "str", value: wr === null ? "—" : `${wr}%`, style: even ? 15 : 14, rawSafe: true },
+          g.avgR !== null
+            ? { kind: "num", value: Number(g.avgR.toFixed(2)), style: g.avgR >= 0 ? 22 : 23 }
+            : { kind: "str", value: "—", style: even ? 15 : 14, rawSafe: true },
+          { kind: "num", value: Number(g.pnl.toFixed(2)), style: signedUsdStyle(g.pnl, even) },
+        ],
+        height: 20,
+      });
+    });
+  };
+
+  // Monthly Breakdown (chronological YYYY-MM)
+  const monthGroups = groupTrades(sorted, (t) => t.tradeDate.slice(0, 7), "—").sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+  appendBreakdownSection(isId ? "REKAP PERFORMA BULANAN" : "MONTHLY PERFORMANCE", monthGroups);
+
+  appendBreakdownSection(
+    isId ? "PERFORMA PER AKUN TRADING" : "PERFORMANCE BY TRADING ACCOUNT",
+    groupTrades(
+      sorted,
+      (t) => accounts.find((a) => a.id === (t.accountId ?? "main"))?.name ?? "Main account",
+      "Main account",
+    ),
+  );
+  appendBreakdownSection(
+    isId ? "PERFORMA PER SETUP" : "PERFORMANCE BY SETUP",
+    groupTrades(sorted, (t) => t.setup, isId ? "Tanpa setup" : "No setup"),
+  );
+  appendBreakdownSection(
+    isId ? "PERFORMA PER PASAR" : "PERFORMANCE BY MARKET",
+    groupTrades(
+      sorted,
+      (t) => (isId ? translateMarket(t.market, "id") : t.market),
+      isId ? "Lainnya" : "Other",
+    ),
+  );
+  appendBreakdownSection(
+    isId ? "PERFORMA PER SESI" : "PERFORMANCE BY SESSION",
+    groupTrades(sorted, (t) => t.session ?? "", isId ? "Tanpa sesi" : "No session"),
+  );
+  appendBreakdownSection(
+    isId ? "KEPATUHAN RENCANA TRADING" : "PLAN ADHERENCE BREAKDOWN",
+    groupTrades(
+      sorted,
+      (t) => {
+        const st = evaluateTradeProcess(t).status;
+        if (st === "followed") return isId ? "Patuh Rencana" : "Followed Plan";
+        if (st === "broken") return isId ? "Langgar Rencana" : "Broke Plan";
+        return isId ? "Belum Dinilai" : "Unrated";
+      },
+      isId ? "Belum Dinilai" : "Unrated",
+    ),
+  );
+
+  const summaryWidths = [30, 14, 14, 28, 16, 16, 20];
+
+  // =========================================================================
+  // SHEET 2: COMPLETE TRADE LEDGER (Round-Trip Importable Master Table)
+  // =========================================================================
+  const ledgerRows: { cells: CellSpec[]; height?: number }[] = [];
   const headers = isId
     ? [
         "No",
@@ -429,16 +710,61 @@ export function exportTradesXlsx(
         "Notes",
       ];
 
-  sheet1Rows.push({
-    cells: headers.map((h) => ({ kind: "str" as const, value: h, style: 6, rawSafe: true })),
-    height: 24,
+  const lastColLetter = colIndexToLetters(headers.length - 1);
+  const ledgerMerges = [`A1:${lastColLetter}1`, `A2:${lastColLetter}2`];
+
+  ledgerRows.push({
+    cells: [
+      {
+        kind: "str",
+        value: isId
+          ? "BLOOM TRADING JOURNAL — DAFTAR TRANSAKSI LENGKAP (TRADE LEDGER)"
+          : "BLOOM TRADING JOURNAL — COMPLETE TRADE LEDGER",
+        style: 1,
+        rawSafe: true,
+      },
+      ...Array.from({ length: headers.length - 1 }, () => ({ kind: "empty" as const, style: 1 })),
+    ],
+    height: 29,
   });
 
-  const optNumCell = (raw: string | undefined, style: number): CellSpec => {
-    const trimmed = String(raw ?? "").trim();
-    if (!trimmed) return { kind: "empty", style: 7 };
-    const n = Number(trimmed);
-    return Number.isFinite(n) ? { kind: "num", value: n, style } : { kind: "str", value: trimmed, style: 7 };
+  const wrBanner = stats.winRate === null ? "—" : `${stats.winRate}%`;
+  const avgRBanner = stats.avgR !== null ? `${stats.avgR >= 0 ? "+" : ""}${stats.avgR.toFixed(2)}R` : "—";
+  const netBanner = `${stats.net >= 0 ? "+" : "-"}$${Math.abs(stats.net).toFixed(2)}`;
+  ledgerRows.push({
+    cells: [
+      {
+        kind: "str",
+        value: isId
+          ? `Periode: ${dateRange}   •   Total: ${sorted.length} Trade (${stats.wins}W / ${stats.losses}L / ${stats.breakeven}BE)   •   Win Rate: ${wrBanner}   •   Profit Factor: ${stats.profitFactor}   •   Avg R: ${avgRBanner}   •   P&L Bersih: ${netBanner}`
+          : `Period: ${dateRangeEn}   •   Total: ${sorted.length} Trades (${stats.wins}W / ${stats.losses}L / ${stats.breakeven}BE)   •   Win Rate: ${wrBanner}   •   Profit Factor: ${stats.profitFactor}   •   Avg R: ${avgRBanner}   •   Net P&L: ${netBanner}`,
+        style: 2,
+        rawSafe: true,
+      },
+      ...Array.from({ length: headers.length - 1 }, () => ({ kind: "empty" as const, style: 2 })),
+    ],
+    height: 21,
+  });
+
+  // Row 3: Clean spacer
+  ledgerRows.push({ cells: [], height: 8 });
+
+  // Row 4: Frozen Table Header
+  const centerHeaderCols = new Set([0, 1, 3, 5, 8, 17, 20, 21, 23]);
+  const rightHeaderCols = new Set([9, 10, 11, 12, 13, 14, 15, 16, 18, 19]);
+  ledgerRows.push({
+    cells: headers.map((h, cIdx) => ({
+      kind: "str" as const,
+      value: h,
+      style: centerHeaderCols.has(cIdx) ? 5 : rightHeaderCols.has(cIdx) ? 6 : 4,
+      rawSafe: true,
+    })),
+    height: 26,
+  });
+
+  const maxColChars = headers.map((h) => h.length + 2);
+  const trackLen = (colIdx: number, str: string) => {
+    if (str.length > maxColChars[colIdx]) maxColChars[colIdx] = str.length;
   };
 
   let runningPnl = 0;
@@ -446,6 +772,23 @@ export function exportTradesXlsx(
   let totalFees = 0;
 
   sorted.forEach((trade, index) => {
+    const even = index % 2 === 1;
+    const txtStyle = even ? 13 : 12;
+    const ctrStyle = even ? 15 : 14;
+    const numStyle = even ? 17 : 16;
+    const usdBaseStyle = even ? 19 : 18;
+    const wrapStyle = even ? 33 : 32;
+
+    const optNumCell = (raw: string | undefined, colIdx: number, isUsd = false): CellSpec => {
+      const trimmed = String(raw ?? "").trim();
+      if (!trimmed) return { kind: "empty", style: isUsd ? usdBaseStyle : numStyle };
+      trackLen(colIdx, trimmed);
+      const n = Number(trimmed);
+      return Number.isFinite(n)
+        ? { kind: "num", value: n, style: isUsd ? usdBaseStyle : numStyle }
+        : { kind: "str", value: trimmed, style: txtStyle };
+    };
+
     const pnl = Number(trade.pnl);
     runningPnl += pnl;
     const riskVal = trade.initialRisk ? Number(trade.initialRisk) : NaN;
@@ -455,189 +798,235 @@ export function exportTradesXlsx(
 
     const rMult = tradeRMultiple(trade);
     const accountName = accounts.find((a) => a.id === (trade.accountId ?? "main"))?.name ?? "Main account";
-    const resultLabel = pnl > 0 ? (isId ? "Untung" : "Win") : pnl < 0 ? (isId ? "Rugi" : "Loss") : (isId ? "Impas" : "Breakeven");
-    const resultStyle = pnl > 0 ? 12 : pnl < 0 ? 13 : 14;
+    const marketLabel = isId ? translateMarket(trade.market, "id") : trade.market;
+    const moodLabel = isId ? translateMood(trade.mood, "id") : trade.mood;
+    const resultLabel = pnl > 0 ? (isId ? "Untung" : "Win") : pnl < 0 ? (isId ? "Rugi" : "Loss") : isId ? "Impas" : "Breakeven";
+    const resultStyle = pnl > 0 ? 24 : pnl < 0 ? 25 : 26;
     const planText =
       trade.followedPlan === true
-        ? isId ? "Ya" : "Yes"
+        ? isId
+          ? "Ya"
+          : "Yes"
         : trade.followedPlan === false
-          ? isId ? "Tidak" : "No"
+          ? isId
+            ? "Tidak"
+            : "No"
           : "";
     const checklistArr = trade.checklist ?? [];
     const checklistScore = checklistArr.length
       ? `${checklistArr.filter((c) => c.checked).length}/${checklistArr.length}`
       : "";
+    const checklistStr = serializeChecklist(checklistArr);
+    const tagsStr = (trade.tags ?? []).join(" | ");
 
-    sheet1Rows.push({
+    trackLen(1, trade.tradeDate);
+    trackLen(2, accountName);
+    trackLen(3, trade.symbol);
+    trackLen(4, marketLabel);
+    trackLen(5, trade.side);
+    trackLen(6, trade.setup);
+    trackLen(7, trade.session ?? "");
+    trackLen(16, pnl.toFixed(2));
+    trackLen(17, resultLabel);
+    trackLen(19, runningPnl.toFixed(2));
+    trackLen(23, moodLabel);
+    trackLen(24, tagsStr);
+
+    ledgerRows.push({
       cells: [
-        { kind: "num", value: index + 1, style: 8 },
-        { kind: "str", value: trade.tradeDate, style: 8, rawSafe: true },
-        { kind: "str", value: accountName, style: 7 },
-        { kind: "str", value: trade.symbol, style: 8 },
-        { kind: "str", value: trade.market, style: 7 },
-        { kind: "str", value: trade.side, style: 8 },
-        { kind: "str", value: trade.setup, style: 7 },
-        { kind: "str", value: trade.session ?? "", style: 7 },
-        { kind: "str", value: trade.timeframe ?? "", style: 8 },
-        optNumCell(trade.entryPrice, 9),
-        optNumCell(trade.exitPrice, 9),
-        optNumCell(trade.stopLoss, 9),
-        optNumCell(trade.takeProfit, 9),
-        optNumCell(trade.positionSize, 9),
-        optNumCell(trade.initialRisk, 10),
-        optNumCell(trade.fees, 10),
-        { kind: "num", value: Number(pnl.toFixed(2)), style: 10 },
+        { kind: "num", value: index + 1, style: ctrStyle },
+        { kind: "str", value: trade.tradeDate, style: ctrStyle, rawSafe: true },
+        { kind: "str", value: accountName, style: txtStyle },
+        { kind: "str", value: trade.symbol, style: ctrStyle },
+        { kind: "str", value: marketLabel, style: txtStyle, rawSafe: true },
+        { kind: "str", value: trade.side, style: ctrStyle, rawSafe: true },
+        { kind: "str", value: trade.setup, style: txtStyle },
+        { kind: "str", value: trade.session ?? "", style: txtStyle },
+        { kind: "str", value: trade.timeframe ?? "", style: ctrStyle },
+        optNumCell(trade.entryPrice, 9, false),
+        optNumCell(trade.exitPrice, 10, false),
+        optNumCell(trade.stopLoss, 11, false),
+        optNumCell(trade.takeProfit, 12, false),
+        optNumCell(trade.positionSize, 13, false),
+        optNumCell(trade.initialRisk, 14, true),
+        optNumCell(trade.fees, 15, true),
+        { kind: "num", value: Number(pnl.toFixed(2)), style: signedUsdStyle(pnl, even) },
         { kind: "str", value: resultLabel, style: resultStyle, rawSafe: true },
-        rMult !== null ? { kind: "num", value: Number(rMult.toFixed(2)), style: 11 } : { kind: "empty", style: 7 },
-        { kind: "num", value: Number(runningPnl.toFixed(2)), style: 10 },
-        { kind: "str", value: planText, style: 8, rawSafe: true },
-        { kind: "str", value: checklistScore, style: 8, rawSafe: true },
-        { kind: "str", value: serializeChecklist(checklistArr), style: 7 },
-        { kind: "str", value: trade.mood, style: 8 },
-        { kind: "str", value: (trade.tags ?? []).join(" | "), style: 7 },
-        { kind: "str", value: trade.notes, style: 7 },
+        rMult !== null
+          ? { kind: "num", value: Number(rMult.toFixed(2)), style: rMult >= 0 ? 22 : 23 }
+          : { kind: "empty", style: ctrStyle },
+        { kind: "num", value: Number(runningPnl.toFixed(2)), style: signedUsdStyle(runningPnl, even) },
+        { kind: "str", value: planText, style: ctrStyle, rawSafe: true },
+        { kind: "str", value: checklistScore, style: ctrStyle, rawSafe: true },
+        { kind: "str", value: checklistStr, style: wrapStyle },
+        { kind: "str", value: moodLabel, style: ctrStyle, rawSafe: true },
+        { kind: "str", value: tagsStr, style: txtStyle },
+        { kind: "str", value: trade.notes, style: wrapStyle },
       ],
-      height: 20,
+      height: 21,
     });
   });
 
-  // Footer Summary Row
+  const firstDataRow = 5;
+  const lastDataRow = 4 + sorted.length;
+
+  // Footer Summary Row with real Excel SUM formulas + pre-computed cached values
   if (sorted.length > 0) {
-    const footerCells: CellSpec[] = Array.from({ length: headers.length }, () => ({ kind: "empty" as const, style: 15 }));
-    footerCells[0] = { kind: "str", value: "TOTAL", style: 15, rawSafe: true };
+    const footerCells: CellSpec[] = Array.from({ length: headers.length }, () => ({
+      kind: "empty" as const,
+      style: 27,
+    }));
+    footerCells[0] = { kind: "str", value: "TOTAL", style: 28, rawSafe: true };
     footerCells[1] = {
       kind: "str",
       value: isId ? `${sorted.length} trade` : `${sorted.length} trades`,
-      style: 15,
+      style: 28,
       rawSafe: true,
     };
-    footerCells[14] = { kind: "num", value: Number(totalRisk.toFixed(2)), style: 16 };
-    footerCells[15] = { kind: "num", value: Number(totalFees.toFixed(2)), style: 16 };
-    footerCells[16] = { kind: "num", value: Number(stats.net.toFixed(2)), style: 16 };
+    footerCells[14] = {
+      kind: "formula",
+      formula: `SUM(O${firstDataRow}:O${lastDataRow})`,
+      value: Number(totalRisk.toFixed(2)),
+      style: 29,
+    };
+    footerCells[15] = {
+      kind: "formula",
+      formula: `SUM(P${firstDataRow}:P${lastDataRow})`,
+      value: Number(totalFees.toFixed(2)),
+      style: 29,
+    };
+    footerCells[16] = {
+      kind: "formula",
+      formula: `SUM(Q${firstDataRow}:Q${lastDataRow})`,
+      value: Number(stats.net.toFixed(2)),
+      style: signedUsdStyle(stats.net, false, false, true),
+    };
     footerCells[17] = {
       kind: "str",
       value: stats.winRate === null ? "—" : `${stats.winRate}% WR`,
-      style: 15,
+      style: 28,
       rawSafe: true,
     };
-    footerCells[19] = { kind: "num", value: Number(runningPnl.toFixed(2)), style: 16 };
-    sheet1Rows.push({ cells: footerCells, height: 23 });
+    footerCells[18] =
+      stats.avgR !== null
+        ? { kind: "num", value: Number(stats.avgR.toFixed(2)), style: stats.avgR >= 0 ? 22 : 23 }
+        : { kind: "empty", style: 28 };
+    footerCells[19] = {
+      kind: "num",
+      value: Number(runningPnl.toFixed(2)),
+      style: signedUsdStyle(runningPnl, false, false, true),
+    };
+    ledgerRows.push({ cells: footerCells, height: 24 });
   }
 
-  const sheet1Widths = [
-    8, 14, 18, 12, 14, 11, 24, 18, 11, 13, 13, 13, 13, 13, 16, 13, 16, 12, 12, 19, 14, 14, 34, 12, 24, 46,
+  const minWidths = [
+    7, 14, 18, 12, 13, 10, 22, 14, 11, 13, 13, 13, 13, 13, 16, 13, 16, 12, 12, 18, 14, 14, 34, 12, 22, 44,
   ];
+  const maxWidths = [
+    10, 16, 26, 16, 18, 12, 30, 18, 13, 16, 16, 16, 16, 16, 18, 16, 18, 14, 14, 20, 16, 16, 42, 15, 28, 52,
+  ];
+  const ledgerWidths = minWidths.map((minW, idx) =>
+    Math.min(maxWidths[idx], Math.max(minW, (maxColChars[idx] ?? minW) + 3)),
+  );
 
-  // Sheet 2: Executive Breakdown by Account, Setup, Market, Session
-  const sheet2Rows: { cells: CellSpec[]; height?: number }[] = [];
-  sheet2Rows.push({
-    cells: [
-      {
-        kind: "str",
-        value: isId ? "RINGKASAN PERFORMA PER KATEGORI" : "PERFORMANCE BREAKDOWN SUMMARY",
-        style: 1,
-        rawSafe: true,
-      },
-      ...Array.from({ length: 6 }, () => ({ kind: "empty" as const, style: 1 })),
-    ],
-    height: 26,
-  });
-
-  const appendBreakdownSection = (sectionTitle: string, groups: TradeGroupRow[]) => {
-    sheet2Rows.push({ cells: [], height: 10 });
-    sheet2Rows.push({ cells: [{ kind: "str", value: sectionTitle, style: 17, rawSafe: true }], height: 21 });
-    sheet2Rows.push({
-      cells: [
-        isId ? "Kategori" : "Category",
-        isId ? "Trade" : "Trades",
-        isId ? "Menang" : "Wins",
-        isId ? "Rugi" : "Losses",
-        isId ? "Rasio Menang" : "Win Rate",
-        isId ? "Rata-rata R" : "Average R",
-        isId ? "P&L Bersih (USD)" : "Net P&L (USD)",
-      ].map((h) => ({ kind: "str" as const, value: h, style: 6, rawSafe: true })),
-      height: 22,
-    });
-    for (const g of groups) {
-      const wr = g.wins + g.losses > 0 ? Math.round((g.wins / (g.wins + g.losses)) * 100) : null;
-      sheet2Rows.push({
-        cells: [
-          { kind: "str", value: g.name, style: 7 },
-          { kind: "num", value: g.count, style: 8 },
-          { kind: "num", value: g.wins, style: 8 },
-          { kind: "num", value: g.losses, style: 8 },
-          { kind: "str", value: wr === null ? "—" : `${wr}%`, style: 8, rawSafe: true },
-          g.avgR !== null ? { kind: "num", value: Number(g.avgR.toFixed(2)), style: 11 } : { kind: "str", value: "—", style: 8, rawSafe: true },
-          { kind: "num", value: Number(g.pnl.toFixed(2)), style: 10 },
-        ],
-        height: 20,
-      });
-    }
-  };
-
-  appendBreakdownSection(
-    isId ? "Per Akun Trading" : "By Trading Account",
-    groupTrades(
-      sorted,
-      (t) => accounts.find((a) => a.id === (t.accountId ?? "main"))?.name ?? "Main account",
-      "Main account",
-    ),
+  const sst = new SharedStringTable();
+  const sheet1Xml = buildWorksheetXml(
+    {
+      rows: summaryRows,
+      colWidths: summaryWidths,
+      merges: summaryMerges,
+    },
+    sst,
   );
-  appendBreakdownSection(
-    isId ? "Per Setup" : "By Setup",
-    groupTrades(sorted, (t) => t.setup, isId ? "Tanpa setup" : "No setup"),
+  const sheet2Xml = buildWorksheetXml(
+    {
+      rows: ledgerRows,
+      colWidths: ledgerWidths,
+      merges: ledgerMerges,
+      freezeRow: 4,
+      autoFilterRef: sorted.length > 0 ? `A4:${lastColLetter}${lastDataRow}` : undefined,
+    },
+    sst,
   );
-  appendBreakdownSection(
-    isId ? "Per Pasar" : "By Market",
-    groupTrades(sorted, (t) => t.market, isId ? "Lainnya" : "Other"),
-  );
-  appendBreakdownSection(
-    isId ? "Per Sesi" : "By Session",
-    groupTrades(sorted, (t) => t.session ?? "", isId ? "Tanpa sesi" : "No session"),
-  );
+  const sstXml = sst.toXml();
 
   const encoder = new TextEncoder();
-  const sheet1Name = isId ? "Catatan Trade" : "Trade Ledger";
-  const sheet2Name = isId ? "Ringkasan Performa" : "Summary Breakdown";
+  const sheet1Name = isId ? "Ringkasan Laporan" : "Executive Summary";
+  const sheet2Name = isId ? "Catatan Trade" : "Trade Ledger";
+  const nowIso = new Date().toISOString();
 
   const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
   <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
   <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
   <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+  <Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
 </Types>`;
 
   const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
 </Relationships>`;
 
+  const coreXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title>${escapeXml(isId ? "Laporan Performa Trading Bloom" : "Bloom Trading Performance Report")}</dc:title>
+  <dc:creator>Bloom Trading Journal</dc:creator>
+  <cp:lastModifiedBy>Bloom Trading Journal</cp:lastModifiedBy>
+  <dcterms:created xsi:type="dcterms:W3CDTF">${nowIso}</dcterms:created>
+  <dcterms:modified xsi:type="dcterms:W3CDTF">${nowIso}</dcterms:modified>
+</cp:coreProperties>`;
+
+  const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Application>Bloom Trading Journal</Application>
+  <DocSecurity>0</DocSecurity>
+  <ScaleCrop>false</ScaleCrop>
+  <Company>Bloom</Company>
+  <LinksUpToDate>false</LinksUpToDate>
+  <SharedDoc>false</SharedDoc>
+  <HyperlinksChanged>false</HyperlinksChanged>
+  <AppVersion>16.0300</AppVersion>
+</Properties>`;
+
   const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/workbook" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <bookViews>
+    <workbookView xWindow="0" yWindow="0" windowWidth="24000" windowHeight="14400" activeTab="0"/>
+  </bookViews>
   <sheets>
     <sheet name="${escapeXml(sheet1Name)}" sheetId="1" r:id="rId1"/>
     <sheet name="${escapeXml(sheet2Name)}" sheetId="2" r:id="rId2"/>
   </sheets>
+  <calcPr calcId="191029" fullCalcOnLoad="1"/>
 </workbook>`;
 
   const workbookRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationships xmlns="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
   <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
   <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  <Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
 </Relationships>`;
 
   return buildZipStore([
     { name: "[Content_Types].xml", data: encoder.encode(contentTypes) },
     { name: "_rels/.rels", data: encoder.encode(rootRels) },
+    { name: "docProps/core.xml", data: encoder.encode(coreXml) },
+    { name: "docProps/app.xml", data: encoder.encode(appXml) },
     { name: "xl/workbook.xml", data: encoder.encode(workbookXml) },
     { name: "xl/_rels/workbook.xml.rels", data: encoder.encode(workbookRels) },
     { name: "xl/styles.xml", data: encoder.encode(buildStylesXml()) },
-    { name: "xl/worksheets/sheet1.xml", data: encoder.encode(buildWorksheetXml(sheet1Rows, sheet1Widths, 7)) },
-    { name: "xl/worksheets/sheet2.xml", data: encoder.encode(buildWorksheetXml(sheet2Rows, [28, 12, 12, 12, 14, 14, 18])) },
+    { name: "xl/sharedStrings.xml", data: encoder.encode(sstXml) },
+    { name: "xl/worksheets/sheet1.xml", data: encoder.encode(sheet1Xml) },
+    { name: "xl/worksheets/sheet2.xml", data: encoder.encode(sheet2Xml) },
   ]);
 }
 
@@ -653,13 +1042,10 @@ function decodeXmlEntities(text: string): string {
 }
 
 async function inflateRawBytes(compressed: Uint8Array): Promise<Uint8Array> {
-  const ds = new DecompressionStream("deflate-raw");
-  const writer = ds.writable.getWriter();
   const safeCopy = new Uint8Array(compressed.byteLength);
   safeCopy.set(compressed);
-  await writer.write(safeCopy);
-  await writer.close();
-  const buf = await new Response(ds.readable).arrayBuffer();
+  const stream = new Blob([safeCopy]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  const buf = await new Response(stream).arrayBuffer();
   return new Uint8Array(buf);
 }
 
@@ -709,51 +1095,37 @@ async function extractZipEntries(input: Uint8Array): Promise<Map<string, Uint8Ar
   return entries;
 }
 
-/** Parse the primary worksheet of an .xlsx file into a 2D string matrix for CSV/table import. */
-export async function parseXlsxBuffer(buffer: ArrayBuffer | Uint8Array): Promise<string[][]> {
-  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-  if (bytes.byteLength > 5_000_000) throw new Error("Excel files must be under 5 MB.");
-  const entries = await extractZipEntries(bytes);
-  const decoder = new TextDecoder("utf-8");
-
-  const sharedStrings: string[] = [];
-  const sstBytes = entries.get("xl/sharedStrings.xml");
-  if (sstBytes) {
-    const sstXml = decoder.decode(sstBytes);
-    const siMatches = sstXml.match(/<si\b[^>]*>[\s\S]*?<\/si>/g) ?? [];
-    for (const si of siMatches) {
-      const tMatches = [...si.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)];
-      sharedStrings.push(tMatches.map((m) => decodeXmlEntities(m[1])).join(""));
-    }
-  }
-
-  const sheetBytes =
-    entries.get("xl/worksheets/sheet1.xml") ??
-    [...entries.entries()].find(([k]) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(k))?.[1];
-  if (!sheetBytes) throw new Error("Could not find a worksheet inside this Excel file.");
-
-  const sheetXml = decoder.decode(sheetBytes);
-  const rowMatches = sheetXml.match(/<row\b[^>]*>[\s\S]*?<\/row>/g) ?? [];
+function parseSheetXmlToMatrix(sheetXml: string, sharedStrings: string[]): string[][] {
+  const rowMatches = sheetXml.match(/<row\b[^>]*?(?:\/>|>[\s\S]*?<\/row>)/g) ?? [];
   const matrix: string[][] = [];
 
   for (const rowXml of rowMatches) {
+    if (rowXml.endsWith("/>")) {
+      matrix.push([]);
+      continue;
+    }
     const cells: string[] = [];
-    const cellMatches = rowXml.match(/<c\b[^>]*(?:\/>|>[\s\S]*?<\/c>)/g) ?? [];
+    const cellMatches = rowXml.match(/<c\b[^>]*?(?:\/>|>[\s\S]*?<\/c>)/g) ?? [];
     let nextCol = 0;
     for (const cellXml of cellMatches) {
       const refMatch = cellXml.match(/\br="([A-Za-z]+)\d+"/);
       const colIdx = refMatch ? colLettersToIndex(refMatch[1]) : nextCol;
       nextCol = colIdx + 1;
 
+      if (cellXml.endsWith("/>")) {
+        while (cells.length <= colIdx) cells.push("");
+        continue;
+      }
+
       const typeMatch = cellXml.match(/\bt="([^"]+)"/);
       const cellType = typeMatch ? typeMatch[1] : "";
       let val = "";
 
       if (cellType === "inlineStr") {
-        const tParts = [...cellXml.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)];
-        val = tParts.map((m) => decodeXmlEntities(m[1])).join("");
+        const tParts = [...cellXml.matchAll(/<t(?:\s[^>]*?)?(?:\/>|>([\s\S]*?)<\/t>)/g)];
+        val = tParts.map((m) => decodeXmlEntities(m[1] ?? "")).join("");
       } else {
-        const vMatch = cellXml.match(/<v(?:\s[^>]*)?>([\s\S]*?)<\/v>/);
+        const vMatch = cellXml.match(/<v(?:\s[^>]*?)?>([\s\S]*?)<\/v>/);
         const rawV = vMatch ? decodeXmlEntities(vMatch[1]) : "";
         if (cellType === "s") {
           const sIdx = Number(rawV);
@@ -772,4 +1144,69 @@ export async function parseXlsxBuffer(buffer: ArrayBuffer | Uint8Array): Promise
   }
 
   return matrix;
+}
+
+function scoreMatrixForTradeLedger(matrix: string[][]): number {
+  const symSet = new Set(["symbol", "asset", "instrument", "ticker", "pair", "simbol", "aset", "simbolaset"]);
+  const dateSet = new Set(["tradedate", "date", "closedate", "exitdate", "tanggaltrade", "tanggal"]);
+  const pnlSet = new Set(["pnl", "pl", "netpnl", "netpl", "netpnlusd", "netplusd", "netprofit", "profitloss", "profit", "pnlbersih", "plbersih", "pnlbersihusd", "plbersihusd"]);
+  const norm = (s: string) => s.toLowerCase().replace(/p\s*&\s*l/g, "pnl").replace(/[^a-z0-9]/g, "");
+
+  const limit = Math.min(matrix.length, 30);
+  let best = 0;
+  for (let i = 0; i < limit; i++) {
+    const tokens = new Set((matrix[i] ?? []).map((c) => norm(String(c ?? ""))));
+    const hasSym = [...symSet].some((a) => tokens.has(a));
+    const hasDate = [...dateSet].some((a) => tokens.has(a));
+    const hasPnl = [...pnlSet].some((a) => tokens.has(a));
+    if (hasSym && hasDate && hasPnl) {
+      best = Math.max(best, 100 + tokens.size);
+    }
+  }
+  return best;
+}
+
+/** Parse the trade ledger worksheet of an .xlsx file into a 2D string matrix for CSV/table import. */
+export async function parseXlsxBuffer(buffer: ArrayBuffer | Uint8Array): Promise<string[][]> {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  if (bytes.byteLength > 5_000_000) throw new Error("Excel files must be under 5 MB.");
+  const entries = await extractZipEntries(bytes);
+  const decoder = new TextDecoder("utf-8");
+
+  const sharedStrings: string[] = [];
+  const sstBytes = entries.get("xl/sharedStrings.xml");
+  if (sstBytes) {
+    const sstXml = decoder.decode(sstBytes);
+    const siMatches = sstXml.match(/<si\b[^>]*?(?:\/>|>[\s\S]*?<\/si>)/g) ?? [];
+    for (const si of siMatches) {
+      if (si.endsWith("/>")) {
+        sharedStrings.push("");
+        continue;
+      }
+      const tMatches = [...si.matchAll(/<t(?:\s[^>]*?)?(?:\/>|>([\s\S]*?)<\/t>)/g)];
+      sharedStrings.push(tMatches.map((m) => decodeXmlEntities(m[1] ?? "")).join(""));
+    }
+  }
+
+  const worksheetEntries = [...entries.entries()]
+    .filter(([k]) => /^xl\/worksheets\/[^/]+\.xml$/i.test(k))
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
+
+  if (!worksheetEntries.length) {
+    throw new Error("Could not find a worksheet inside this Excel file.");
+  }
+
+  let bestMatrix: string[][] | null = null;
+  let bestScore = -1;
+
+  for (const [, sheetBytes] of worksheetEntries) {
+    const matrix = parseSheetXmlToMatrix(decoder.decode(sheetBytes), sharedStrings);
+    const score = scoreMatrixForTradeLedger(matrix);
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatrix = matrix;
+    }
+  }
+
+  return bestMatrix ?? [];
 }

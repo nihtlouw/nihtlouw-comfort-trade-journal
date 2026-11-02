@@ -649,6 +649,11 @@ try {
   assert.match(xlsxDl.suggestedFilename(), /\.xlsx$/i);
   const xlsxReportPath = join(temp, "bloom-report-export.xlsx");
   await xlsxDl.saveAs(xlsxReportPath);
+  const xlsxBytes = readFileSync(xlsxReportPath);
+  assert.equal(xlsxBytes.readUInt32LE(0), 0x04034b50, "Valid PKZIP local header");
+  const dosDate = xlsxBytes.readUInt16LE(12);
+  assert.ok((dosDate & 0x1f) >= 1 && (dosDate & 0x1f) <= 31, "Valid MS-DOS calendar day in .xlsx header");
+  assert.match(xlsxBytes.toString("latin1"), /xl\/sharedStrings\.xml/, "Contains sharedStrings table");
 
   const [csvDl] = await Promise.all([
     page.waitForEvent("download"),
@@ -661,6 +666,13 @@ try {
   // Open Import modal and verify both .xlsx and .csv reports parse back with 0 invalid rows (all flagged duplicate against current identical dataset)
   await page.getByRole("button", { name: "Import CSV", exact: true }).click();
   await page.locator(".modal").waitFor();
+  const [sampleXlsxDl] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Sample 3M Report (.xlsx)", exact: true }).click(),
+  ]);
+  assert.match(sampleXlsxDl.suggestedFilename(), /\.xlsx$/i);
+  const sampleXlsxPath = join(temp, "bloom-sample.xlsx");
+  await sampleXlsxDl.saveAs(sampleXlsxPath);
   await page.locator(".csv-upload input").setInputFiles(xlsxReportPath);
   await page.getByText(new RegExp(`0 invalid · ${total3mRows} possible duplicates`)).waitFor();
   await page.locator(".csv-upload input").setInputFiles(csvReportPath);
