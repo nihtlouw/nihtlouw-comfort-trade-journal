@@ -581,11 +581,33 @@ try {
   assert.equal(await page.locator(".weekly-review .card-title p").count(), 0, "Weekly review cards have zero verbose subtitle paragraphs");
   assert.equal(await page.locator(".weekly-review .card-eyebrow").count(), 0, "Weekly review cards have zero uppercase eyebrow clutter");
 
+  const futureCalDate = await page.evaluate(() => {
+    const d = new Date();
+    const next = new Date(d.getFullYear(), d.getMonth() + 1, 10);
+    return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-10`;
+  });
+
   await page.locator(".mobile-bottom-nav .mobile-nav-add").click();
   await page.locator(".modal").waitFor();
   assert.equal(await page.getByLabel("Asset / symbol").isVisible(), true, "Center + button in mobile bottom nav opens Log Trade modal in 1 tap");
-  await page.locator(".modal").getByRole("button", { name: "Close", exact: true }).first().click();
+  await page.getByLabel("Asset / symbol").fill("CAL-SUM-A");
+  await page.getByLabel("Date").fill(futureCalDate);
+  await page.getByLabel("Net P&L (USD)").fill("310");
+  await page.getByRole("button", { name: "Save trade", exact: true }).click();
   await page.locator(".modal").waitFor({ state: "detached" });
+
+  await page.locator(".mobile-bottom-nav .mobile-nav-add").click();
+  await page.locator(".modal").waitFor();
+  await page.getByLabel("Asset / symbol").fill("CAL-SUM-B");
+  await page.getByLabel("Date").fill(futureCalDate);
+  await page.getByLabel("Net P&L (USD)").fill("-70");
+  await page.getByRole("button", { name: "Save trade", exact: true }).click();
+  await page.locator(".modal").waitFor({ state: "detached" });
+
+  await navigate("Calendar");
+  await page.getByLabel("Next month").click();
+  const day10Cell = page.locator(".calendar-day").filter({ has: page.locator("> span", { hasText: /^10$/ }) });
+  assert.equal(await day10Cell.locator(".calendar-value-marker").innerText(), "+$240", "Android calendar displays combined daily total P&L across multiple trades");
 
   await navigate("Overview");
   const overviewOrder = await page.evaluate(() => {

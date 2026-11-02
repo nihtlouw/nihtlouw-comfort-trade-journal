@@ -3544,6 +3544,88 @@ input:not([type="checkbox"]):not([type="file"]), select, textarea { min-width: 0
     width: 44px;
     height: 44px;
   }
+
+  /* Android / Mobile Calendar: show daily total P&L cleanly inside every day cell */
+  .calendar-card {
+    padding-left: 11px;
+    padding-right: 11px;
+  }
+
+  .calendar-weekdays,
+  .calendar-grid {
+    gap: 4px;
+  }
+
+  .calendar-day,
+  .calendar-blank {
+    min-height: 54px;
+  }
+
+  .calendar-compact .calendar-day,
+  .calendar-compact .calendar-blank {
+    min-height: 50px;
+  }
+
+  .calendar-day,
+  .calendar-compact .calendar-day {
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 5px 4px;
+  }
+
+  .calendar-day > span {
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1;
+  }
+
+  .calendar-day small {
+    display: block;
+    width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    line-height: 1.15;
+  }
+
+  .calendar-value-full,
+  .calendar-rest-tag .calendar-value-full {
+    display: none;
+  }
+
+  .calendar-value-marker {
+    display: block;
+    font-size: 9.5px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.03em;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 375px) {
+  .calendar-card {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .calendar-weekdays,
+  .calendar-grid {
+    gap: 3px;
+  }
+
+  .calendar-day,
+  .calendar-compact .calendar-day {
+    padding: 4px 2.5px;
+  }
+
+  .calendar-day > span {
+    font-size: 10px;
+  }
+
+  .calendar-value-marker {
+    font-size: 8.2px;
+    letter-spacing: -0.04em;
+  }
 }
 
 

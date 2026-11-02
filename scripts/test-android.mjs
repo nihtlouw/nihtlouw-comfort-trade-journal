@@ -115,8 +115,17 @@ export async function testAndroid(browser, url, errors, apiRequests) {
     assert.equal(await page.getByRole("heading", { name: "All-time summary" }).count(), 1);
     const calendarDay = page.locator(".calendar-day.today");
     assert.match(await calendarDay.getAttribute("aria-label"), /\$123,456\.78/);
-    assert.equal(await calendarDay.locator(".calendar-value-marker").innerText(), "+");
+    assert.equal(await calendarDay.locator(".calendar-value-marker").innerText(), "+$123k");
+    assert.equal(
+      await calendarDay.locator(".calendar-value-marker").evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
+      true,
+      `mobile calendar P&L fits inside cell at ${width}px`,
+    );
     assert.equal(await calendarDay.locator(".calendar-value-full").isVisible(), false);
+    await page.getByLabel("Hide amounts").click();
+    assert.equal(await calendarDay.locator(".calendar-value-marker").innerText(), "•••");
+    await page.getByLabel("Show amounts").click();
+    assert.equal(await calendarDay.locator(".calendar-value-marker").innerText(), "+$123k");
     const month = await page.locator(".calendar-nav strong").innerText();
     await page.getByLabel("Previous month").click();
     assert.notEqual(await page.locator(".calendar-nav strong").innerText(), month);
@@ -131,7 +140,12 @@ export async function testAndroid(browser, url, errors, apiRequests) {
     await page.locator(".modal").waitFor({ state: "detached" });
     await assertVisibleRow(trade, "−$98,765.43");
     await navigate("Calendar");
-    assert.equal(await page.locator(".calendar-day.today .calendar-value-marker").innerText(), "−");
+    assert.equal(await page.locator(".calendar-day.today .calendar-value-marker").innerText(), "−$99k");
+    assert.equal(
+      await page.locator(".calendar-day.today .calendar-value-marker").evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
+      true,
+      `mobile calendar negative P&L fits inside cell at ${width}px`,
+    );
     assert.match(await page.locator(".calendar-day.today").getAttribute("aria-label"), /−\$98,765\.43/);
     await page.locator(".calendar-day.today").click();
     await page.getByLabel(`Edit ANDROID-${width} trade`).click();
@@ -139,7 +153,7 @@ export async function testAndroid(browser, url, errors, apiRequests) {
     await page.getByRole("button", { name: "Save changes", exact: true }).click();
     await page.locator(".modal").waitFor({ state: "detached" });
     await navigate("Calendar");
-    assert.equal(await page.locator(".calendar-day.today .calendar-value-marker").innerText(), "=");
+    assert.equal(await page.locator(".calendar-day.today .calendar-value-marker").innerText(), "$0");
     assert.match(await page.locator(".calendar-day.today").getAttribute("aria-label"), /\$0\.00/);
     await page.locator(".calendar-day.today").click();
     await page.getByLabel("Clear selected day").click();
