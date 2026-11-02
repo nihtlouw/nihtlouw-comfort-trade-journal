@@ -59,6 +59,7 @@ export function CommandPaletteModal({
   onPlaySoftRain,
   onTogglePrivacy,
   onToggleTheme,
+  onSelectDarkVariant,
   onToggleLocale,
   onDownloadBackup,
   onOpenSettings,
@@ -79,6 +80,7 @@ export function CommandPaletteModal({
   onPlaySoftRain: () => void;
   onTogglePrivacy: () => void;
   onToggleTheme: () => void;
+  onSelectDarkVariant?: (variant: "forest" | "obsidian") => void;
   onToggleLocale: () => void;
   onDownloadBackup: () => void;
   onOpenSettings: () => void;
@@ -162,13 +164,39 @@ export function CommandPaletteModal({
         id: "act-theme",
         section: "actions",
         title: isDark ? copy.cmdActionThemeLight : copy.cmdActionThemeDark,
-        keywords: "theme dark light espresso sage mode gelap terang",
+        keywords: "theme dark light forest obsidian sage mode gelap terang",
         icon: isDark ? Sun : Moon,
         run: () => {
           onClose();
           onToggleTheme();
         },
       },
+      ...(onSelectDarkVariant
+        ? [
+            {
+              id: "act-dark-forest",
+              section: "actions" as const,
+              title: copy.cmdDarkForestLabel,
+              keywords: "dark mode botanical forest pine sage hijau gelap model 1",
+              icon: Moon,
+              run: () => {
+                onClose();
+                onSelectDarkVariant("forest");
+              },
+            },
+            {
+              id: "act-dark-obsidian",
+              section: "actions" as const,
+              title: copy.cmdDarkObsidianLabel,
+              keywords: "dark mode obsidian cream linen warm hitam hangat model 4",
+              icon: Moon,
+              run: () => {
+                onClose();
+                onSelectDarkVariant("obsidian");
+              },
+            },
+          ]
+        : []),
       {
         id: "act-lang",
         section: "actions",
@@ -282,6 +310,7 @@ export function CommandPaletteModal({
     onOpenRecap,
     onOpenSettings,
     onPlaySoftRain,
+    onSelectDarkVariant,
     onToggleLocale,
     onTogglePrivacy,
     onToggleTheme,

@@ -149,9 +149,12 @@ try {
   console.log("PASS: portfolio accounts, per-trade checklists, reflections, multiple intentions, and analytics work.");
 
   await page.getByLabel("Open settings").click(); await page.getByRole("button", { name: "☾ Dark mode", exact: true }).click();
-  assert.equal(await page.locator(".app-shell").getAttribute("data-theme"), "dark"); await page.getByRole("button", { name: "Close", exact: true }).click(); await page.reload({ waitUntil: "networkidle" });
   assert.equal(await page.locator(".app-shell").getAttribute("data-theme"), "dark");
-  const darkPalette = await page.evaluate(() => {
+  assert.equal(await page.locator(".app-shell").getAttribute("data-dark-variant"), "forest");
+  await page.getByRole("button", { name: "Close", exact: true }).click(); await page.reload({ waitUntil: "networkidle" });
+  assert.equal(await page.locator(".app-shell").getAttribute("data-theme"), "dark");
+  assert.equal(await page.locator(".app-shell").getAttribute("data-dark-variant"), "forest");
+  const inspectDarkPalette = () => page.evaluate(() => {
     const parseRgb = (value) => (value.match(/\d+/g) || []).slice(0, 3).map(Number);
     const channel = (c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
     const luminance = ([r, g, b]) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
@@ -176,11 +179,26 @@ try {
       progressTrackLum: progressTrack ? luminance(parseRgb(getComputedStyle(progressTrack).backgroundColor)) : 0,
     };
   });
-  assert.equal(darkPalette.htmlBg, "rgb(20, 18, 16)", "dark root background uses warm espresso");
-  assert.ok(darkPalette.shellBg[0] >= darkPalette.shellBg[1] && darkPalette.cardBg[0] >= darkPalette.cardBg[1], "dark canvas and cards are warm espresso/stone rather than green-tinted");
-  assert.ok(darkPalette.inkOnCardContrast >= 10, `expected comfortable AA/AAA body contrast on dark cards, got ${darkPalette.inkOnCardContrast.toFixed(2)}`);
-  assert.ok(darkPalette.statIconLum < 0.08 && darkPalette.resultPillLum < 0.08 && darkPalette.progressTrackLum < 0.08, "dark badges, icons, and tracks avoid chalky light-mode pastels");
-  console.log("PASS: full backup restores trades and images; warm espresso dark theme persists with high contrast.");
+  const forestPalette = await inspectDarkPalette();
+  assert.equal(forestPalette.htmlBg, "rgb(11, 19, 16)", "Model 1 dark root uses Deep Botanical Forest");
+  assert.ok(forestPalette.shellBg[1] > forestPalette.shellBg[0] && forestPalette.cardBg[1] > forestPalette.cardBg[0], "Model 1 dark canvas and cards use deep botanical forest tones");
+  assert.ok(forestPalette.inkOnCardContrast >= 10, `expected comfortable AA/AAA body contrast on Model 1 dark cards, got ${forestPalette.inkOnCardContrast.toFixed(2)}`);
+  assert.ok(forestPalette.statIconLum < 0.08 && forestPalette.resultPillLum < 0.08 && forestPalette.progressTrackLum < 0.08, "Model 1 dark badges, icons, and tracks avoid chalky light-mode pastels");
+
+  // Switch to Model 4 ("Obsidian & Linen") and verify persistence + contrast
+  await page.getByLabel("Open settings").click();
+  await page.getByRole("radio", { name: /Obsidian & Linen/i }).click();
+  assert.equal(await page.locator(".app-shell").getAttribute("data-dark-variant"), "obsidian");
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.reload({ waitUntil: "networkidle" });
+  assert.equal(await page.locator(".app-shell").getAttribute("data-theme"), "dark");
+  assert.equal(await page.locator(".app-shell").getAttribute("data-dark-variant"), "obsidian");
+  const obsidianPalette = await inspectDarkPalette();
+  assert.equal(obsidianPalette.htmlBg, "rgb(16, 15, 13)", "Model 4 dark root uses Layered Obsidian");
+  assert.ok(obsidianPalette.shellBg[0] >= obsidianPalette.shellBg[1] && obsidianPalette.cardBg[0] >= obsidianPalette.cardBg[1], "Model 4 dark canvas and cards use warm obsidian/stone");
+  assert.ok(obsidianPalette.inkOnCardContrast >= 10, `expected comfortable AA/AAA body contrast on Model 4 dark cards, got ${obsidianPalette.inkOnCardContrast.toFixed(2)}`);
+  assert.ok(obsidianPalette.statIconLum < 0.08 && obsidianPalette.resultPillLum < 0.08 && obsidianPalette.progressTrackLum < 0.08, "Model 4 dark badges, icons, and tracks avoid chalky light-mode pastels");
+  console.log("PASS: full backup restores trades and images; both Botanical Forest (Model 1) and Obsidian & Linen (Model 4) dark themes persist with high contrast.");
 
   await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(350);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390, "no page-wide mobile overflow");

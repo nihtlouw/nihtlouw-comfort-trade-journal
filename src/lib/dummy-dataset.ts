@@ -914,6 +914,7 @@ export function createThreeMonthDummyData(
       moodHistory,
       reflections,
       theme: "light",
+      darkVariant: "forest",
       locale,
       reduceMotion: false,
       includeSamples: false,

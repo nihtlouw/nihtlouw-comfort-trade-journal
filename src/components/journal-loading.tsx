@@ -1,17 +1,19 @@
 import { Sprout } from "lucide-react";
 import { UI_COPY } from "@/lib/i18n";
-import type { AppLocale } from "@/lib/types";
+import type { AppLocale, DarkModeVariant } from "@/lib/types";
 
 /** An honest, indeterminate loading state; it never delays the journal becoming interactive. */
 export function JournalLoading({
   leaving = false,
   reduceMotion = false,
   theme = "light",
+  darkVariant = "forest",
   locale = "en",
 }: {
   leaving?: boolean;
   reduceMotion?: boolean;
   theme?: "light" | "dark";
+  darkVariant?: DarkModeVariant;
   locale?: AppLocale;
 }) {
   const copy = UI_COPY[locale];
@@ -20,6 +22,7 @@ export function JournalLoading({
       className={`loading-screen ${leaving ? "is-leaving" : ""}`}
       data-motion={reduceMotion ? "reduced" : "system"}
       data-theme={theme}
+      data-dark-variant={darkVariant}
       aria-hidden={leaving || undefined}
     >
       <div className="loading-glow" aria-hidden="true" />

@@ -158,13 +158,16 @@ test("new preferences survive normalization and backups while old journals get s
   const old = createDemoData();
   const upgraded = normalizeJournalData(old);
   assert.deepEqual(upgraded.settings.riskLimits, { perTrade: null, dailyLoss: null }); assert.equal(upgraded.settings.backupReminderDays, 7);
+  assert.equal(upgraded.settings.darkVariant, "forest");
   assert.equal(upgraded.settings.patienceLocale, "en"); assert.equal(upgraded.settings.patienceMaxTrades, 3);
   assert.deepEqual(upgraded.settings.walkAwayLogs, []);
   upgraded.settings.riskLimits = { perTrade: 125.5, dailyLoss: 300 }; upgraded.settings.backupReminderDays = 30;
+  upgraded.settings.darkVariant = "obsidian";
   upgraded.settings.patienceLocale = "id"; upgraded.settings.patienceMaxTrades = 2;
   upgraded.settings.walkAwayLogs = [{ id: "w1", date: "2026-10-29", accountId: "main", reason: "stop_giveback", note: "Kept remaining green day." }];
   const parsed = await parseBackup(JSON.stringify({ format: "bloom-journal-backup", version: 2, journal: upgraded, images: [] }));
   assert.deepEqual(parsed.journal.settings.riskLimits, { perTrade: 125.5, dailyLoss: 300 }); assert.equal(parsed.journal.settings.backupReminderDays, 30);
+  assert.equal(parsed.journal.settings.darkVariant, "obsidian");
   assert.equal(parsed.journal.settings.patienceLocale, "id"); assert.equal(parsed.journal.settings.patienceMaxTrades, 2);
   assert.equal(parsed.journal.settings.walkAwayLogs?.length, 1);
   assert.throws(() => normalizeJournalData({ ...upgraded, settings: { ...upgraded.settings, riskLimits: { perTrade: -1, dailyLoss: null } } }));

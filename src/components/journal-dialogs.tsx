@@ -844,6 +844,48 @@ export function SettingsModal({
                 {data.settings.theme === "dark" ? copy.lightModeBtn : copy.darkModeBtn}
               </button>
             </div>
+            <div className="settings-row settings-row-palette">
+              <div>
+                <strong>{copy.darkPaletteTitle}</strong>
+                <p>{copy.darkPaletteDesc}</p>
+              </div>
+              <div className="dark-palette-grid" role="radiogroup" aria-label={copy.darkPaletteTitle}>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={(data.settings.darkVariant ?? "forest") === "forest"}
+                  className={`dark-palette-card ${(data.settings.darkVariant ?? "forest") === "forest" ? "selected" : ""} ${data.settings.theme === "dark" && (data.settings.darkVariant ?? "forest") === "forest" ? "is-live-dark" : ""}`}
+                  onClick={() => void onUpdate({ theme: "dark", darkVariant: "forest" })}
+                >
+                  <span className="dark-palette-swatches" aria-hidden="true">
+                    <i style={{ background: "#0b1310" }} />
+                    <i style={{ background: "#17251f" }} />
+                    <i style={{ background: "#d8ead9" }} />
+                  </span>
+                  <span className="dark-palette-copy">
+                    <strong>{copy.darkVariantForestName}</strong>
+                    <small>{copy.darkVariantForestSub}</small>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={data.settings.darkVariant === "obsidian"}
+                  className={`dark-palette-card ${data.settings.darkVariant === "obsidian" ? "selected" : ""} ${data.settings.theme === "dark" && data.settings.darkVariant === "obsidian" ? "is-live-dark" : ""}`}
+                  onClick={() => void onUpdate({ theme: "dark", darkVariant: "obsidian" })}
+                >
+                  <span className="dark-palette-swatches" aria-hidden="true">
+                    <i style={{ background: "#100f0d" }} />
+                    <i style={{ background: "#201d19" }} />
+                    <i style={{ background: "#efe9dd" }} />
+                  </span>
+                  <span className="dark-palette-copy">
+                    <strong>{copy.darkVariantObsidianName}</strong>
+                    <small>{copy.darkVariantObsidianSub}</small>
+                  </span>
+                </button>
+              </div>
+            </div>
             <div className="settings-row">
               <div>
                 <strong>{copy.motionTitle}</strong>
