@@ -3975,7 +3975,8 @@ input:not([type="checkbox"]):not([type="file"]), select, textarea { min-width: 0
 
 .yt-cat-badge,
 .yt-pin-badge,
-.yt-time-badge {
+.yt-time-badge,
+.yt-resume-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -3985,6 +3986,12 @@ input:not([type="checkbox"]):not([type="file"]), select, textarea { min-width: 0
   font-weight: 700;
   letter-spacing: 0.02em;
   backdrop-filter: blur(6px);
+}
+
+.yt-resume-badge {
+  background: rgba(58, 97, 68, 0.92);
+  color: #eef7ef;
+  border: 1px solid rgba(182, 224, 189, 0.34);
 }
 
 .yt-cat-badge.cat-followup {
@@ -4717,6 +4724,34 @@ input:not([type="checkbox"]):not([type="file"]), select, textarea { min-width: 0
   .strategy-pdf-modal {
     height: 88vh;
   }
+}
+
+/* Keep active YouTube player iframe mounted & cached across in-app view changes */
+.overview-grid.overview-grid-parked {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.overview-grid.overview-grid-parked .yt-watch-card {
+  width: 320px;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  animation: none !important;
+}
+
+.overview-grid.overview-grid-parked .yt-stage {
+  width: 320px;
+  height: 180px;
 }
 
 

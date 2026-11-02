@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookmarkCheck,
   Clock,
@@ -10,6 +10,7 @@ import {
   Pin,
   Play,
   Plus,
+  RotateCcw,
   Square,
   Trash2,
   X,
@@ -19,11 +20,30 @@ import { UI_COPY } from "@/lib/i18n";
 import type { AppLocale, SavedYoutubeVideo } from "@/lib/types";
 import {
   buildYoutubeUrls,
+  clearYoutubePlaybackPosition,
   formatYoutubeTimestamp,
+  parseYoutubePlayerMessage,
   parseYoutubeUrl,
+  readYoutubePlaybackCache,
+  resolveYoutubeResumeSeconds,
   sortYoutubeVideos,
+  updateYoutubePlaybackPosition,
+  writeYoutubePlaybackCache,
+  type YoutubePlaybackCache,
 } from "@/lib/youtube";
 import { CardTitle } from "@/components/journal-ui";
+
+type ActivePlayerSession = {
+  sessionKey: string;
+  itemId: string;
+  videoId: string;
+  embedUrl: string;
+};
+
+const ALLOWED_PLAYER_ORIGINS = new Set([
+  "https://www.youtube-nocookie.com",
+  "https://www.youtube.com",
+]);
 
 function YoutubeThumbnail({
   videoId,
@@ -70,17 +90,27 @@ function YoutubeThumbnail({
 export function YoutubeWatchPanel({
   videos,
   locale = "en",
+  active = true,
+  onPlayerMountChange,
   onChange,
 }: {
   videos: SavedYoutubeVideo[];
   locale?: AppLocale;
+  active?: boolean;
+  onPlayerMountChange?: (mounted: boolean) => void;
   onChange: (next: SavedYoutubeVideo[], message?: string) => Promise<boolean> | void;
 }) {
   const copy = UI_COPY[locale];
   const sortedVideos = useMemo(() => sortYoutubeVideos(videos), [videos]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [playingId, setPlayingId] = useState<string | null>(null);
+  const [playerSession, setPlayerSession] = useState<ActivePlayerSession | null>(null);
+  const [playbackCache, setPlaybackCache] = useState<YoutubePlaybackCache>({ positions: {} });
+
+  const cacheRef = useRef<YoutubePlaybackCache>({ positions: {} });
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const handshakeDoneRef = useRef(false);
+  const lastSavedTickRef = useRef(0);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -88,6 +118,32 @@ export function YoutubeWatchPanel({
   const [titleInput, setTitleInput] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const lastFetchedVideoId = useRef<string>("");
+
+  const persistCacheNow = useCallback((nextCache: YoutubePlaybackCache) => {
+    cacheRef.current = nextCache;
+    try {
+      writeYoutubePlaybackCache(window.localStorage, nextCache);
+    } catch {
+      /* Ignore storage quota / privacy mode errors */
+    }
+  }, []);
+
+  // Hydrate saved playback positions & last selected video from localStorage
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const loaded = readYoutubePlaybackCache(window.localStorage);
+        cacheRef.current = loaded;
+        setPlaybackCache(loaded);
+        if (loaded.selectedId) {
+          setSelectedId((current) => current ?? loaded.selectedId ?? null);
+        }
+      } catch {
+        /* Ignore storage errors */
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const activeVideo = useMemo(() => {
     if (!sortedVideos.length) return null;
@@ -98,8 +154,184 @@ export function YoutubeWatchPanel({
     return sortedVideos[0];
   }, [sortedVideos, selectedId]);
 
+  const isPlayingActive = Boolean(
+    activeVideo &&
+      playerSession &&
+      playerSession.itemId === activeVideo.id &&
+      playerSession.videoId === activeVideo.videoId,
+  );
+
+  useEffect(() => {
+    onPlayerMountChange?.(isPlayingActive);
+  }, [isPlayingActive, onPlayerMountChange]);
+
+  const sendYoutubeCommand = useCallback((func: string, args: unknown[] = []) => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    try {
+      win.postMessage(
+        JSON.stringify({ event: "command", func, args, id: "bloom-yt-player", channel: "widget" }),
+        "*",
+      );
+    } catch {
+      /* Ignore cross-origin postMessage errors */
+    }
+  }, []);
+
+  const sendListeningHandshake = useCallback(() => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    try {
+      win.postMessage(
+        JSON.stringify({ event: "listening", id: "bloom-yt-player", channel: "widget" }),
+        "*",
+      );
+      win.postMessage(
+        JSON.stringify({
+          event: "command",
+          func: "addEventListener",
+          args: ["onStateChange"],
+          id: "bloom-yt-player",
+          channel: "widget",
+        }),
+        "*",
+      );
+    } catch {
+      /* Ignore cross-origin postMessage errors */
+    }
+  }, []);
+
+  // When switching away from Overview to another in-app tab, gently pause without unmounting the iframe
+  useEffect(() => {
+    if (!active && isPlayingActive) {
+      sendYoutubeCommand("pauseVideo");
+      persistCacheNow(cacheRef.current);
+    }
+  }, [active, isPlayingActive, persistCacheNow, sendYoutubeCommand]);
+
+  // Listen to YouTube IFrame JS API postMessage updates (currentTime, duration, pause/ended state)
+  useEffect(() => {
+    if (!playerSession) return;
+    handshakeDoneRef.current = false;
+
+    let attempts = 0;
+    const poll = window.setInterval(() => {
+      if (handshakeDoneRef.current || attempts >= 15) {
+        window.clearInterval(poll);
+        return;
+      }
+      attempts += 1;
+      sendListeningHandshake();
+    }, 320);
+
+    function handleMessage(event: MessageEvent) {
+      const iframeWin = iframeRef.current?.contentWindow;
+      if (!iframeWin || event.source !== iframeWin) return;
+      if (
+        !ALLOWED_PLAYER_ORIGINS.has(event.origin) &&
+        event.origin !== window.location.origin
+      ) {
+        return;
+      }
+      const parsed = parseYoutubePlayerMessage(event.data);
+      if (!parsed) return;
+      handshakeDoneRef.current = true;
+
+      const vid = playerSession?.videoId;
+      if (!vid) return;
+
+      if (parsed.playerState === 0) {
+        const cleared = clearYoutubePlaybackPosition(cacheRef.current, vid);
+        persistCacheNow(cleared);
+        setPlaybackCache(cleared);
+        return;
+      }
+
+      if (typeof parsed.currentTime === "number") {
+        const now = Date.now();
+        const updated = updateYoutubePlaybackPosition(
+          cacheRef.current,
+          vid,
+          parsed.currentTime,
+          parsed.duration,
+          now,
+        );
+        cacheRef.current = updated;
+        const isPaused = parsed.playerState === 2;
+        if (isPaused || now - lastSavedTickRef.current >= 1000) {
+          lastSavedTickRef.current = now;
+          persistCacheNow(updated);
+          setPlaybackCache(updated);
+        }
+      } else if (parsed.playerState === 2) {
+        persistCacheNow(cacheRef.current);
+        setPlaybackCache({ ...cacheRef.current });
+      }
+    }
+
+    function flushOnHide() {
+      if (document.visibilityState === "hidden") {
+        persistCacheNow(cacheRef.current);
+      }
+    }
+    function flushOnPageHide() {
+      persistCacheNow(cacheRef.current);
+    }
+
+    window.addEventListener("message", handleMessage);
+    document.addEventListener("visibilitychange", flushOnHide);
+    window.addEventListener("pagehide", flushOnPageHide);
+    return () => {
+      window.clearInterval(poll);
+      window.removeEventListener("message", handleMessage);
+      document.removeEventListener("visibilitychange", flushOnHide);
+      window.removeEventListener("pagehide", flushOnPageHide);
+    };
+  }, [persistCacheNow, playerSession, sendListeningHandshake]);
+
   const liveDraftParsed = useMemo(() => parseYoutubeUrl(urlInput), [urlInput]);
   const showForm = formOpen || editingId !== null || sortedVideos.length === 0;
+
+  function selectVideoItem(itemId: string) {
+    setSelectedId(itemId);
+    const nextCache: YoutubePlaybackCache = { ...cacheRef.current, selectedId: itemId };
+    persistCacheNow(nextCache);
+    setPlaybackCache(nextCache);
+  }
+
+  function startPlayback(video: SavedYoutubeVideo, forceRestart = false) {
+    let workingCache = cacheRef.current;
+    if (forceRestart) {
+      workingCache = clearYoutubePlaybackPosition(workingCache, video.videoId);
+    }
+    workingCache = { ...workingCache, selectedId: video.id };
+    persistCacheNow(workingCache);
+    setPlaybackCache(workingCache);
+    setSelectedId(video.id);
+
+    const startAt = forceRestart
+      ? video.startSeconds
+      : resolveYoutubeResumeSeconds(video, workingCache);
+    const origin =
+      typeof window !== "undefined" && /^https?:\/\//i.test(window.location.origin)
+        ? window.location.origin
+        : undefined;
+    const urls = buildYoutubeUrls(video.videoId, startAt, { autoplay: true, origin });
+
+    setPlayerSession({
+      sessionKey: `${video.id}-${video.videoId}-${Date.now()}`,
+      itemId: video.id,
+      videoId: video.videoId,
+      embedUrl: urls.embedUrl,
+    });
+  }
+
+  function stopToThumbnail() {
+    sendYoutubeCommand("pauseVideo");
+    persistCacheNow(cacheRef.current);
+    setPlaybackCache({ ...cacheRef.current });
+    setPlayerSession(null);
+  }
 
   function resetForm() {
     setFormOpen(false);
@@ -187,8 +419,8 @@ export function YoutubeWatchPanel({
           : item,
       );
       void onChange(next, copy.ytUpdatedToast);
-      setSelectedId(editingId);
-      setPlayingId(null);
+      selectVideoItem(editingId);
+      setPlayerSession(null);
       resetForm();
       return;
     }
@@ -204,8 +436,8 @@ export function YoutubeWatchPanel({
     };
     const next = [newItem, ...videos];
     void onChange(next, copy.ytSavedToast);
-    setSelectedId(newItem.id);
-    setPlayingId(null);
+    selectVideoItem(newItem.id);
+    setPlayerSession(null);
     resetForm();
   }
 
@@ -216,52 +448,70 @@ export function YoutubeWatchPanel({
       pinned: item.id === target.id ? willPin : false,
     }));
     void onChange(next, copy.ytUpdatedToast);
-    if (willPin) setSelectedId(target.id);
+    if (willPin) selectVideoItem(target.id);
   }
 
   function removeVideo(target: SavedYoutubeVideo) {
     if (!window.confirm(copy.ytConfirmDelete(target.title))) return;
     const next = videos.filter((item) => item.id !== target.id);
-    if (playingId === target.id) setPlayingId(null);
+    const cleaned = clearYoutubePlaybackPosition(cacheRef.current, target.videoId);
+    persistCacheNow(cleaned);
+    setPlaybackCache(cleaned);
+    if (playerSession?.itemId === target.id) setPlayerSession(null);
     if (selectedId === target.id) setSelectedId(null);
     if (editingId === target.id) resetForm();
     void onChange(next, copy.ytDeletedToast);
   }
 
+  const cachedResumeSeconds = activeVideo
+    ? playbackCache.positions[activeVideo.videoId]?.seconds
+    : undefined;
+  const effectiveStartSeconds = activeVideo
+    ? resolveYoutubeResumeSeconds(activeVideo, playbackCache)
+    : undefined;
   const activeUrls = activeVideo
-    ? buildYoutubeUrls(activeVideo.videoId, activeVideo.startSeconds)
+    ? buildYoutubeUrls(activeVideo.videoId, effectiveStartSeconds)
     : null;
-  const activeStartBadge = activeVideo ? formatYoutubeTimestamp(activeVideo.startSeconds) : null;
-  const isPlayingActive = Boolean(activeVideo && playingId === activeVideo.id);
+  const hasSavedResume = Boolean(
+    activeVideo &&
+      cachedResumeSeconds &&
+      cachedResumeSeconds > 0 &&
+      cachedResumeSeconds !== activeVideo.startSeconds,
+  );
+  const resumeLabel = hasSavedResume ? formatYoutubeTimestamp(cachedResumeSeconds) : null;
+  const initialStartBadge =
+    !hasSavedResume && activeVideo ? formatYoutubeTimestamp(activeVideo.startSeconds) : null;
 
   return (
     <section className="card yt-watch-card">
-      <CardTitle
-        title={copy.ytTitle}
-        action={
-          <div className="yt-header-actions">
-            {sortedVideos.length > 0 && (
-              <button
-                type="button"
-                className={showForm ? "button-quiet" : "button-secondary"}
-                onClick={() => (showForm ? resetForm() : startAdd())}
-              >
-                {showForm ? (
-                  <>
-                    <X size={14} /> {copy.ytCancelBtn}
-                  </>
-                ) : (
-                  <>
-                    <Plus size={14} /> {copy.ytAddBtn}
-                  </>
-                )}
-              </button>
-            )}
-          </div>
-        }
-      />
+      {active && (
+        <CardTitle
+          title={copy.ytTitle}
+          action={
+            <div className="yt-header-actions">
+              {sortedVideos.length > 0 && (
+                <button
+                  type="button"
+                  className={showForm ? "button-quiet" : "button-secondary"}
+                  onClick={() => (showForm ? resetForm() : startAdd())}
+                >
+                  {showForm ? (
+                    <>
+                      <X size={14} /> {copy.ytCancelBtn}
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={14} /> {copy.ytAddBtn}
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          }
+        />
+      )}
 
-      {showForm && (
+      {active && showForm && (
         <form className="yt-form" onSubmit={handleSubmit}>
           <div className="yt-form-grid">
             <label className="yt-field">
@@ -330,12 +580,14 @@ export function YoutubeWatchPanel({
       {activeVideo && activeUrls && (
         <div className="yt-featured">
           <div className="yt-stage">
-            {isPlayingActive ? (
+            {isPlayingActive && playerSession ? (
               <iframe
-                key={`${activeVideo.id}-${activeVideo.videoId}-${activeVideo.startSeconds ?? 0}`}
+                ref={iframeRef}
+                key={playerSession.sessionKey}
                 className="yt-iframe"
-                src={activeUrls.embedUrl}
+                src={playerSession.embedUrl}
                 title={activeVideo.title}
+                onLoad={sendListeningHandshake}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                 referrerPolicy="strict-origin-when-cross-origin"
                 allowFullScreen
@@ -345,20 +597,25 @@ export function YoutubeWatchPanel({
                 type="button"
                 className="yt-stage-trigger"
                 aria-label={copy.ytPlayAria(activeVideo.title)}
-                onClick={() => setPlayingId(activeVideo.id)}
+                onClick={() => startPlayback(activeVideo)}
               >
                 <YoutubeThumbnail videoId={activeVideo.videoId} alt={activeVideo.title} />
                 <span className="yt-stage-scrim" aria-hidden="true" />
-                {(activeVideo.pinned || activeStartBadge) && (
+                {(activeVideo.pinned || resumeLabel || initialStartBadge) && (
                   <span className="yt-stage-badges">
                     {activeVideo.pinned && (
                       <span className="yt-pin-badge">
                         <Pin size={11} /> {copy.ytPinnedBadge}
                       </span>
                     )}
-                    {activeStartBadge && (
+                    {resumeLabel && (
+                      <span className="yt-resume-badge">
+                        <Clock size={11} /> {copy.ytResumeBadge(resumeLabel)}
+                      </span>
+                    )}
+                    {initialStartBadge && (
                       <span className="yt-time-badge">
-                        <Clock size={11} /> {copy.ytStartAtBadge(activeStartBadge)}
+                        <Clock size={11} /> {copy.ytStartAtBadge(initialStartBadge)}
                       </span>
                     )}
                   </span>
@@ -367,69 +624,81 @@ export function YoutubeWatchPanel({
                   <span className="yt-play-circle">
                     <Play size={18} fill="currentColor" />
                   </span>
-                  <strong>{copy.ytPlayBtn}</strong>
+                  <strong>{resumeLabel ? copy.ytResumeBadge(resumeLabel) : copy.ytPlayBtn}</strong>
                 </span>
               </button>
             )}
           </div>
 
-          <div className="yt-active-body">
-            <div className="yt-active-title-row">
-              <h3>{activeVideo.title}</h3>
-              <div className="yt-active-controls">
-                {isPlayingActive && (
+          {active && (
+            <div className="yt-active-body">
+              <div className="yt-active-title-row">
+                <h3>{activeVideo.title}</h3>
+                <div className="yt-active-controls">
+                  {isPlayingActive && (
+                    <button
+                      type="button"
+                      className="button-secondary yt-ctrl-btn"
+                      onClick={stopToThumbnail}
+                    >
+                      <Square size={13} /> <span>{copy.ytStopBtn}</span>
+                    </button>
+                  )}
+                  {(hasSavedResume || isPlayingActive) && (
+                    <button
+                      type="button"
+                      className="button-quiet yt-ctrl-btn"
+                      aria-label={copy.ytRestartAria(activeVideo.title)}
+                      onClick={() => startPlayback(activeVideo, true)}
+                    >
+                      <RotateCcw size={13} /> <span>{copy.ytRestartBtn}</span>
+                    </button>
+                  )}
                   <button
                     type="button"
-                    className="button-secondary yt-ctrl-btn"
-                    onClick={() => setPlayingId(null)}
+                    className={`button-quiet yt-ctrl-btn ${activeVideo.pinned ? "is-pinned" : ""}`}
+                    aria-pressed={Boolean(activeVideo.pinned)}
+                    aria-label={
+                      activeVideo.pinned
+                        ? copy.ytUnpinAria(activeVideo.title)
+                        : copy.ytPinAria(activeVideo.title)
+                    }
+                    onClick={() => togglePin(activeVideo)}
                   >
-                    <Square size={13} /> <span>{copy.ytStopBtn}</span>
+                    <Pin size={13} /> <span>{copy.ytPinBtn}</span>
                   </button>
-                )}
-                <button
-                  type="button"
-                  className={`button-quiet yt-ctrl-btn ${activeVideo.pinned ? "is-pinned" : ""}`}
-                  aria-pressed={Boolean(activeVideo.pinned)}
-                  aria-label={
-                    activeVideo.pinned
-                      ? copy.ytUnpinAria(activeVideo.title)
-                      : copy.ytPinAria(activeVideo.title)
-                  }
-                  onClick={() => togglePin(activeVideo)}
-                >
-                  <Pin size={13} /> <span>{copy.ytPinBtn}</span>
-                </button>
-                <a
-                  href={activeUrls.canonicalUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="button-quiet yt-ctrl-btn yt-ext-link"
-                >
-                  <ExternalLink size={13} /> <span>{copy.ytOpenExternal}</span>
-                </a>
-                <button
-                  type="button"
-                  className="icon-button yt-icon-btn"
-                  aria-label={copy.ytEditAria(activeVideo.title)}
-                  onClick={() => startEdit(activeVideo)}
-                >
-                  <Pencil size={14} />
-                </button>
-                <button
-                  type="button"
-                  className="icon-button yt-icon-btn yt-delete-btn"
-                  aria-label={copy.ytDeleteAria(activeVideo.title)}
-                  onClick={() => removeVideo(activeVideo)}
-                >
-                  <Trash2 size={14} />
-                </button>
+                  <a
+                    href={activeUrls.canonicalUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="button-quiet yt-ctrl-btn yt-ext-link"
+                  >
+                    <ExternalLink size={13} /> <span>{copy.ytOpenExternal}</span>
+                  </a>
+                  <button
+                    type="button"
+                    className="icon-button yt-icon-btn"
+                    aria-label={copy.ytEditAria(activeVideo.title)}
+                    onClick={() => startEdit(activeVideo)}
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-button yt-icon-btn yt-delete-btn"
+                    aria-label={copy.ytDeleteAria(activeVideo.title)}
+                    onClick={() => removeVideo(activeVideo)}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
-      {sortedVideos.length > 1 && (
+      {active && sortedVideos.length > 1 && (
         <div className="yt-queue">
           <div className="yt-queue-head">
             <span>{copy.ytQueueLabel(sortedVideos.length)}</span>
@@ -437,6 +706,11 @@ export function YoutubeWatchPanel({
           <div className="yt-queue-list">
             {sortedVideos.map((item) => {
               const isCurrent = activeVideo?.id === item.id;
+              const itemSavedSec = playbackCache.positions[item.videoId]?.seconds;
+              const itemResumeBadge =
+                itemSavedSec && itemSavedSec !== item.startSeconds
+                  ? formatYoutubeTimestamp(itemSavedSec)
+                  : null;
               return (
                 <button
                   type="button"
@@ -444,8 +718,13 @@ export function YoutubeWatchPanel({
                   className={`yt-queue-item ${isCurrent ? "is-active" : ""}`}
                   aria-pressed={isCurrent}
                   onClick={() => {
-                    setSelectedId(item.id);
-                    if (playingId && playingId !== item.id) setPlayingId(null);
+                    if (isCurrent) return;
+                    if (isPlayingActive) {
+                      sendYoutubeCommand("pauseVideo");
+                      persistCacheNow(cacheRef.current);
+                    }
+                    selectVideoItem(item.id);
+                    setPlayerSession(null);
                   }}
                 >
                   <div className="yt-queue-thumb">
@@ -456,6 +735,7 @@ export function YoutubeWatchPanel({
                   </div>
                   <div className="yt-queue-copy">
                     <strong>{item.title}</strong>
+                    {itemResumeBadge && <small>{copy.ytResumeBadge(itemResumeBadge)}</small>}
                   </div>
                   {item.pinned && (
                     <span className="yt-queue-pin" aria-hidden="true">

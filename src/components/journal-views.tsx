@@ -35,11 +35,14 @@ export type CommonProps = {
   onAddStrategyLink?: (url: string, title: string) => Promise<boolean>;
   onRemoveStrategyItem?: (item: StrategyLibraryItem) => Promise<boolean> | void;
   onNotifyError?: (message: string) => void;
+  active?: boolean;
+  onYoutubePlayerMountChange?: (mounted: boolean) => void;
   period: Period;
   onPeriod: (period: Period) => void;
 };
 
 export function Overview(props: CommonProps) {
+  const active = props.active !== false;
   const locale = props.settings.locale ?? "en";
   const copy = UI_COPY[locale];
   const periodTrades = filterTrades(props.trades, props.period);
@@ -66,18 +69,18 @@ export function Overview(props: CommonProps) {
     try { window.localStorage.setItem("bloom:dismissed-welcome:v1", "1"); } catch { /* Ignore storage errors */ }
   }
 
-  return <div className="overview-grid"><div className="overview-main">
-    <StatsCards trades={periodTrades} hidden={props.hidden} locale={locale}/>
-    <AccountBalanceCard summary={balanceSummary} hidden={props.hidden} locale={locale} onOpenAccounts={props.onAccountsSettings}/>
-    <PerformanceChart trades={periodTrades} period={props.period} onPeriodChange={props.onPeriod} hidden={props.hidden} locale={locale}/>
-    <YoutubeWatchPanel videos={props.settings.youtubeLinks ?? []} locale={locale} onChange={(links, message) => props.onUpdateYoutubeLinks?.(links, message)}/>
-    {!welcomeDismissed && (
+  return <div className={`overview-grid ${active ? "" : "overview-grid-parked"}`} aria-hidden={!active || undefined} inert={!active ? true : undefined}><div className="overview-main">
+    {active && <StatsCards trades={periodTrades} hidden={props.hidden} locale={locale}/>}
+    {active && <AccountBalanceCard summary={balanceSummary} hidden={props.hidden} locale={locale} onOpenAccounts={props.onAccountsSettings}/>}
+    {active && <PerformanceChart trades={periodTrades} period={props.period} onPeriodChange={props.onPeriod} hidden={props.hidden} locale={locale}/>}
+    <YoutubeWatchPanel videos={props.settings.youtubeLinks ?? []} locale={locale} active={active} onPlayerMountChange={props.onYoutubePlayerMountChange} onChange={(links, message) => props.onUpdateYoutubeLinks?.(links, message)}/>
+    {active && !welcomeDismissed && (
       <section className="welcome-banner welcome-banner-compact" style={{ backgroundImage: `linear-gradient(90deg, var(--hero-fade) 0%, var(--hero-fade-soft) 37%, transparent 80%), url('${basePath}/images/bloom-landscape.png')` }}>
         <button type="button" className="icon-button welcome-dismiss-btn" onClick={dismissWelcome} aria-label={copy.dismissBannerAria}><X size={16}/></button>
         <div className="welcome-content"><h2>{copy.heroLine1} <em>{copy.heroLine2}</em></h2><button type="button" onClick={() => props.onView("Trade journal")}>{copy.openJournal} <ArrowRight size={15}/></button></div>
       </section>
     )}
-  </div><aside className="overview-side">
+  </div>{active && <aside className="overview-side">
     <MoodCard settings={props.settings} onMood={props.onMood} onOpen={() => props.onView("Mindset")} locale={locale}/>
     <GoalCard settings={props.settings} onMark={props.onMarkGoal} onOpen={() => props.onView("Goals")} locale={locale}/>
     <RiskOverview trades={props.trades} settings={props.settings} hidden={props.hidden} onReview={() => props.onView("Weekly review")} onSettings={props.onRiskSettings}/>
@@ -90,7 +93,7 @@ export function Overview(props: CommonProps) {
       onRemoveItem={(item) => props.onRemoveStrategyItem?.(item)}
       onNotifyError={props.onNotifyError}
     />
-  </aside></div>;
+  </aside>}</div>;
 }
 
 export function JournalView({
