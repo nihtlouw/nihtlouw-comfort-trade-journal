@@ -69,11 +69,11 @@ export function Overview(props: CommonProps) {
     try { window.localStorage.setItem("bloom:dismissed-welcome:v1", "1"); } catch { /* Ignore storage errors */ }
   }
 
-  return <div className={`overview-grid ${active ? "" : "overview-grid-parked"}`} aria-hidden={!active || undefined} inert={!active ? true : undefined}><div className="overview-main">
+  return <div className={`overview-grid ${active ? "" : "overview-grid-parked"}`}><div className="overview-main">
     {active && <StatsCards trades={periodTrades} hidden={props.hidden} locale={locale}/>}
     {active && <AccountBalanceCard summary={balanceSummary} hidden={props.hidden} locale={locale} onOpenAccounts={props.onAccountsSettings}/>}
     {active && <PerformanceChart trades={periodTrades} period={props.period} onPeriodChange={props.onPeriod} hidden={props.hidden} locale={locale}/>}
-    <YoutubeWatchPanel videos={props.settings.youtubeLinks ?? []} locale={locale} active={active} onPlayerMountChange={props.onYoutubePlayerMountChange} onChange={(links, message) => props.onUpdateYoutubeLinks?.(links, message)}/>
+    <YoutubeWatchPanel videos={props.settings.youtubeLinks ?? []} locale={locale} active={active} onPlayerMountChange={props.onYoutubePlayerMountChange} onReturnToOverview={() => props.onView("Overview")} onChange={(links, message) => props.onUpdateYoutubeLinks?.(links, message)}/>
     {active && !welcomeDismissed && (
       <section className="welcome-banner welcome-banner-compact" style={{ backgroundImage: `linear-gradient(90deg, var(--hero-fade) 0%, var(--hero-fade-soft) 37%, transparent 80%), url('${basePath}/images/bloom-landscape.png')` }}>
         <button type="button" className="icon-button welcome-dismiss-btn" onClick={dismissWelcome} aria-label={copy.dismissBannerAria}><X size={16}/></button>

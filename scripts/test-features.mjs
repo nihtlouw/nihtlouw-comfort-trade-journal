@@ -708,7 +708,33 @@ try {
   assert.match(await ytIframe.getAttribute("src"), /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ\?.*enablejsapi=1.*start=45/);
   await ytIframe.evaluate((el) => { el.__bloomSameIframeInstance = true; });
 
-  // Simulate pausing at 3:05 (185.7s) via YouTube postMessage, then switch to Trade journal & Calendar and return to Overview
+  // Simulate active playback at 1:35 (95.2s, playerState=1 PLAYING), switch to Trade journal & Calendar, and verify continuous playback!
+  await page.evaluate(() => {
+    const iframe = document.querySelector("iframe.yt-iframe");
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: iframe.contentWindow,
+        origin: "https://www.youtube-nocookie.com",
+        data: JSON.stringify({
+          event: "infoDelivery",
+          info: { currentTime: 95.2, duration: 600, playerState: 1 },
+        }),
+      }),
+    );
+  });
+  await navigate("Trade journal");
+  assert.equal(await page.locator(".yt-mini-bar").isVisible(), true, "Floating mini-player bar stays visible on Trade journal");
+  assert.equal(await page.locator(".yt-mini-dot.is-live").count(), 1, "Video remains in live playing state across tab switch");
+  const parkedBox = await ytIframe.boundingBox();
+  assert.ok(parkedBox && parkedBox.width > 0 && parkedBox.height > 0, "Parked YouTube iframe maintains non-zero viewport box so browser never throttles playback");
+
+  await navigate("Calendar");
+  await page.getByLabel("Show mini video").click();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Expanded floating mini-video fits 360px cleanly");
+  await page.getByLabel("Pause video").click();
+  assert.equal(await page.locator(".yt-mini-dot.is-paused").count(), 1, "Mini-player pause button updates state cleanly on Calendar");
+
+  // Simulate pausing at 3:05 (185.7s) and jump straight back to Overview via mini-player title button
   await page.evaluate(() => {
     const iframe = document.querySelector("iframe.yt-iframe");
     window.dispatchEvent(
@@ -722,9 +748,8 @@ try {
       }),
     );
   });
-  await navigate("Trade journal");
-  await navigate("Calendar");
-  await navigate("Overview");
+  await page.getByLabel("Return to Overview video").click();
+  await page.locator('.view-motion[data-view="Overview"]').waitFor();
 
   // Verify the exact same iframe instance stayed alive (never unmounted or reset to 0:00 across tab switches!)
   assert.equal(await ytIframe.isVisible(), true, "YouTube player stays visible when returning to Overview");
