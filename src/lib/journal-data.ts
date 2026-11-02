@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { ATTACHMENT_STAGES, DEFAULT_ACCOUNT, MAX_ATTACHMENT_BYTES, MAX_JOURNAL_IMAGE_BYTES, YOUTUBE_VIDEO_CATEGORIES, type JournalData } from "@/lib/types";
+import { ATTACHMENT_STAGES, DEFAULT_ACCOUNT, MAX_ATTACHMENT_BYTES, MAX_JOURNAL_IMAGE_BYTES, MAX_JOURNAL_PDF_BYTES, MAX_STRATEGY_ITEMS, MAX_STRATEGY_PDF_BYTES, YOUTUBE_VIDEO_CATEGORIES, type JournalData } from "@/lib/types";
+import { parseStrategyLinkUrl } from "@/lib/strategy-library";
 import { YOUTUBE_ID_REGEX } from "@/lib/youtube";
 
 export function isDate(value: string) {
@@ -98,6 +99,26 @@ const settings = z.object({
     pinned: z.boolean().optional().default(false),
     addedAt: date,
   })).max(30).optional(),
+  strategyLibrary: z.array(
+    z.discriminatedUnion("kind", [
+      z.object({
+        id,
+        kind: z.literal("pdf"),
+        title: z.string().min(1).max(120),
+        fileId: id,
+        fileName: z.string().min(1).max(200),
+        size: z.number().int().min(1).max(MAX_STRATEGY_PDF_BYTES),
+        addedAt: date,
+      }),
+      z.object({
+        id,
+        kind: z.literal("link"),
+        title: z.string().min(1).max(120),
+        url: z.string().min(1).max(500).refine((value) => parseStrategyLinkUrl(value) !== null, "Invalid strategy link URL"),
+        addedAt: date,
+      }),
+    ]),
+  ).max(MAX_STRATEGY_ITEMS).optional(),
 });
 const journal = z.object({ trades: z.array(trade).max(10000), settings }).superRefine((value, ctx) => {
   const ids = value.trades.map((item) => item.id);
@@ -115,6 +136,20 @@ const journal = z.object({ trades: z.array(trade).max(10000), settings }).superR
   if (new Set(blueprintIds).size !== blueprintIds.length) ctx.addIssue({ code: "custom", message: "Duplicate setup blueprint IDs" });
   const youtubeIds = value.settings.youtubeLinks?.map((item) => item.id) ?? [];
   if (new Set(youtubeIds).size !== youtubeIds.length) ctx.addIssue({ code: "custom", message: "Duplicate YouTube link IDs" });
+  const strategyIds = value.settings.strategyLibrary?.map((item) => item.id) ?? [];
+  if (new Set(strategyIds).size !== strategyIds.length) ctx.addIssue({ code: "custom", message: "Duplicate strategy resource IDs" });
+  const pdfFiles = new Map<string, { fileName: string; size: number }>();
+  for (const item of value.settings.strategyLibrary ?? []) {
+    if (item.kind !== "pdf") continue;
+    const existing = pdfFiles.get(item.fileId);
+    if (existing && (existing.fileName !== item.fileName || existing.size !== item.size)) {
+      ctx.addIssue({ code: "custom", message: "Conflicting strategy PDF metadata" });
+    }
+    pdfFiles.set(item.fileId, { fileName: item.fileName, size: item.size });
+  }
+  if ([...pdfFiles.values()].reduce((sum, item) => sum + item.size, 0) > MAX_JOURNAL_PDF_BYTES) {
+    ctx.addIssue({ code: "custom", message: "Strategy PDF limit exceeded" });
+  }
   const images = new Map<string, { name: string; type: string; size: number }>();
   for (const item of value.trades.flatMap((entry) => entry.attachments)) {
     const existing = images.get(item.id);
@@ -156,6 +191,7 @@ export function normalizeJournalData(input: unknown): JournalData {
       dayJournals: data.settings.dayJournals ?? [],
       setupBlueprints: data.settings.setupBlueprints ?? [],
       youtubeLinks: data.settings.youtubeLinks ?? [],
+      strategyLibrary: data.settings.strategyLibrary ?? [],
     },
   };
 }

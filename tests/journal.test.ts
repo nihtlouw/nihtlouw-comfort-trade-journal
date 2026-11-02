@@ -12,8 +12,9 @@ import { exportTradesXlsx, parseXlsxBuffer } from "@/lib/xlsx-report";
 import { parseBackup } from "@/lib/backup";
 import { validateImage } from "@/lib/attachments";
 import { buildRecapSummary } from "@/lib/recap-card";
+import { buildSampleStrategyPdfBlob, cleanPdfTitle, parseStrategyLinkUrl, validatePdfBlob } from "@/lib/strategy-library";
 import { formatYoutubeTimestamp, parseYoutubeUrl, sortYoutubeVideos } from "@/lib/youtube";
-import type { SavedYoutubeVideo, Trade } from "@/lib/types";
+import type { SavedYoutubeVideo, StrategyLibraryItem, Trade } from "@/lib/types";
 
 const makeTrade = (id: number, pnl: string, initialRisk = ""): Trade => ({ id, pnl, initialRisk, symbol: `TEST${id}`, market: "Stocks", side: "Long", setup: "Breakout", tradeDate: `2026-01-0${id}`, mood: "Calm", notes: "", isDemo: false });
 
@@ -1037,6 +1038,97 @@ test("YouTube watch & reminder links parse all standard URL formats, reject untr
         youtubeLinks: [{ ...items[0], id: "bad-vid", videoId: "<script>bad" }],
       },
     }),
+  );
+
+  // Minimal YouTube video entries (without category or note) validate cleanly
+  const minimalVideo: SavedYoutubeVideo = {
+    id: "v-min",
+    videoId: "Q6ms3xJ2c1k",
+    url: "https://www.youtube.com/watch?v=Q6ms3xJ2c1k",
+    title: "Simple Strategy Study",
+    addedAt: "2026-11-02",
+  };
+  const minimalNormalized = normalizeJournalData({
+    ...upgraded,
+    settings: { ...upgraded.settings, youtubeLinks: [minimalVideo] },
+  });
+  assert.equal(minimalNormalized.settings.youtubeLinks?.length, 1);
+  assert.equal(minimalNormalized.settings.youtubeLinks?.[0].title, "Simple Strategy Study");
+});
+
+test("Strategy books (PDF) & idea links validate URLs, %PDF- magic bytes, and v2 backups", async () => {
+  const samplePdf = buildSampleStrategyPdfBlob("en");
+  await validatePdfBlob(samplePdf);
+  assert.equal(cleanPdfTitle("Price_Action_Playbook_v2.pdf"), "Price Action Playbook v2");
+
+  await assert.rejects(() => validatePdfBlob(new Blob(["not a pdf"], { type: "application/pdf" })), /valid PDF/);
+  await assert.rejects(() => validatePdfBlob(new Blob([], { type: "application/pdf" })), /empty/);
+
+  const parsedLink = parseStrategyLinkUrl("tradingview.com/chart/abc_setup");
+  assert.ok(parsedLink);
+  assert.equal(parsedLink.url, "https://tradingview.com/chart/abc_setup");
+  assert.equal(parsedLink.hostLabel, "tradingview.com");
+
+  assert.equal(parseStrategyLinkUrl("javascript:alert(1)"), null);
+  assert.equal(parseStrategyLinkUrl("data:text/html,<h1>x</h1>"), null);
+  assert.equal(parseStrategyLinkUrl("not a domain"), null);
+
+  const pdfBytes = new Uint8Array(await samplePdf.arrayBuffer());
+  const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
+  const baseJournal = normalizeJournalData(createDemoData());
+  assert.deepEqual(baseJournal.settings.strategyLibrary, []);
+
+  const library: StrategyLibraryItem[] = [
+    {
+      id: "lib-pdf-1",
+      kind: "pdf",
+      title: "A+ Strategy Playbook",
+      fileId: "file-pdf-1",
+      fileName: "A+_Strategy_Playbook.pdf",
+      size: pdfBytes.length,
+      addedAt: "2026-11-02",
+    },
+    {
+      id: "lib-link-1",
+      kind: "link",
+      title: "Session Liquidity Notes",
+      url: "https://www.tradingview.com/chart/",
+      addedAt: "2026-11-02",
+    },
+  ];
+  baseJournal.settings.strategyLibrary = library;
+  const validated = normalizeJournalData(baseJournal);
+  assert.equal(validated.settings.strategyLibrary?.length, 2);
+
+  const parsedBackup = await parseBackup(
+    JSON.stringify({
+      format: "bloom-journal-backup",
+      version: 2,
+      journal: validated,
+      images: [],
+      documents: [
+        {
+          fileId: "file-pdf-1",
+          fileName: "A+_Strategy_Playbook.pdf",
+          size: pdfBytes.length,
+          base64: pdfBase64,
+        },
+      ],
+    }),
+  );
+  assert.equal(parsedBackup.documents.length, 1);
+  assert.equal(parsedBackup.documents[0].blob.size, pdfBytes.length);
+
+  // Missing document payload in backup must be rejected
+  await assert.rejects(() =>
+    parseBackup(
+      JSON.stringify({
+        format: "bloom-journal-backup",
+        version: 2,
+        journal: validated,
+        images: [],
+      }),
+    ),
   );
 });
 

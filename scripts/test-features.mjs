@@ -682,7 +682,7 @@ try {
   console.log("PASS: 3-month dummy dataset + Chartbook PNG generation + lossless Excel (.xlsx) & CSV report round-trip work offline.");
 
   // =========================================================================
-  // Overview YouTube Watch, Follow-Up & Motivation Panel (Recent trades & Trading activity removed)
+  // Overview Simplified YouTube Watch Panel + Right-Side Strategy Books & Links Mini-List
   // =========================================================================
   await navigate("Overview");
   assert.equal(await page.locator(".trade-row").count(), 0, "Recent trades removed from Overview");
@@ -690,16 +690,16 @@ try {
   const ytPanel = page.locator(".yt-watch-card");
   await ytPanel.waitFor();
   assert.equal(await ytPanel.locator(".yt-queue-item").count(), 3, "3-month dataset populates 3 saved YouTube reminders");
+  assert.equal(await ytPanel.getByText(/Save a YouTube video you are following up on/).count(), 0, "Verbose lead sentence removed");
   await ytPanel.getByRole("button", { name: "Save video", exact: true }).click();
+  assert.equal(await ytPanel.getByRole("group", { name: "Purpose" }).count(), 0, "Purpose selector removed");
+  assert.equal(await ytPanel.getByLabel("Personal takeaway / reminder").count(), 0, "Personal takeaway removed");
   await ytPanel.getByLabel("YouTube link").fill("https://youtu.be/dQw4w9WgXcQ?t=45");
   await ytPanel.locator(".yt-draft-preview").waitFor();
   await ytPanel.getByLabel("Title (optional)").fill("My Daily Patience Reminder");
-  await ytPanel.getByRole("group", { name: "Purpose" }).getByRole("button", { name: "Motivation", exact: true }).click();
-  await ytPanel.getByLabel("Personal takeaway / reminder").fill("Wait calmly for the A+ setup; never chase mid-range candles.");
   await ytPanel.locator(".yt-form").getByRole("button", { name: "Save video", exact: true }).click();
   await ytPanel.getByRole("heading", { name: "My Daily Patience Reminder", exact: true }).waitFor();
-  assert.match(await ytPanel.locator(".yt-reminder-note").innerText(), /Wait calmly for the A\+ setup/);
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Overview with YouTube panel fits 360px cleanly");
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Overview with YouTube panel & Strategy shelf fits 360px cleanly");
 
   // Click Play on thumbnail stage -> mounts youtube-nocookie embed iframe with start=45, then return to thumbnail
   await ytPanel.getByLabel("Play My Daily Patience Reminder").click();
@@ -710,12 +710,45 @@ try {
   await ytIframe.waitFor({ state: "detached" });
   await ytPanel.getByRole("button", { name: "Pin My Daily Patience Reminder as main reminder" }).click();
 
-  // Reload and verify saved YouTube link & pinned reminder note persist
+  // Exercise Right-Side Strategy Books & Links Mini-List (3-month dummy dataset already includes 1 sample PDF + 2 links)
+  const shelf = page.locator("aside.overview-side .strategy-shelf-card");
+  await shelf.waitFor();
+  assert.equal(await shelf.locator(".strategy-mini-row").count(), 3, "3-month dataset populates 1 sample PDF + 2 strategy links");
+  await shelf.getByLabel("Open A+ Strategy Playbook Notes PDF").click();
+  const samplePdfModal = page.getByRole("dialog", { name: "Strategy PDF reader" });
+  await samplePdfModal.waitFor();
+  assert.equal(await samplePdfModal.locator("iframe.strategy-pdf-frame").count(), 1);
+  await samplePdfModal.getByRole("button", { name: "Close", exact: true }).click();
+  await samplePdfModal.waitFor({ state: "detached" });
+
+  // Upload a custom PDF book + save an idea link
+  const customPdf = Buffer.from(
+    "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>\nendobj\nxref\n0 4\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n190\n%%EOF\n",
+    "utf8",
+  );
+  await shelf.getByRole("button", { name: "Add", exact: true }).click();
+  await shelf.locator('.strategy-pdf-picker input[type="file"]').setInputFiles({
+    name: "Market_Structure_Handbook.pdf",
+    mimeType: "application/pdf",
+    buffer: customPdf,
+  });
+  await shelf.getByRole("button", { name: "Save PDF", exact: true }).click();
+  await shelf.getByLabel("Open Market Structure Handbook PDF").waitFor();
+
+  await shelf.getByRole("button", { name: "Add", exact: true }).click();
+  await shelf.getByRole("group", { name: "Resource type" }).getByRole("button", { name: "Idea link", exact: true }).click();
+  await shelf.getByLabel("Strategy or idea URL").fill("notion.so/london-sweep-checklist");
+  await shelf.getByLabel("Title (optional)").fill("London Sweep Checklist");
+  await shelf.getByRole("button", { name: "Save link", exact: true }).click();
+  await shelf.getByRole("link", { name: "Open London Sweep Checklist in new tab" }).waitFor();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Overview with populated Strategy mini-list fits 360px cleanly");
+
+  // Reload offline and verify both simplified YouTube video & Strategy PDF/links persist
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.locator(".yt-watch-card").waitFor();
   assert.equal(await page.locator(".yt-watch-card h3").innerText(), "My Daily Patience Reminder");
-  assert.match(await page.locator(".yt-watch-card .yt-reminder-note").innerText(), /Wait calmly for the A\+ setup/);
-  console.log("PASS: Overview YouTube watch, follow-up & motivation panel saves links, displays thumbnails, plays embeds, and persists.");
+  assert.equal(await page.locator("aside.overview-side .strategy-shelf-card .strategy-mini-row").count(), 5);
+  console.log("PASS: Simplified YouTube watch panel + right-side Strategy PDF & idea link mini-list work offline and persist.");
   if (!external) {
     const didFetch = await page.evaluate((url) => fetch(url).then(() => true).catch(() => false), new URL("api/private-test", base).href); assert.equal(didFetch, false, "API responses must not be cached");
   }

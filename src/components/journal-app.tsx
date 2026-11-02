@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState, type ElementType } from "react";
 import { BarChart3, BookOpenCheck, CalendarDays, CheckCircle2, ChevronDown, CircleAlert, ClipboardList, CloudDownload, Eye, EyeOff, Heart, Hourglass, LayoutDashboard, Menu, NotebookPen, Plus, Search, Settings2, Smartphone, Sparkles, Sprout, Target, X } from "lucide-react";
-import type { AppLocale, DayJournalEntry, Intention, JournalData, JournalSettings, PlaybookRule, SavedYoutubeVideo, SetupBlueprint, Trade, TradeAttachment, TradingAccount, WeeklyReflection } from "@/lib/types";
-import { DEFAULT_ACCOUNT, MAX_JOURNAL_IMAGE_BYTES } from "@/lib/types";
+import type { AppLocale, DayJournalEntry, Intention, JournalData, JournalSettings, PlaybookRule, SavedYoutubeVideo, SetupBlueprint, StrategyLibraryItem, StrategyPdfResource, Trade, TradeAttachment, TradingAccount, WeeklyReflection } from "@/lib/types";
+import { DEFAULT_ACCOUNT, MAX_JOURNAL_IMAGE_BYTES, MAX_JOURNAL_PDF_BYTES, MAX_STRATEGY_ITEMS } from "@/lib/types";
 import { upsertDayJournal } from "@/lib/analytics";
 import { todayString, type Period } from "@/lib/format";
 import { greetingText, translateAccountName, UI_COPY, writeStoredLocale } from "@/lib/i18n";
@@ -12,6 +12,7 @@ import { saveBrowserJournal } from "@/lib/browser-journal";
 import { createDemoData } from "@/lib/demo-data";
 import { createThreeMonthDummyData, generateDummyChartImages } from "@/lib/dummy-dataset";
 import { removeAttachment, saveAttachment, type StorageMode } from "@/lib/attachments";
+import { buildSampleStrategyPdfBlob, cleanPdfTitle, removeStrategyPdf, saveStrategyPdf, type StoredPdfMeta } from "@/lib/strategy-library";
 import { createBackup, downloadFile, parseBackup, stageBackupImages } from "@/lib/backup";
 import { exportTradesCsv } from "@/lib/csv";
 import { exportTradesXlsx } from "@/lib/xlsx-report";
@@ -26,6 +27,7 @@ import { CassetteDeckModal, CassetteSidebarMini, useCassetteDeck } from "@/compo
 import { ChartLightbox, type ChartLightboxSlide } from "@/components/chart-lightbox";
 import { RecapCardModal } from "@/components/recap-card-modal";
 import { CommandPaletteModal } from "@/components/command-palette";
+import { buildStrategyLinkItem } from "@/components/strategy-shelf";
 
 type Modal = "trade" | "settings" | "breathing" | "import" | "cassette" | "recap" | "command" | null;
 // Keep this in sync with --bloom-dialog-exit in globals.css.
@@ -168,6 +170,61 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
     const used = new Set(dataRef.current.trades.flatMap((trade) => (trade.attachments ?? []).map((item) => item.id)));
     await Promise.allSettled(images.filter((item) => !used.has(item.id)).map((item) => removeAttachment(item.id, storage)));
   }
+  async function removeUnusedPdfs(docs: StrategyPdfResource[]) {
+    const used = new Set(
+      (dataRef.current.settings.strategyLibrary ?? [])
+        .filter((item): item is StrategyPdfResource => item.kind === "pdf")
+        .map((item) => item.fileId),
+    );
+    await Promise.allSettled(
+      docs.filter((doc) => !used.has(doc.fileId)).map((doc) => removeStrategyPdf(doc.fileId, storage)),
+    );
+  }
+  async function addStrategyPdf(file: File, customTitle: string) {
+    const currentList = dataRef.current.settings.strategyLibrary ?? [];
+    if (currentList.length >= MAX_STRATEGY_ITEMS) {
+      throw new Error(copy.libLimitError);
+    }
+    const existingPdfBytes = currentList
+      .filter((item): item is StrategyPdfResource => item.kind === "pdf")
+      .reduce((sum, item) => sum + item.size, 0);
+    if (existingPdfBytes + file.size > MAX_JOURNAL_PDF_BYTES) {
+      throw new Error(locale === "id" ? "Batas penyimpanan PDF strategi tercapai (40 MB)." : "Strategy PDF storage quota reached (40 MB).");
+    }
+    const stored = await saveStrategyPdf(file, file.name, storage);
+    const nextItem: StrategyPdfResource = {
+      id: id(),
+      kind: "pdf",
+      title: (customTitle.trim() || cleanPdfTitle(file.name)).slice(0, 120),
+      fileId: stored.fileId,
+      fileName: stored.fileName,
+      size: stored.size,
+      addedAt: todayString(),
+    };
+    const ok = await updateSettings({ strategyLibrary: [nextItem, ...currentList] }, copy.libSavedToast);
+    if (!ok) {
+      await Promise.allSettled([removeStrategyPdf(stored.fileId, storage)]);
+      return false;
+    }
+    return true;
+  }
+  async function addStrategyLink(url: string, title: string) {
+    const currentList = dataRef.current.settings.strategyLibrary ?? [];
+    if (currentList.length >= MAX_STRATEGY_ITEMS) {
+      throw new Error(copy.libLimitError);
+    }
+    const nextItem = buildStrategyLinkItem(url, title);
+    return updateSettings({ strategyLibrary: [nextItem, ...currentList] }, copy.libSavedToast);
+  }
+  async function removeStrategyItem(target: StrategyLibraryItem) {
+    const currentList = dataRef.current.settings.strategyLibrary ?? [];
+    const nextList = currentList.filter((item) => item.id !== target.id);
+    const ok = await updateSettings({ strategyLibrary: nextList }, copy.libRemovedToast);
+    if (ok && target.kind === "pdf") {
+      await removeUnusedPdfs([target]);
+    }
+    return ok;
+  }
   async function saveTrade(draft: TradeDraft, files: PendingAttachmentFile[], removed: TradeAttachment[], tradeId?: number) {
     const staged: TradeAttachment[] = [];
     try {
@@ -303,17 +360,29 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
   }
   async function restore(file: File) {
     let staged: TradeAttachment[] = [];
+    let stagedDocs: StoredPdfMeta[] = [];
     try {
       if (file.size > 50_000_000) throw new Error("Backup files must be under 50 MB.");
-      const parsed = await parseBackup(await file.text()); const result = await stageBackupImages(parsed, storage); staged = result.staged;
+      const parsed = await parseBackup(await file.text()); const result = await stageBackupImages(parsed, storage); staged = result.staged; stagedDocs = result.stagedDocs;
       const oldImages = dataRef.current.trades.flatMap((trade) => trade.attachments ?? []);
+      const oldDocs = (dataRef.current.settings.strategyLibrary ?? []).filter((item): item is StrategyPdfResource => item.kind === "pdf");
       const ok = await commit(result.journal, locale === "id" ? "Cadangan berhasil dipulihkan." : "Backup restored successfully.", true);
-      if (!ok) { await Promise.allSettled(staged.map((image) => removeAttachment(image.id, storage))); return false; }
-      await removeUnusedImages(oldImages); setAccountFilter("all"); resetBackupTracking(); return true;
-    } catch (error) { await Promise.allSettled(staged.map((image) => removeAttachment(image.id, storage))); notify(error instanceof Error ? error.message : "Couldn’t restore this backup.", true); return false; }
+      if (!ok) {
+        await Promise.allSettled(staged.map((image) => removeAttachment(image.id, storage)));
+        await Promise.allSettled(stagedDocs.map((doc) => removeStrategyPdf(doc.fileId, storage)));
+        return false;
+      }
+      await removeUnusedImages(oldImages); await removeUnusedPdfs(oldDocs); setAccountFilter("all"); resetBackupTracking(); return true;
+    } catch (error) {
+      await Promise.allSettled(staged.map((image) => removeAttachment(image.id, storage)));
+      await Promise.allSettled(stagedDocs.map((doc) => removeStrategyPdf(doc.fileId, storage)));
+      notify(error instanceof Error ? error.message : "Couldn’t restore this backup.", true);
+      return false;
+    }
   }
   async function loadThreeMonthDummy() {
     let staged: TradeAttachment[] = [];
+    let stagedDocs: StoredPdfMeta[] = [];
     try {
       const dummy = createThreeMonthDummyData(locale);
       dummy.settings.theme = dataRef.current.settings.theme ?? "light";
@@ -337,8 +406,22 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
         staged.push(withMeta);
         dummy.trades[targetIdx].attachments = [...(dummy.trades[targetIdx].attachments ?? []), withMeta];
       }
+      const samplePdfName = locale === "id" ? "Ringkasan_Buku_Strategi_A+.pdf" : "A+_Strategy_Playbook_Notes.pdf";
+      const savedPdf = await saveStrategyPdf(buildSampleStrategyPdfBlob(locale), samplePdfName, storage);
+      stagedDocs.push(savedPdf);
+      const samplePdfItem: StrategyPdfResource = {
+        id: "strat-pdf-sample",
+        kind: "pdf",
+        title: locale === "id" ? "Ringkasan Buku Strategi A+" : "A+ Strategy Playbook Notes",
+        fileId: savedPdf.fileId,
+        fileName: savedPdf.fileName,
+        size: savedPdf.size,
+        addedAt: todayString(),
+      };
+      dummy.settings.strategyLibrary = [samplePdfItem, ...(dummy.settings.strategyLibrary ?? [])];
       dummy.trades = sortTrades(dummy.trades);
       const oldImages = dataRef.current.trades.flatMap((trade) => trade.attachments ?? []);
+      const oldDocs = (dataRef.current.settings.strategyLibrary ?? []).filter((item): item is StrategyPdfResource => item.kind === "pdf");
       const ok = await commit(
         dummy,
         locale === "id"
@@ -348,14 +431,17 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
       );
       if (!ok) {
         await Promise.allSettled(staged.map((image) => removeAttachment(image.id, storage)));
+        await Promise.allSettled(stagedDocs.map((doc) => removeStrategyPdf(doc.fileId, storage)));
         return false;
       }
       await removeUnusedImages(oldImages);
+      await removeUnusedPdfs(oldDocs);
       setAccountFilter("all");
       setPeriod("3M");
       return true;
     } catch (error) {
       await Promise.allSettled(staged.map((image) => removeAttachment(image.id, storage)));
+      await Promise.allSettled(stagedDocs.map((doc) => removeStrategyPdf(doc.fileId, storage)));
       notify(error instanceof Error ? error.message : "Couldn’t load 3-month test data.", true);
       return false;
     }
@@ -390,6 +476,7 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
     accountFilter,
     settings: data.settings,
     hidden,
+    mode: storage,
     onEditTrade: editTrade,
     onNewTrade: newTrade,
     onView: navigate,
@@ -400,6 +487,10 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
     onAccountsSettings: () => openSettings("Accounts"),
     onPreviewCharts: openTradeCharts,
     onUpdateYoutubeLinks: (youtubeLinks: SavedYoutubeVideo[], message?: string) => updateSettings({ youtubeLinks }, message),
+    onAddStrategyPdf: addStrategyPdf,
+    onAddStrategyLink: addStrategyLink,
+    onRemoveStrategyItem: removeStrategyItem,
+    onNotifyError: (msg: string) => notify(msg, true),
     period,
     onPeriod: setPeriod,
   };

@@ -62,12 +62,32 @@ export type SavedYoutubeVideo = {
   videoId: string;
   url: string;
   title: string;
-  category: YoutubeVideoCategory;
-  note: string;
+  category?: YoutubeVideoCategory;
+  note?: string;
   startSeconds?: number;
   pinned?: boolean;
   addedAt: string;
 };
+
+export type StrategyPdfResource = {
+  id: string;
+  kind: "pdf";
+  title: string;
+  fileId: string;
+  fileName: string;
+  size: number;
+  addedAt: string;
+};
+
+export type StrategyLinkResource = {
+  id: string;
+  kind: "link";
+  title: string;
+  url: string;
+  addedAt: string;
+};
+
+export type StrategyLibraryItem = StrategyPdfResource | StrategyLinkResource;
 
 export type AudioMimeType =
   | "audio/mpeg"
@@ -148,6 +168,7 @@ export type JournalSettings = {
   dayJournals?: DayJournalEntry[];
   setupBlueprints?: SetupBlueprint[];
   youtubeLinks?: SavedYoutubeVideo[];
+  strategyLibrary?: StrategyLibraryItem[];
 };
 
 export type JournalData = { trades: Trade[]; settings: JournalSettings };
@@ -156,6 +177,9 @@ export const MARKETS = ["Forex", "Stocks", "Crypto", "Futures", "Commodities"] a
 export const DEFAULT_ACCOUNT: TradingAccount = { id: "main", name: "Main account", startingBalance: null };
 export const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
 export const MAX_JOURNAL_IMAGE_BYTES = 30 * 1024 * 1024;
+export const MAX_STRATEGY_PDF_BYTES = 10 * 1024 * 1024;
+export const MAX_JOURNAL_PDF_BYTES = 40 * 1024 * 1024;
+export const MAX_STRATEGY_ITEMS = 25;
 export const MAX_AUDIO_TRACKS = 5;
 export const MAX_AUDIO_TOTAL_BYTES = 200 * 1024 * 1024;
 export const AUDIO_CHUNK_BYTES = 2 * 1024 * 1024;

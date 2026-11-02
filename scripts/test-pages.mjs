@@ -48,6 +48,41 @@ try {
   assert.equal(await page.locator(".trade-row").count(), 0, "Recent trades panel removed from Overview");
   assert.equal(await page.locator(".calendar-card").count(), 0, "Trading activity panel removed from Overview");
   assert.equal(await page.locator(".yt-watch-card").count(), 1, "YouTube watch & reminders panel present on Overview");
+  assert.equal(await page.locator(".yt-watch-card").getByRole("group", { name: "Purpose" }).count(), 0, "Purpose selector removed from YouTube panel");
+  assert.equal(await page.locator(".yt-watch-card").getByLabel("Personal takeaway / reminder").count(), 0, "Personal takeaway removed from YouTube panel");
+  assert.equal(await page.locator("aside.overview-side .strategy-shelf-card").count(), 1, "Strategy books & links shelf sits in right-side Overview column");
+
+  // Exercise Strategy books & links PDF upload + in-app PDF reader + idea link in static Pages mode
+  const pdfSample = Buffer.from(
+    "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>\nendobj\nxref\n0 4\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n190\n%%EOF\n",
+    "utf8",
+  );
+  const shelf = page.locator("aside.overview-side .strategy-shelf-card");
+  await shelf.getByRole("button", { name: "PDF file", exact: true }).click();
+  await shelf.locator('.strategy-pdf-picker input[type="file"]').setInputFiles({
+    name: "Price_Action_Playbook.pdf",
+    mimeType: "application/pdf",
+    buffer: pdfSample,
+  });
+  await shelf.getByRole("button", { name: "Save PDF", exact: true }).click();
+  await shelf.locator(".strategy-mini-list").getByText("Price Action Playbook").waitFor();
+  await shelf.getByLabel("Open Price Action Playbook PDF").click();
+  const pdfReader = page.getByRole("dialog", { name: "Strategy PDF reader" });
+  await pdfReader.waitFor();
+  assert.equal(await pdfReader.locator("iframe.strategy-pdf-frame").count(), 1);
+  assert.equal(await pdfReader.getByRole("link", { name: "Open in new tab" }).count(), 1);
+  await pdfReader.getByRole("button", { name: "Close", exact: true }).click();
+  await pdfReader.waitFor({ state: "detached" });
+
+  await shelf.getByRole("button", { name: "Add", exact: true }).click();
+  await shelf.getByRole("group", { name: "Resource type" }).getByRole("button", { name: "Idea link", exact: true }).click();
+  await shelf.getByLabel("Strategy or idea URL").fill("https://www.tradingview.com/ideas/");
+  await shelf.getByLabel("Title (optional)").fill("HTF Liquidity Ideas");
+  await shelf.getByRole("button", { name: "Save link", exact: true }).click();
+  const savedIdeaLink = shelf.getByRole("link", { name: "Open HTF Liquidity Ideas in new tab" });
+  await savedIdeaLink.waitFor();
+  assert.equal(await savedIdeaLink.getAttribute("target"), "_blank");
+  // Remove test PDF before JSON backup test below or verify backup includes it! Let's keep both so full backup/restore exercises PDF documents too!
   assert.equal(await page.locator(".sidebar").evaluate((element) => getComputedStyle(element).position), "sticky");
   const imageUrl = await page.locator(".welcome-banner").evaluate((element) => getComputedStyle(element).backgroundImage);
   assert.match(imageUrl, /bloom-landscape\.png/);
@@ -75,7 +110,7 @@ try {
   await page.getByLabel("Open settings").click(); await page.getByRole("button", { name: "Data", exact: true }).click();
   const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Download", exact: true }).click()]);
   const backupFile = join(temp, "backup.json"); await download.saveAs(backupFile);
-  const backup = JSON.parse(readFileSync(backupFile, "utf8")); assert.equal(backup.format, "bloom-journal-backup"); assert.equal(backup.images.length, 1); assert.ok(backup.journal.trades.some((trade) => trade.symbol === "UI-TEST"));
+  const backup = JSON.parse(readFileSync(backupFile, "utf8")); assert.equal(backup.format, "bloom-journal-backup"); assert.equal(backup.images.length, 1); assert.equal(backup.documents.length, 1); assert.ok(backup.journal.trades.some((trade) => trade.symbol === "UI-TEST"));
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.locator(".sidebar-nav").getByRole("button", { name: "Trade journal", exact: true }).click();
   await page.getByRole("button", { name: "Import CSV", exact: true }).click();
