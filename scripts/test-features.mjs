@@ -622,6 +622,51 @@ try {
   await page.locator(".app-shell").waitFor();
   assert.equal(await page.locator(".welcome-banner").count(), 0, "Dismissed welcome banner stays dismissed across reloads");
   console.log("PASS: Strict Minimal 1-line card headers, Data-First Overview with dismissible banners, and 1-tap '+' mobile nav work cleanly.");
+
+  // =========================================================================
+  // 3-Month Comprehensive Dummy Dataset + Excel (.xlsx) & CSV Report Round-Trip
+  // =========================================================================
+  await openSettings("Data");
+  await page.getByRole("button", { name: "Load 3-month data", exact: true }).click();
+  await page.locator(".modal").waitFor({ state: "detached" });
+
+  await navigate("Trade journal");
+  const total3mRows = await page.locator("tbody tr.trade-row").count();
+  assert.ok(total3mRows >= 40, `Expected >= 40 trades in 3-month dataset, got ${total3mRows}`);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Journal toolbar with Export Excel fits 360px cleanly");
+
+  // Verify generated chart screenshots in Chartbook
+  await page.getByRole("group", { name: "Journal view mode" }).getByRole("button", { name: /Chartbook/ }).click();
+  await page.locator(".chartbook-card").first().waitFor();
+  assert.equal(await page.locator(".chartbook-card").count(), 6, "3-month dataset includes 6 generated PNG chart screenshots");
+  await page.getByRole("group", { name: "Journal view mode" }).getByRole("button", { name: /Table/ }).click();
+
+  // Export both Excel (.xlsx) and CSV reports
+  const [xlsxDl] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export Excel", exact: true }).click(),
+  ]);
+  assert.match(xlsxDl.suggestedFilename(), /\.xlsx$/i);
+  const xlsxReportPath = join(temp, "bloom-report-export.xlsx");
+  await xlsxDl.saveAs(xlsxReportPath);
+
+  const [csvDl] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export CSV", exact: true }).click(),
+  ]);
+  assert.match(csvDl.suggestedFilename(), /\.csv$/i);
+  const csvReportPath = join(temp, "bloom-report-export.csv");
+  await csvDl.saveAs(csvReportPath);
+
+  // Open Import modal and verify both .xlsx and .csv reports parse back with 0 invalid rows (all flagged duplicate against current identical dataset)
+  await page.getByRole("button", { name: "Import CSV", exact: true }).click();
+  await page.locator(".modal").waitFor();
+  await page.locator(".csv-upload input").setInputFiles(xlsxReportPath);
+  await page.getByText(new RegExp(`0 invalid · ${total3mRows} possible duplicates`)).waitFor();
+  await page.locator(".csv-upload input").setInputFiles(csvReportPath);
+  await page.getByText(new RegExp(`0 invalid · ${total3mRows} possible duplicates`)).waitFor();
+  await close();
+  console.log("PASS: 3-month dummy dataset + Chartbook PNG generation + lossless Excel (.xlsx) & CSV report round-trip work offline.");
   if (!external) {
     const didFetch = await page.evaluate((url) => fetch(url).then(() => true).catch(() => false), new URL("api/private-test", base).href); assert.equal(didFetch, false, "API responses must not be cached");
   }

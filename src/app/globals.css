@@ -3628,6 +3628,65 @@ input:not([type="checkbox"]):not([type="file"]), select, textarea { min-width: 0
   }
 }
 
+/* Report Import / Export & Sample Bar */
+.import-sample-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: -2px;
+}
+
+.import-sample-bar .button-quiet {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px dashed var(--line);
+  border-radius: 7px;
+  font-size: 10.5px;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.toolbar-primary {
+  flex-wrap: wrap;
+}
+
+.balance-breakdown > div > strong {
+  white-space: nowrap;
+}
+
+@media (min-width: 701px) and (max-width: 900px) {
+  .trade-table th,
+  .trade-table td {
+    padding: 10px 6px;
+  }
+
+  .trade-table .setup-label {
+    max-width: 92px;
+  }
+}
+
+@media (max-width: 650px) {
+  .toolbar-primary .button-secondary {
+    flex: 1 1 calc(33.333% - 6px);
+    min-width: 104px;
+  }
+
+  .import-sample-bar .button-quiet {
+    flex: 1 1 calc(50% - 4px);
+    justify-content: center;
+    min-height: 44px;
+  }
+}
+
+
 
 
 

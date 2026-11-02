@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ElementType } from "react";
 import { BarChart3, BookOpenCheck, CalendarDays, CheckCircle2, ChevronDown, CircleAlert, ClipboardList, CloudDownload, Eye, EyeOff, Heart, Hourglass, LayoutDashboard, Menu, NotebookPen, Plus, Search, Settings2, Smartphone, Sparkles, Sprout, Target, X } from "lucide-react";
-import type { AppLocale, DayJournalEntry, Intention, JournalData, JournalSettings, PlaybookRule, SetupBlueprint, Trade, TradeAttachment, WeeklyReflection } from "@/lib/types";
+import type { AppLocale, DayJournalEntry, Intention, JournalData, JournalSettings, PlaybookRule, SetupBlueprint, Trade, TradeAttachment, TradingAccount, WeeklyReflection } from "@/lib/types";
 import { DEFAULT_ACCOUNT, MAX_JOURNAL_IMAGE_BYTES } from "@/lib/types";
 import { upsertDayJournal } from "@/lib/analytics";
 import { todayString, type Period } from "@/lib/format";
@@ -10,9 +10,11 @@ import { greetingText, translateAccountName, UI_COPY, writeStoredLocale } from "
 import { normalizeJournalData } from "@/lib/journal-data";
 import { saveBrowserJournal } from "@/lib/browser-journal";
 import { createDemoData } from "@/lib/demo-data";
+import { createThreeMonthDummyData, generateDummyChartImages } from "@/lib/dummy-dataset";
 import { removeAttachment, saveAttachment, type StorageMode } from "@/lib/attachments";
 import { createBackup, downloadFile, parseBackup, stageBackupImages } from "@/lib/backup";
 import { exportTradesCsv } from "@/lib/csv";
+import { exportTradesXlsx } from "@/lib/xlsx-report";
 import { parseTradeInput } from "@/lib/trade-validation";
 import { isBackupReminderDue, loadBackupReminder, recordBackupDownload, snoozeBackupReminder, writeBackupReminder, type BackupReminderState } from "@/lib/backup-reminder";
 import { WeeklyReview } from "@/components/journal-review";
@@ -278,7 +280,27 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
     finally { backupBusyRef.current = false; setBackupBusy(false); }
   }
   function snoozeBackup() { if (!backupTracking) return; const ok = saveBackupTracking(snoozeBackupReminder(backupTracking.state, Date.now())); if (!ok) notify("Couldn’t save reminder history on this device.", true); }
-  function exportCsv(trades: Trade[]) { downloadFile(`bloom-trades-${todayString()}.csv`, exportTradesCsv(trades, dataRef.current.settings.accounts ?? [DEFAULT_ACCOUNT]), "text/csv;charset=utf-8"); notify(locale === "id" ? "File CSV diunduh." : "CSV downloaded."); }
+  function exportCsv(trades: Trade[]) {
+    downloadFile(
+      `bloom-trades-${todayString()}.csv`,
+      exportTradesCsv(trades, dataRef.current.settings.accounts ?? [DEFAULT_ACCOUNT], locale),
+      "text/csv;charset=utf-8",
+    );
+    notify(locale === "id" ? "Laporan CSV diunduh." : "CSV report downloaded.");
+  }
+  function exportXlsx(trades: Trade[]) {
+    const bytes = exportTradesXlsx(trades, dataRef.current.settings.accounts ?? [DEFAULT_ACCOUNT], locale);
+    const blob = new Blob([bytes.buffer as ArrayBuffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `bloom-trades-${todayString()}.xlsx`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    notify(locale === "id" ? "Laporan Excel (.xlsx) diunduh." : "Excel (.xlsx) report downloaded.");
+  }
   async function restore(file: File) {
     let staged: TradeAttachment[] = [];
     try {
@@ -290,7 +312,69 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
       await removeUnusedImages(oldImages); setAccountFilter("all"); resetBackupTracking(); return true;
     } catch (error) { await Promise.allSettled(staged.map((image) => removeAttachment(image.id, storage))); notify(error instanceof Error ? error.message : "Couldn’t restore this backup.", true); return false; }
   }
-  async function importTrades(trades: Trade[]) { const current = dataRef.current; return commit({ ...current, trades: sortTrades([...trades, ...current.trades]) }, locale === "id" ? `${trades.length} trade berhasil diimpor.` : `${trades.length} ${trades.length === 1 ? "trade" : "trades"} imported.`); }
+  async function loadThreeMonthDummy() {
+    let staged: TradeAttachment[] = [];
+    try {
+      const dummy = createThreeMonthDummyData(locale);
+      dummy.settings.theme = dataRef.current.settings.theme ?? "light";
+      dummy.settings.reduceMotion = dataRef.current.settings.reduceMotion ?? false;
+      const charts = await generateDummyChartImages();
+      for (const spec of charts) {
+        let targetIdx = -1;
+        for (let i = dummy.trades.length - 1; i >= 0; i--) {
+          if (dummy.trades[i].symbol === spec.targetSymbol) {
+            targetIdx = i;
+            break;
+          }
+        }
+        if (targetIdx < 0) continue;
+        const saved = await saveAttachment(spec.blob, spec.fileName, storage);
+        const withMeta: TradeAttachment = {
+          ...saved,
+          stage: spec.stage,
+          caption: locale === "id" ? spec.captionId : spec.captionEn,
+        };
+        staged.push(withMeta);
+        dummy.trades[targetIdx].attachments = [...(dummy.trades[targetIdx].attachments ?? []), withMeta];
+      }
+      dummy.trades = sortTrades(dummy.trades);
+      const oldImages = dataRef.current.trades.flatMap((trade) => trade.attachments ?? []);
+      const ok = await commit(
+        dummy,
+        locale === "id"
+          ? `Data uji 3 bulan dimuat (${dummy.trades.length} trade, 2 akun, & ${staged.length} chart).`
+          : `3-month test data loaded (${dummy.trades.length} trades, 2 accounts, & ${staged.length} charts).`,
+        true,
+      );
+      if (!ok) {
+        await Promise.allSettled(staged.map((image) => removeAttachment(image.id, storage)));
+        return false;
+      }
+      await removeUnusedImages(oldImages);
+      setAccountFilter("all");
+      setPeriod("3M");
+      return true;
+    } catch (error) {
+      await Promise.allSettled(staged.map((image) => removeAttachment(image.id, storage)));
+      notify(error instanceof Error ? error.message : "Couldn’t load 3-month test data.", true);
+      return false;
+    }
+  }
+  async function importTrades(trades: Trade[], newAccounts: TradingAccount[] = []) {
+    const current = dataRef.current;
+    const currentAccounts = current.settings.accounts ?? [DEFAULT_ACCOUNT];
+    const mergedAccounts = newAccounts.length ? [...currentAccounts, ...newAccounts] : currentAccounts;
+    return commit(
+      {
+        ...current,
+        trades: sortTrades([...trades, ...current.trades]),
+        settings: { ...current.settings, accounts: mergedAccounts },
+      },
+      locale === "id"
+        ? `${trades.length} trade berhasil diimpor.`
+        : `${trades.length} ${trades.length === 1 ? "trade" : "trades"} imported.`,
+    );
+  }
   async function signOut() {
     try {
       const response = await fetch("/api/auth/sign-out", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
@@ -350,7 +434,7 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
         {showTradeControls && <div className="workspace-controls"><div className="account-select-wrap"><span className="account-select-icon">✳</span><label><span>{copy.accountLabel}</span><select aria-label={copy.filterByAccount} value={accountFilter} onChange={(event) => setAccountFilter(event.target.value)}><option value="all">{copy.allAccounts}</option>{accounts.map((account) => <option key={account.id} value={account.id}>{translateAccountName(account.name, locale)}</option>)}</select></label><ChevronDown size={14}/></div><div className="workspace-control-right">{sampleCount > 0 && <button type="button" className={`sample-toggle ${data.settings.includeSamples !== false ? "on" : ""}`} onClick={() => void updateSettings({ includeSamples: data.settings.includeSamples === false }, data.settings.includeSamples === false ? (locale === "id" ? "Trade contoh disertakan." : "Sample trades included.") : (locale === "id" ? "Trade contoh disembunyikan." : "Sample trades hidden."))} aria-pressed={data.settings.includeSamples !== false}><span className="sample-indicator-dot"/> {data.settings.includeSamples === false ? copy.samplesHidden : copy.samplesIncluded}<span className="switch"><i/></span></button>}<span className="save-indicator"><span/>{saving ? copy.saving : storage === "browser" ? copy.savedOnDevice : copy.privateSynced}</span></div></div>}
         <div className="view-motion" data-view={view} key={view}>
         {view === "Overview" && <Overview {...common}/>}
-        {view === "Trade journal" && <JournalView trades={visibleTrades} dayJournals={data.settings.dayJournals} hidden={hidden} mode={storage} onEditTrade={editTrade} onNewTrade={newTrade} onImport={() => openModal("import")} onExport={exportCsv} onPreviewCharts={openTradeCharts} onOpenSlides={(slides, index) => setLightbox({ slides, index })} selectedDay={selectedDay} clearDay={() => setSelectedDay("")} locale={locale}/>}
+        {view === "Trade journal" && <JournalView trades={visibleTrades} dayJournals={data.settings.dayJournals} hidden={hidden} mode={storage} onEditTrade={editTrade} onNewTrade={newTrade} onImport={() => openModal("import")} onExport={exportCsv} onExportXlsx={exportXlsx} onPreviewCharts={openTradeCharts} onOpenSlides={(slides, index) => setLightbox({ slides, index })} selectedDay={selectedDay} clearDay={() => setSelectedDay("")} locale={locale}/>}
         {view === "Analytics" && <AnalyticsView trades={visibleTrades} allTrades={data.trades} accountFilter={accountFilter} settings={data.settings} hidden={hidden} period={period} onPeriod={setPeriod} onAccountsSettings={() => openSettings("Accounts")}/>}
         {view === "Weekly review" && <WeeklyReview trades={visibleTrades} settings={data.settings} hidden={hidden} onMindset={() => navigate("Mindset")} onSettings={() => openSettings("Risk")} onEditTrade={editTrade} onNewTrade={newTrade} onJournal={() => navigate("Trade journal")} onPreviewCharts={openTradeCharts} onOpenRecap={(ws) => openRecap(ws)}/>}
         {view === "Calendar" && <CalendarView trades={visibleTrades} allTrades={data.trades} accountFilter={accountFilter} settings={data.settings} hidden={hidden} onDay={day} onAccountsSettings={() => openSettings("Accounts")} onSaveDayJournal={saveDayJournal}/>}
@@ -371,7 +455,7 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
       onClickCapture={(event) => { if (modalClosing) { event.preventDefault(); event.stopPropagation(); } }}
       onSubmitCapture={(event) => { if (modalClosing) { event.preventDefault(); event.stopPropagation(); } }}>
     {modal === "trade" && <TradeModal key={editing?.id ?? "new"} trade={editing} trades={data.trades} limits={data.settings.riskLimits ?? { perTrade: null, dailyLoss: null }} hidden={hidden} accounts={accounts} playbook={data.settings.playbook} setupBlueprints={data.settings.setupBlueprints} defaultAccount={defaultAccount} mode={storage} locale={locale} onClose={closeModal} onSave={saveTrade} onDelete={deleteTrade}/>}
-    {modal === "settings" && <SettingsModal data={data} mode={storage} sampleCount={sampleCount} initialTab={settingsTab} backupState={backupTracking?.state ?? null} backupAvailable={backupTracking?.available ?? false} backupEnabled={damaged === null} hidden={hidden} onClose={closeModal} onUpdate={updateSettings} onClearSamples={clearSamples} onBackup={backup} onRestore={restore} onExportCsv={() => exportCsv(dataRef.current.trades)} onImportCsv={() => openModal("import")} onAddAccount={addAccount} onUpdateAccount={updateAccount} onRemoveAccount={removeAccount} onSignOut={storage === "server" ? signOut : undefined}/>}
+    {modal === "settings" && <SettingsModal data={data} mode={storage} sampleCount={sampleCount} initialTab={settingsTab} backupState={backupTracking?.state ?? null} backupAvailable={backupTracking?.available ?? false} backupEnabled={damaged === null} hidden={hidden} onClose={closeModal} onUpdate={updateSettings} onClearSamples={clearSamples} onBackup={backup} onRestore={restore} onExportCsv={() => exportCsv(dataRef.current.trades)} onExportXlsx={() => exportXlsx(dataRef.current.trades)} onImportCsv={() => openModal("import")} onLoadDummyData={loadThreeMonthDummy} onAddAccount={addAccount} onUpdateAccount={updateAccount} onRemoveAccount={removeAccount} onSignOut={storage === "server" ? signOut : undefined}/>}
     {modal === "import" && <ImportModal trades={data.trades} accounts={accounts} defaultAccount={defaultAccount} locale={locale} onClose={closeModal} onImport={importTrades}/>}
     {modal === "breathing" && <BreathingModal onClose={closeModal} locale={locale}/>}
     {modal === "cassette" && <CassetteDeckModal deck={cassetteDeck} mode={storage} locale={locale} onClose={closeModal}/>}
