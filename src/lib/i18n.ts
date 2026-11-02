@@ -951,6 +951,9 @@ export const UI_COPY = {
     ytDeletedToast: "Video removed.",
     ytDefaultTitle: (vid: string) => `Trading video · ${vid}`,
     ytStartAtBadge: (time: string) => `Starts ${time}`,
+    ytResumeBadge: (time: string) => `Resume ${time}`,
+    ytRestartBtn: "Restart",
+    ytRestartAria: (title: string) => `Restart ${title} from beginning`,
     ytQueueLabel: (count: number) => `Saved videos (${count})`,
     ytPreviewReady: "Thumbnail ready",
 
@@ -1787,6 +1790,9 @@ export const UI_COPY = {
     ytDeletedToast: "Video dihapus.",
     ytDefaultTitle: (vid: string) => `Video trading · ${vid}`,
     ytStartAtBadge: (time: string) => `Mulai ${time}`,
+    ytResumeBadge: (time: string) => `Lanjutkan ${time}`,
+    ytRestartBtn: "Dari awal",
+    ytRestartAria: (title: string) => `Putar ulang ${title} dari awal`,
     ytQueueLabel: (count: number) => `Video tersimpan (${count})`,
     ytPreviewReady: "Thumbnail siap",
 

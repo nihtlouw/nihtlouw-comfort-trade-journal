@@ -13,7 +13,18 @@ import { parseBackup } from "@/lib/backup";
 import { validateImage } from "@/lib/attachments";
 import { buildRecapSummary } from "@/lib/recap-card";
 import { buildSampleStrategyPdfBlob, cleanPdfTitle, parseStrategyLinkUrl, validatePdfBlob } from "@/lib/strategy-library";
-import { formatYoutubeTimestamp, parseYoutubeUrl, sortYoutubeVideos } from "@/lib/youtube";
+import {
+  YOUTUBE_PLAYBACK_CACHE_KEY,
+  clearYoutubePlaybackPosition,
+  formatYoutubeTimestamp,
+  parseYoutubePlayerMessage,
+  parseYoutubeUrl,
+  readYoutubePlaybackCache,
+  resolveYoutubeResumeSeconds,
+  sortYoutubeVideos,
+  updateYoutubePlaybackPosition,
+  writeYoutubePlaybackCache,
+} from "@/lib/youtube";
 import type { SavedYoutubeVideo, StrategyLibraryItem, Trade } from "@/lib/types";
 
 const makeTrade = (id: number, pnl: string, initialRisk = ""): Trade => ({ id, pnl, initialRisk, symbol: `TEST${id}`, market: "Stocks", side: "Long", setup: "Breakout", tradeDate: `2026-01-0${id}`, mood: "Calm", notes: "", isDemo: false });
@@ -1130,6 +1141,57 @@ test("Strategy books (PDF) & idea links validate URLs, %PDF- magic bytes, and v2
       }),
     ),
   );
+});
+
+test("YouTube playback cache parses player postMessages, persists paused timestamps, and clears completed videos", () => {
+  const msg = parseYoutubePlayerMessage(
+    JSON.stringify({
+      event: "infoDelivery",
+      info: { currentTime: 185.7, duration: 620, playerState: 2 },
+    }),
+  );
+  assert.deepEqual(msg, { currentTime: 185.7, duration: 620, playerState: 2 });
+  assert.deepEqual(
+    parseYoutubePlayerMessage(JSON.stringify({ event: "onStateChange", info: 0 })),
+    { playerState: 0 },
+  );
+  assert.equal(parseYoutubePlayerMessage("not-json"), null);
+
+  const mem = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => mem.get(key) ?? null,
+    setItem: (key: string, val: string) => {
+      mem.set(key, val);
+    },
+  };
+
+  let cache = readYoutubePlaybackCache(storage);
+  assert.deepEqual(cache, { positions: {} });
+
+  cache = updateYoutubePlaybackPosition(cache, "dQw4w9WgXcQ", 185.7, 620, 1_700_000_000_000);
+  cache = { ...cache, selectedId: "vid-1" };
+  assert.equal(writeYoutubePlaybackCache(storage, cache), true);
+  assert.ok(mem.has(YOUTUBE_PLAYBACK_CACHE_KEY));
+
+  const reloaded = readYoutubePlaybackCache(storage);
+  assert.equal(reloaded.selectedId, "vid-1");
+  assert.equal(reloaded.positions.dQw4w9WgXcQ?.seconds, 185);
+  assert.equal(
+    resolveYoutubeResumeSeconds({ videoId: "dQw4w9WgXcQ", startSeconds: 45 }, reloaded),
+    185,
+  );
+  assert.equal(
+    resolveYoutubeResumeSeconds({ videoId: "Q6ms3xJ2c1k", startSeconds: 45 }, reloaded),
+    45,
+  );
+
+  // Near-end completion clears resume position so next watch starts fresh
+  const nearEnd = updateYoutubePlaybackPosition(reloaded, "dQw4w9WgXcQ", 618.5, 620, 1_700_000_005_000);
+  assert.equal(nearEnd.positions.dQw4w9WgXcQ, undefined);
+
+  // Manual restart clears cached position
+  const manuallyCleared = clearYoutubePlaybackPosition(reloaded, "dQw4w9WgXcQ");
+  assert.equal(manuallyCleared.positions.dQw4w9WgXcQ, undefined);
 });
 
 

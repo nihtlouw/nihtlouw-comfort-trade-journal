@@ -701,11 +701,59 @@ try {
   await ytPanel.getByRole("heading", { name: "My Daily Patience Reminder", exact: true }).waitFor();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Overview with YouTube panel & Strategy shelf fits 360px cleanly");
 
-  // Click Play on thumbnail stage -> mounts youtube-nocookie embed iframe with start=45, then return to thumbnail
+  // Click Play on thumbnail stage -> mounts youtube-nocookie embed iframe with start=45 & enablejsapi=1
   await ytPanel.getByLabel("Play My Daily Patience Reminder").click();
   const ytIframe = ytPanel.locator("iframe.yt-iframe");
   await ytIframe.waitFor();
+  assert.match(await ytIframe.getAttribute("src"), /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ\?.*enablejsapi=1.*start=45/);
+  await ytIframe.evaluate((el) => { el.__bloomSameIframeInstance = true; });
+
+  // Simulate pausing at 3:05 (185.7s) via YouTube postMessage, then switch to Trade journal & Calendar and return to Overview
+  await page.evaluate(() => {
+    const iframe = document.querySelector("iframe.yt-iframe");
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: iframe.contentWindow,
+        origin: "https://www.youtube-nocookie.com",
+        data: JSON.stringify({
+          event: "infoDelivery",
+          info: { currentTime: 185.7, duration: 600, playerState: 2 },
+        }),
+      }),
+    );
+  });
+  await navigate("Trade journal");
+  await navigate("Calendar");
+  await navigate("Overview");
+
+  // Verify the exact same iframe instance stayed alive (never unmounted or reset to 0:00 across tab switches!)
+  assert.equal(await ytIframe.isVisible(), true, "YouTube player stays visible when returning to Overview");
+  assert.equal(await ytIframe.evaluate((el) => el.__bloomSameIframeInstance === true), true, "Exact same YouTube iframe instance survives in-app tab switches");
+
+  // Return to thumbnail -> verify "Resume 3:05" badge is shown -> click Play -> verify it resumes at start=185 -> test Restart back to start=45
+  await ytPanel.getByRole("button", { name: "Show thumbnail", exact: true }).click();
+  await ytIframe.waitFor({ state: "detached" });
+  assert.equal(await ytPanel.locator(".yt-resume-badge").innerText(), "Resume 3:05");
+  await ytPanel.getByLabel("Play My Daily Patience Reminder").click();
+  await ytIframe.waitFor();
+  assert.match(await ytIframe.getAttribute("src"), /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ\?.*start=185/);
+  await ytPanel.getByLabel("Restart My Daily Patience Reminder from beginning").click();
   assert.match(await ytIframe.getAttribute("src"), /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ\?.*start=45/);
+
+  // Simulate pausing at 2:10 (130.4s), pin video, and verify resume cache persists even across full offline reload
+  await page.evaluate(() => {
+    const iframe = document.querySelector("iframe.yt-iframe");
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: iframe.contentWindow,
+        origin: "https://www.youtube-nocookie.com",
+        data: JSON.stringify({
+          event: "infoDelivery",
+          info: { currentTime: 130.4, duration: 600, playerState: 2 },
+        }),
+      }),
+    );
+  });
   await ytPanel.getByRole("button", { name: "Show thumbnail", exact: true }).click();
   await ytIframe.waitFor({ state: "detached" });
   await ytPanel.getByRole("button", { name: "Pin My Daily Patience Reminder as main reminder" }).click();
@@ -743,10 +791,11 @@ try {
   await shelf.getByRole("link", { name: "Open London Sweep Checklist in new tab" }).waitFor();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Overview with populated Strategy mini-list fits 360px cleanly");
 
-  // Reload offline and verify both simplified YouTube video & Strategy PDF/links persist
+  // Reload offline and verify both simplified YouTube video (with cached 2:10 resume timestamp!) & Strategy PDF/links persist
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.locator(".yt-watch-card").waitFor();
   assert.equal(await page.locator(".yt-watch-card h3").innerText(), "My Daily Patience Reminder");
+  assert.equal(await page.locator(".yt-watch-card .yt-resume-badge").innerText(), "Resume 2:10");
   assert.equal(await page.locator("aside.overview-side .strategy-shelf-card .strategy-mini-row").count(), 5);
   console.log("PASS: Simplified YouTube watch panel + right-side Strategy PDF & idea link mini-list work offline and persist.");
   if (!external) {
