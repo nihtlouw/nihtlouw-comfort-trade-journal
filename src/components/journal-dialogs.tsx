@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import Image from "next/image";
 import { Check, ChevronDown, CircleHelp, Download, FileImage, FileSpreadsheet, ImagePlus, Maximize2, Pause, Pencil, Play, Plus, RotateCcw, ShieldCheck, Sparkles, Trash2, Upload, X } from "lucide-react";
 import { getAttachment, type StorageMode } from "@/lib/attachments";
+import { downloadFile } from "@/lib/backup";
 import { collectNewAccountsFromRows, CSV_FIELDS, csvRowsToTrades, exportTradesCsv, parseImportFile, type CsvMapping, type CsvPreview } from "@/lib/csv";
 import { createThreeMonthDummyData } from "@/lib/dummy-dataset";
 import { currency, todayString } from "@/lib/format";
@@ -495,30 +496,22 @@ export function ImportModal({
   }, [preview, mapping, accounts, defaultAccount, trades]);
   const valid = rows.filter((row) => row.trade && (!row.duplicate || !skipDuplicates));
 
-  function triggerBlobDownload(filename: string, blob: Blob) {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
   function downloadSampleReport(kind: "xlsx" | "csv") {
     const dummy = createThreeMonthDummyData(locale);
     const dummyAccounts = dummy.settings.accounts ?? [DEFAULT_ACCOUNT];
     if (kind === "xlsx") {
       const bytes = exportTradesXlsx(dummy.trades, dummyAccounts, locale);
-      triggerBlobDownload(
+      downloadFile(
         `bloom-3m-sample-report-${todayString()}.xlsx`,
-        new Blob([bytes.buffer as ArrayBuffer], {
-          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        }),
+        bytes.slice(),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       );
     } else {
       const csvText = exportTradesCsv(dummy.trades, dummyAccounts, locale);
-      triggerBlobDownload(
+      downloadFile(
         `bloom-3m-sample-report-${todayString()}.csv`,
-        new Blob([csvText], { type: "text/csv;charset=utf-8" }),
+        csvText,
+        "text/csv;charset=utf-8",
       );
     }
   }

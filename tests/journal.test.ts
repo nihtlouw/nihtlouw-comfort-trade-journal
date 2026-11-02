@@ -823,39 +823,139 @@ test("report-grade CSV export & import round-trips exact trade structure lossles
   }
 });
 
-test("styled OpenXML .xlsx report export & import round-trips losslessly in EN and ID", async () => {
+test("styled OpenXML .xlsx report export & import round-trips losslessly in EN, ID, and DEFLATE-recompressed Excel archives", async () => {
+  const { deflateRawSync } = await import("node:zlib");
+
+  function repackAsDeflateZip(storeZip: Uint8Array): Uint8Array {
+    const view = new DataView(storeZip.buffer, storeZip.byteOffset, storeZip.byteLength);
+    let eocd = -1;
+    for (let i = storeZip.length - 22; i >= 0; i--) {
+      if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    }
+    assert.ok(eocd >= 0);
+    const count = view.getUint16(eocd + 10, true);
+    let cd = view.getUint32(eocd + 16, true);
+    const localParts: Uint8Array[] = [];
+    const centralParts: Uint8Array[] = [];
+    let offset = 0;
+
+    for (let i = 0; i < count; i++) {
+      const size = view.getUint32(cd + 20, true);
+      const nameLen = view.getUint16(cd + 28, true);
+      const extraLen = view.getUint16(cd + 30, true);
+      const commentLen = view.getUint16(cd + 32, true);
+      const lOff = view.getUint32(cd + 42, true);
+      const dosTime = view.getUint16(cd + 12, true);
+      const dosDate = view.getUint16(cd + 14, true);
+      // Assert valid MS-DOS calendar date (never Day=0 or Month=0)
+      const day = dosDate & 0x1f;
+      const month = (dosDate >> 5) & 0x0f;
+      assert.ok(day >= 1 && day <= 31, `Invalid DOS day ${day}`);
+      assert.ok(month >= 1 && month <= 12, `Invalid DOS month ${month}`);
+
+      const crc = view.getUint32(cd + 16, true);
+      const nameBytes = storeZip.subarray(cd + 46, cd + 46 + nameLen);
+      const lNameLen = view.getUint16(lOff + 26, true);
+      const lExtraLen = view.getUint16(lOff + 28, true);
+      const rawData = storeZip.subarray(lOff + 30 + lNameLen + lExtraLen, lOff + 30 + lNameLen + lExtraLen + size);
+      const deflated = deflateRawSync(rawData);
+
+      const local = new Uint8Array(30 + nameLen + deflated.length);
+      const lv = new DataView(local.buffer);
+      lv.setUint32(0, 0x04034b50, true);
+      lv.setUint16(4, 20, true);
+      lv.setUint16(8, 8, true); // DEFLATE method 8
+      lv.setUint16(10, dosTime, true);
+      lv.setUint16(12, dosDate, true);
+      lv.setUint32(14, crc, true);
+      lv.setUint32(18, deflated.length, true);
+      lv.setUint32(22, size, true);
+      lv.setUint16(26, nameLen, true);
+      local.set(nameBytes, 30);
+      local.set(deflated, 30 + nameLen);
+      localParts.push(local);
+
+      const central = new Uint8Array(46 + nameLen);
+      const cv = new DataView(central.buffer);
+      cv.setUint32(0, 0x02014b50, true);
+      cv.setUint16(4, 20, true);
+      cv.setUint16(6, 20, true);
+      cv.setUint16(10, 8, true); // DEFLATE method 8
+      cv.setUint16(12, dosTime, true);
+      cv.setUint16(14, dosDate, true);
+      cv.setUint32(16, crc, true);
+      cv.setUint32(20, deflated.length, true);
+      cv.setUint32(24, size, true);
+      cv.setUint16(28, nameLen, true);
+      cv.setUint32(42, offset, true);
+      central.set(nameBytes, 46);
+      centralParts.push(central);
+
+      offset += local.length;
+      cd += 46 + nameLen + extraLen + commentLen;
+    }
+
+    const centralSize = centralParts.reduce((s, p) => s + p.length, 0);
+    const outEocd = new Uint8Array(22);
+    const ev = new DataView(outEocd.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(8, count, true);
+    ev.setUint16(10, count, true);
+    ev.setUint32(12, centralSize, true);
+    ev.setUint32(16, offset, true);
+
+    const out = new Uint8Array(offset + centralSize + 22);
+    let pos = 0;
+    for (const p of localParts) { out.set(p, pos); pos += p.length; }
+    for (const p of centralParts) { out.set(p, pos); pos += p.length; }
+    out.set(outEocd, pos);
+    return out;
+  }
+
   for (const locale of ["en", "id"] as const) {
     const dummy = normalizeJournalData(createThreeMonthDummyData(locale, new Date("2026-11-02T12:00:00Z")));
     const accounts = dummy.settings.accounts!;
 
     const xlsxBytes = exportTradesXlsx(dummy.trades, accounts, locale);
-    // Verify valid ZIP local header signature PK\x03\x04
     assert.equal(xlsxBytes[0], 0x50);
     assert.equal(xlsxBytes[1], 0x4b);
     assert.equal(xlsxBytes[2], 0x03);
     assert.equal(xlsxBytes[3], 0x04);
 
-    const matrix = await parseXlsxBuffer(
-      xlsxBytes.buffer.slice(xlsxBytes.byteOffset, xlsxBytes.byteOffset + xlsxBytes.byteLength) as ArrayBuffer,
-    );
-    const preview = parseSpreadsheetMatrix(matrix);
-    const parsedRows = csvRowsToTrades(preview, preview.mapping, accounts, "main", []);
-    assert.equal(parsedRows.filter((r) => r.error).length, 0);
-    assert.equal(parsedRows.length, dummy.trades.length);
+    const asciiDump = new TextDecoder("utf-8", { fatal: false }).decode(xlsxBytes);
+    assert.match(asciiDump, /<bookViews>/);
+    assert.match(asciiDump, /<cellStyles count="1">/);
+    assert.match(asciiDump, /xl\/sharedStrings\.xml/);
+    assert.match(asciiDump, /<autoFilter ref="A4:Z58"\/>/);
+    assert.match(asciiDump, /SUM\(Q5:Q58\)/);
 
-    const sortedOriginal = [...dummy.trades].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate) || a.id - b.id);
-    parsedRows.forEach((row, idx) => {
-      const orig = sortedOriginal[idx];
-      const imp = row.trade!;
-      assert.equal(imp.symbol, orig.symbol);
-      assert.equal(imp.tradeDate, orig.tradeDate);
-      assert.equal(Number(imp.pnl).toFixed(2), Number(orig.pnl).toFixed(2));
-      assert.equal(imp.accountId, orig.accountId);
-      assert.equal(imp.followedPlan, orig.followedPlan);
-      assert.equal((imp.checklist ?? []).length, (orig.checklist ?? []).length);
-      assert.deepEqual(imp.tags ?? [], orig.tags ?? []);
-      assert.equal(imp.notes, orig.notes);
-    });
+    const deflatedXlsx = repackAsDeflateZip(xlsxBytes);
+
+    for (const candidate of [xlsxBytes, deflatedXlsx]) {
+      const matrix = await parseXlsxBuffer(
+        candidate.buffer.slice(candidate.byteOffset, candidate.byteOffset + candidate.byteLength) as ArrayBuffer,
+      );
+      const preview = parseSpreadsheetMatrix(matrix);
+      const parsedRows = csvRowsToTrades(preview, preview.mapping, accounts, "main", []);
+      assert.equal(parsedRows.filter((r) => r.error).length, 0);
+      assert.equal(parsedRows.length, dummy.trades.length);
+
+      const sortedOriginal = [...dummy.trades].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate) || a.id - b.id);
+      parsedRows.forEach((row, idx) => {
+        const orig = sortedOriginal[idx];
+        const imp = row.trade!;
+        assert.equal(imp.symbol, orig.symbol);
+        assert.equal(imp.tradeDate, orig.tradeDate);
+        assert.equal(Number(imp.pnl).toFixed(2), Number(orig.pnl).toFixed(2));
+        assert.equal(imp.market, orig.market);
+        assert.equal(imp.mood, orig.mood);
+        assert.equal(imp.accountId, orig.accountId);
+        assert.equal(imp.followedPlan, orig.followedPlan);
+        assert.equal((imp.checklist ?? []).length, (orig.checklist ?? []).length);
+        assert.deepEqual(imp.tags ?? [], orig.tags ?? []);
+        assert.equal(imp.notes, orig.notes);
+      });
+    }
   }
 });
 

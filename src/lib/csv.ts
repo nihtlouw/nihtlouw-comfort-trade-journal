@@ -169,9 +169,9 @@ function normalizeImportedDate(raw: string): string {
     if (isDate(candidate)) return candidate;
   }
 
-  // Excel serial date integer (e.g. 45000..55000)
-  if (/^\d{5}$/.test(s)) {
-    const serial = Number(s);
+  // Excel serial date integer or float (e.g. 45000..55000 or 46328.5)
+  if (/^\d{5}(\.\d+)?$/.test(s)) {
+    const serial = Math.floor(Number(s));
     if (serial >= 30000 && serial <= 70000) {
       const utcMs = Math.round((serial - 25569) * 86_400_000);
       const iso = new Date(utcMs).toISOString().slice(0, 10);
