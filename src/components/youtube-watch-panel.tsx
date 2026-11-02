@@ -16,12 +16,7 @@ import {
 } from "lucide-react";
 import { todayString } from "@/lib/format";
 import { UI_COPY } from "@/lib/i18n";
-import {
-  YOUTUBE_VIDEO_CATEGORIES,
-  type AppLocale,
-  type SavedYoutubeVideo,
-  type YoutubeVideoCategory,
-} from "@/lib/types";
+import type { AppLocale, SavedYoutubeVideo } from "@/lib/types";
 import {
   buildYoutubeUrls,
   formatYoutubeTimestamp,
@@ -84,7 +79,6 @@ export function YoutubeWatchPanel({
   const copy = UI_COPY[locale];
   const sortedVideos = useMemo(() => sortYoutubeVideos(videos), [videos]);
 
-  const [categoryFilter, setCategoryFilter] = useState<"all" | YoutubeVideoCategory>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
 
@@ -92,44 +86,26 @@ export function YoutubeWatchPanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [urlInput, setUrlInput] = useState("");
   const [titleInput, setTitleInput] = useState("");
-  const [categoryInput, setCategoryInput] = useState<YoutubeVideoCategory>("followup");
-  const [noteInput, setNoteInput] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const lastFetchedVideoId = useRef<string>("");
 
-  const filteredVideos = useMemo(
-    () =>
-      categoryFilter === "all"
-        ? sortedVideos
-        : sortedVideos.filter((item) => item.category === categoryFilter),
-    [sortedVideos, categoryFilter],
-  );
-
   const activeVideo = useMemo(() => {
-    if (!filteredVideos.length) return null;
+    if (!sortedVideos.length) return null;
     if (selectedId) {
-      const found = filteredVideos.find((item) => item.id === selectedId);
+      const found = sortedVideos.find((item) => item.id === selectedId);
       if (found) return found;
     }
-    return filteredVideos[0];
-  }, [filteredVideos, selectedId]);
+    return sortedVideos[0];
+  }, [sortedVideos, selectedId]);
 
   const liveDraftParsed = useMemo(() => parseYoutubeUrl(urlInput), [urlInput]);
   const showForm = formOpen || editingId !== null || sortedVideos.length === 0;
-
-  function categoryLabel(cat: YoutubeVideoCategory): string {
-    if (cat === "reminder") return copy.ytCatReminder;
-    if (cat === "motivation") return copy.ytCatMotivation;
-    return copy.ytCatFollowup;
-  }
 
   function resetForm() {
     setFormOpen(false);
     setEditingId(null);
     setUrlInput("");
     setTitleInput("");
-    setCategoryInput("followup");
-    setNoteInput("");
     setFormError(null);
     lastFetchedVideoId.current = "";
   }
@@ -138,8 +114,6 @@ export function YoutubeWatchPanel({
     setEditingId(null);
     setUrlInput("");
     setTitleInput("");
-    setCategoryInput("followup");
-    setNoteInput("");
     setFormError(null);
     lastFetchedVideoId.current = "";
     setFormOpen(true);
@@ -150,8 +124,6 @@ export function YoutubeWatchPanel({
     setEditingId(video.id);
     setUrlInput(video.url);
     setTitleInput(video.title);
-    setCategoryInput(video.category);
-    setNoteInput(video.note);
     setFormError(null);
     lastFetchedVideoId.current = video.videoId;
   }
@@ -201,7 +173,6 @@ export function YoutubeWatchPanel({
     }
 
     const cleanTitle = (titleInput.trim() || copy.ytDefaultTitle(parsed.videoId)).slice(0, 140);
-    const cleanNote = noteInput.trim().slice(0, 400);
 
     if (editingId) {
       const next = videos.map((item) =>
@@ -211,8 +182,6 @@ export function YoutubeWatchPanel({
               videoId: parsed.videoId,
               url: parsed.canonicalUrl,
               title: cleanTitle,
-              category: categoryInput,
-              note: cleanNote,
               startSeconds: parsed.startSeconds,
             }
           : item,
@@ -229,15 +198,12 @@ export function YoutubeWatchPanel({
       videoId: parsed.videoId,
       url: parsed.canonicalUrl,
       title: cleanTitle,
-      category: categoryInput,
-      note: cleanNote,
       ...(parsed.startSeconds ? { startSeconds: parsed.startSeconds } : {}),
       pinned: videos.length === 0,
       addedAt: todayString(),
     };
     const next = [newItem, ...videos];
     void onChange(next, copy.ytSavedToast);
-    setCategoryFilter("all");
     setSelectedId(newItem.id);
     setPlayingId(null);
     resetForm();
@@ -295,39 +261,10 @@ export function YoutubeWatchPanel({
         }
       />
 
-      {sortedVideos.length > 1 && (
-        <div className="yt-filter-row" role="group" aria-label={copy.ytCategoryFilterAria}>
-          {(["all", ...YOUTUBE_VIDEO_CATEGORIES] as const).map((cat) => {
-            const selected = categoryFilter === cat;
-            const label = cat === "all" ? copy.ytCatAll : categoryLabel(cat);
-            const count =
-              cat === "all"
-                ? sortedVideos.length
-                : sortedVideos.filter((v) => v.category === cat).length;
-            return (
-              <button
-                type="button"
-                key={cat}
-                className={`yt-filter-pill ${selected ? "selected" : ""}`}
-                aria-pressed={selected}
-                onClick={() => {
-                  setCategoryFilter(cat);
-                  setPlayingId(null);
-                }}
-              >
-                <span>{label}</span>
-                <b>{count}</b>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
       {showForm && (
         <form className="yt-form" onSubmit={handleSubmit}>
-          {sortedVideos.length === 0 && <p className="yt-empty-lead">{copy.ytEmptyPrompt}</p>}
           <div className="yt-form-grid">
-            <label className="yt-field yt-field-full">
+            <label className="yt-field">
               <span>{copy.ytUrlLabel}</span>
               <input
                 type="url"
@@ -336,6 +273,17 @@ export function YoutubeWatchPanel({
                 value={urlInput}
                 onChange={(event) => handleUrlChange(event.target.value)}
                 required
+              />
+            </label>
+
+            <label className="yt-field">
+              <span>{copy.ytVideoTitleLabel}</span>
+              <input
+                type="text"
+                maxLength={140}
+                placeholder={copy.ytVideoTitlePlaceholder}
+                value={titleInput}
+                onChange={(event) => setTitleInput(event.target.value)}
               />
             </label>
 
@@ -358,45 +306,6 @@ export function YoutubeWatchPanel({
                 </div>
               </div>
             )}
-
-            <label className="yt-field">
-              <span>{copy.ytVideoTitleLabel}</span>
-              <input
-                type="text"
-                maxLength={140}
-                placeholder={copy.ytVideoTitlePlaceholder}
-                value={titleInput}
-                onChange={(event) => setTitleInput(event.target.value)}
-              />
-            </label>
-
-            <div className="yt-field">
-              <span>{copy.ytCategoryLabel}</span>
-              <div className="segment-control yt-purpose-group" role="group" aria-label={copy.ytCategoryLabel}>
-                {YOUTUBE_VIDEO_CATEGORIES.map((cat) => (
-                  <button
-                    type="button"
-                    key={cat}
-                    className={categoryInput === cat ? "selected" : ""}
-                    aria-pressed={categoryInput === cat}
-                    onClick={() => setCategoryInput(cat)}
-                  >
-                    {categoryLabel(cat)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <label className="yt-field yt-field-full">
-              <span>{copy.ytNoteLabel}</span>
-              <textarea
-                rows={2}
-                maxLength={400}
-                placeholder={copy.ytNotePlaceholder}
-                value={noteInput}
-                onChange={(event) => setNoteInput(event.target.value)}
-              />
-            </label>
           </div>
 
           {formError && (
@@ -416,10 +325,6 @@ export function YoutubeWatchPanel({
             </button>
           </div>
         </form>
-      )}
-
-      {sortedVideos.length > 0 && !activeVideo && (
-        <div className="simple-empty">{copy.ytFilterEmpty}</div>
       )}
 
       {activeVideo && activeUrls && (
@@ -444,21 +349,20 @@ export function YoutubeWatchPanel({
               >
                 <YoutubeThumbnail videoId={activeVideo.videoId} alt={activeVideo.title} />
                 <span className="yt-stage-scrim" aria-hidden="true" />
-                <span className="yt-stage-badges">
-                  <span className={`yt-cat-badge cat-${activeVideo.category}`}>
-                    {categoryLabel(activeVideo.category)}
+                {(activeVideo.pinned || activeStartBadge) && (
+                  <span className="yt-stage-badges">
+                    {activeVideo.pinned && (
+                      <span className="yt-pin-badge">
+                        <Pin size={11} /> {copy.ytPinnedBadge}
+                      </span>
+                    )}
+                    {activeStartBadge && (
+                      <span className="yt-time-badge">
+                        <Clock size={11} /> {copy.ytStartAtBadge(activeStartBadge)}
+                      </span>
+                    )}
                   </span>
-                  {activeVideo.pinned && (
-                    <span className="yt-pin-badge">
-                      <Pin size={11} /> {copy.ytPinnedBadge}
-                    </span>
-                  )}
-                  {activeStartBadge && (
-                    <span className="yt-time-badge">
-                      <Clock size={11} /> {copy.ytStartAtBadge(activeStartBadge)}
-                    </span>
-                  )}
-                </span>
+                )}
                 <span className="yt-play-pill">
                   <span className="yt-play-circle">
                     <Play size={18} fill="currentColor" />
@@ -521,23 +425,17 @@ export function YoutubeWatchPanel({
                 </button>
               </div>
             </div>
-
-            {activeVideo.note && (
-              <blockquote className="yt-reminder-note">
-                <p>{activeVideo.note}</p>
-              </blockquote>
-            )}
           </div>
         </div>
       )}
 
-      {filteredVideos.length > 1 && (
+      {sortedVideos.length > 1 && (
         <div className="yt-queue">
           <div className="yt-queue-head">
-            <span>{copy.ytQueueLabel(filteredVideos.length)}</span>
+            <span>{copy.ytQueueLabel(sortedVideos.length)}</span>
           </div>
           <div className="yt-queue-list">
-            {filteredVideos.map((item) => {
+            {sortedVideos.map((item) => {
               const isCurrent = activeVideo?.id === item.id;
               return (
                 <button
@@ -557,19 +455,13 @@ export function YoutubeWatchPanel({
                     </span>
                   </div>
                   <div className="yt-queue-copy">
-                    <div className="yt-queue-tags">
-                      <span className={`yt-cat-dot cat-${item.category}`}>
-                        {categoryLabel(item.category)}
-                      </span>
-                      {item.pinned && (
-                        <span className="yt-queue-pin" aria-hidden="true">
-                          <Pin size={10} />
-                        </span>
-                      )}
-                    </div>
                     <strong>{item.title}</strong>
-                    {item.note && <small>{item.note}</small>}
                   </div>
+                  {item.pinned && (
+                    <span className="yt-queue-pin" aria-hidden="true">
+                      <Pin size={11} />
+                    </span>
+                  )}
                 </button>
               );
             })}

@@ -9,6 +9,7 @@ import type {
   RuleSnapshot,
   SavedYoutubeVideo,
   SetupBlueprint,
+  StrategyLibraryItem,
   Trade,
   TradingAccount,
   WalkAwayLog,
@@ -876,6 +877,27 @@ export function createThreeMonthDummyData(
     },
   ];
 
+  const strategyLibrary: StrategyLibraryItem[] = [
+    {
+      id: "strat-link-1",
+      kind: "link",
+      title: isId
+        ? "Catatan Likuiditas Sesi London & New York"
+        : "London & NY Session Liquidity Playbook",
+      url: "https://www.tradingview.com/chart/",
+      addedAt: offsetDateString(14, baseDate),
+    },
+    {
+      id: "strat-link-2",
+      kind: "link",
+      title: isId
+        ? "Kerangka Probabilitas & Manajemen Risiko R"
+        : "R-Multiple Risk & Probability Framework",
+      url: "https://www.cmegroup.com/education.html",
+      addedAt: offsetDateString(5, baseDate),
+    },
+  ];
+
   return {
     trades,
     settings: {
@@ -903,6 +925,7 @@ export function createThreeMonthDummyData(
       dayJournals,
       setupBlueprints,
       youtubeLinks,
+      strategyLibrary,
     },
   };
 }

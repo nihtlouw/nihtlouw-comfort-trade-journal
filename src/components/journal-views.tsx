@@ -6,10 +6,11 @@ import type { StorageMode } from "@/lib/attachments";
 import { evaluateTradeProcess, getProcessMatrix, getSetupBlueprintStats, groupTrades, groupTradesByTag, maxRealizedDrawdown, previousPeriodTrades } from "@/lib/analytics";
 import { currency, filterTrades, formatRMultiple, getAccountBalanceSummary, getStats, shortDate, todayString, type Period } from "@/lib/format";
 import { translateAccountName, translateMarket, translateMood, translatePlaybookGroup, translateSide, UI_COPY } from "@/lib/i18n";
-import { DEFAULT_ACCOUNT, MARKETS, MOODS, type AppLocale, type DayJournalEntry, type Intention, type JournalSettings, type PlaybookRule, type SavedYoutubeVideo, type SetupBlueprint, type Trade, type WeeklyReflection } from "@/lib/types";
+import { DEFAULT_ACCOUNT, MARKETS, MOODS, type AppLocale, type DayJournalEntry, type Intention, type JournalSettings, type PlaybookRule, type SavedYoutubeVideo, type SetupBlueprint, type StrategyLibraryItem, type Trade, type WeeklyReflection } from "@/lib/types";
 import { RiskOverview } from "@/components/journal-review";
 import { AccountBalanceCard, CardTitle, GoalCard, MoodCard, PerformanceChart, StatsCards, TradeTable, TradingCalendar } from "@/components/journal-ui";
 import { ChartbookGallery, type ChartLightboxSlide, type StageFilterValue } from "@/components/chart-lightbox";
+import { StrategyShelf } from "@/components/strategy-shelf";
 import { YoutubeWatchPanel } from "@/components/youtube-watch-panel";
 
 export type View = "Overview" | "Trade journal" | "Analytics" | "Calendar" | "Playbook" | "Mindset" | "Patience" | "Goals" | "Weekly review";
@@ -19,6 +20,7 @@ export type CommonProps = {
   accountFilter: string;
   settings: JournalSettings;
   hidden: boolean;
+  mode?: StorageMode;
   onEditTrade: (trade: Trade) => void;
   onNewTrade: () => void;
   onView: (view: View) => void;
@@ -29,6 +31,10 @@ export type CommonProps = {
   onAccountsSettings: () => void;
   onPreviewCharts?: (trade: Trade) => void;
   onUpdateYoutubeLinks?: (links: SavedYoutubeVideo[], message?: string) => Promise<boolean> | void;
+  onAddStrategyPdf?: (file: File, customTitle: string) => Promise<boolean>;
+  onAddStrategyLink?: (url: string, title: string) => Promise<boolean>;
+  onRemoveStrategyItem?: (item: StrategyLibraryItem) => Promise<boolean> | void;
+  onNotifyError?: (message: string) => void;
   period: Period;
   onPeriod: (period: Period) => void;
 };
@@ -71,7 +77,20 @@ export function Overview(props: CommonProps) {
         <div className="welcome-content"><h2>{copy.heroLine1} <em>{copy.heroLine2}</em></h2><button type="button" onClick={() => props.onView("Trade journal")}>{copy.openJournal} <ArrowRight size={15}/></button></div>
       </section>
     )}
-  </div><aside className="overview-side"><MoodCard settings={props.settings} onMood={props.onMood} onOpen={() => props.onView("Mindset")} locale={locale}/><GoalCard settings={props.settings} onMark={props.onMarkGoal} onOpen={() => props.onView("Goals")} locale={locale}/><RiskOverview trades={props.trades} settings={props.settings} hidden={props.hidden} onReview={() => props.onView("Weekly review")} onSettings={props.onRiskSettings}/></aside></div>;
+  </div><aside className="overview-side">
+    <MoodCard settings={props.settings} onMood={props.onMood} onOpen={() => props.onView("Mindset")} locale={locale}/>
+    <GoalCard settings={props.settings} onMark={props.onMarkGoal} onOpen={() => props.onView("Goals")} locale={locale}/>
+    <RiskOverview trades={props.trades} settings={props.settings} hidden={props.hidden} onReview={() => props.onView("Weekly review")} onSettings={props.onRiskSettings}/>
+    <StrategyShelf
+      items={props.settings.strategyLibrary ?? []}
+      mode={props.mode ?? "browser"}
+      locale={locale}
+      onAddPdf={async (file, customTitle) => (props.onAddStrategyPdf ? props.onAddStrategyPdf(file, customTitle) : false)}
+      onAddLink={async (url, title) => (props.onAddStrategyLink ? props.onAddStrategyLink(url, title) : false)}
+      onRemoveItem={(item) => props.onRemoveStrategyItem?.(item)}
+      onNotifyError={props.onNotifyError}
+    />
+  </aside></div>;
 }
 
 export function JournalView({
