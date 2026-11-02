@@ -6,6 +6,9 @@ import {
   Clock,
   ExternalLink,
   Film,
+  Maximize2,
+  Minimize2,
+  Pause,
   Pencil,
   Pin,
   Play,
@@ -92,12 +95,14 @@ export function YoutubeWatchPanel({
   locale = "en",
   active = true,
   onPlayerMountChange,
+  onReturnToOverview,
   onChange,
 }: {
   videos: SavedYoutubeVideo[];
   locale?: AppLocale;
   active?: boolean;
   onPlayerMountChange?: (mounted: boolean) => void;
+  onReturnToOverview?: () => void;
   onChange: (next: SavedYoutubeVideo[], message?: string) => Promise<boolean> | void;
 }) {
   const copy = UI_COPY[locale];
@@ -106,6 +111,8 @@ export function YoutubeWatchPanel({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [playerSession, setPlayerSession] = useState<ActivePlayerSession | null>(null);
   const [playbackCache, setPlaybackCache] = useState<YoutubePlaybackCache>({ positions: {} });
+  const [isPausedState, setIsPausedState] = useState(false);
+  const [miniCollapsed, setMiniCollapsed] = useState(false);
 
   const cacheRef = useRef<YoutubePlaybackCache>({ positions: {} });
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -128,9 +135,12 @@ export function YoutubeWatchPanel({
     }
   }, []);
 
-  // Hydrate saved playback positions & last selected video from localStorage
+  // Hydrate saved playback positions & compact-mobile preference on mount
   useEffect(() => {
     const timer = window.setTimeout(() => {
+      if (window.innerWidth <= 700) {
+        setMiniCollapsed(true);
+      }
       try {
         const loaded = readYoutubePlaybackCache(window.localStorage);
         cacheRef.current = loaded;
@@ -201,13 +211,12 @@ export function YoutubeWatchPanel({
     }
   }, []);
 
-  // When switching away from Overview to another in-app tab, gently pause without unmounting the iframe
+  // Flush latest playback timestamp when leaving Overview — keep video playing continuously!
   useEffect(() => {
     if (!active && isPlayingActive) {
-      sendYoutubeCommand("pauseVideo");
       persistCacheNow(cacheRef.current);
     }
-  }, [active, isPlayingActive, persistCacheNow, sendYoutubeCommand]);
+  }, [active, isPlayingActive, persistCacheNow]);
 
   // Listen to YouTube IFrame JS API postMessage updates (currentTime, duration, pause/ended state)
   useEffect(() => {
@@ -237,10 +246,17 @@ export function YoutubeWatchPanel({
       if (!parsed) return;
       handshakeDoneRef.current = true;
 
+      if (parsed.playerState === 1 || parsed.playerState === 3) {
+        setIsPausedState(false);
+      } else if (parsed.playerState === 2) {
+        setIsPausedState(true);
+      }
+
       const vid = playerSession?.videoId;
       if (!vid) return;
 
       if (parsed.playerState === 0) {
+        setIsPausedState(true);
         const cleared = clearYoutubePlaybackPosition(cacheRef.current, vid);
         persistCacheNow(cleared);
         setPlaybackCache(cleared);
@@ -308,6 +324,7 @@ export function YoutubeWatchPanel({
     persistCacheNow(workingCache);
     setPlaybackCache(workingCache);
     setSelectedId(video.id);
+    setIsPausedState(false);
 
     const startAt = forceRestart
       ? video.startSeconds
@@ -324,6 +341,18 @@ export function YoutubeWatchPanel({
       videoId: video.videoId,
       embedUrl: urls.embedUrl,
     });
+  }
+
+  function toggleMiniPlayPause() {
+    if (isPausedState) {
+      sendYoutubeCommand("playVideo");
+      setIsPausedState(false);
+    } else {
+      sendYoutubeCommand("pauseVideo");
+      setIsPausedState(true);
+      persistCacheNow(cacheRef.current);
+      setPlaybackCache({ ...cacheRef.current });
+    }
   }
 
   function stopToThumbnail() {
@@ -481,10 +510,15 @@ export function YoutubeWatchPanel({
   const resumeLabel = hasSavedResume ? formatYoutubeTimestamp(cachedResumeSeconds) : null;
   const initialStartBadge =
     !hasSavedResume && activeVideo ? formatYoutubeTimestamp(activeVideo.startSeconds) : null;
+  const isMiniMode = !active && isPlayingActive;
 
   return (
-    <section className="card yt-watch-card">
-      {active && (
+    <section
+      className={`card yt-watch-card ${isMiniMode ? "yt-watch-mini" : ""} ${
+        isMiniMode && miniCollapsed ? "is-mini-collapsed" : ""
+      }`}
+    >
+      {active ? (
         <CardTitle
           title={copy.ytTitle}
           action={
@@ -509,7 +543,48 @@ export function YoutubeWatchPanel({
             </div>
           }
         />
-      )}
+      ) : isPlayingActive && activeVideo ? (
+        <div className="yt-mini-bar" role="region" aria-label={copy.ytTitle}>
+          <button
+            type="button"
+            className="yt-mini-jump"
+            aria-label={copy.ytMiniBackAria}
+            onClick={() => onReturnToOverview?.()}
+          >
+            <span
+              className={`yt-mini-dot ${isPausedState ? "is-paused" : "is-live"}`}
+              aria-hidden="true"
+            />
+            <strong>{activeVideo.title}</strong>
+          </button>
+          <div className="yt-mini-actions">
+            <button
+              type="button"
+              className="icon-button yt-mini-btn"
+              aria-label={isPausedState ? copy.ytMiniResumeAria : copy.ytMiniPauseAria}
+              onClick={toggleMiniPlayPause}
+            >
+              {isPausedState ? <Play size={13} fill="currentColor" /> : <Pause size={13} />}
+            </button>
+            <button
+              type="button"
+              className="icon-button yt-mini-btn"
+              aria-label={miniCollapsed ? copy.ytMiniExpandAria : copy.ytMiniCollapseAria}
+              onClick={() => setMiniCollapsed((prev) => !prev)}
+            >
+              {miniCollapsed ? <Maximize2 size={13} /> : <Minimize2 size={13} />}
+            </button>
+            <button
+              type="button"
+              className="icon-button yt-mini-btn"
+              aria-label={copy.ytMiniCloseAria}
+              onClick={stopToThumbnail}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {active && showForm && (
         <form className="yt-form" onSubmit={handleSubmit}>
