@@ -160,18 +160,19 @@ try {
   await context.setOffline(true); await page.reload({ waitUntil: "domcontentloaded" });
   await page.getByText("Browser journal ready offline", { exact: true }).waitFor({ timeout: 20_000 });
   if (!external) assert.equal(await page.locator('meta[name="bloom-test-version"]').getAttribute("content"), "3");
+  await navigate("Trade journal");
   await page.getByLabel("Edit RISK-ONE trade").click(); await page.locator(".attachment-editor-card .attachment-preview-btn img").waitFor(); assert.equal(await page.locator(".attachment-editor-card").count(), 1); await close();
   await page.getByRole("button", { name: "Log a trade", exact: true }).first().click();
   await page.getByLabel("Asset / symbol").fill("OFFLINE-NEW"); await page.getByLabel("Net P&L (USD)").fill("25"); await page.getByRole("button", { name: /OPTIONAL DETAILS/ }).click();
   await page.locator(".upload-image input").setInputFiles({ name: "new-offline.png", mimeType: "image/png", buffer: png });
   await page.getByRole("button", { name: "Save trade", exact: true }).click(); await page.locator(".modal").waitFor({ state: "detached" });
-  await page.reload({ waitUntil: "domcontentloaded" }); await page.getByLabel("Edit OFFLINE-NEW trade").waitFor();
+  await page.reload({ waitUntil: "domcontentloaded" }); await navigate("Trade journal"); await page.getByLabel("Edit OFFLINE-NEW trade").waitFor();
   await openSettings("Data");
   const [offlineDownload] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Download", exact: true }).click()]);
   const offlineFile = join(temp, "offline.json"); await offlineDownload.saveAs(offlineFile);
   const offlineBackup = JSON.parse(readFileSync(offlineFile, "utf8")); assert.equal(offlineBackup.images.length, 2); assert.ok(offlineBackup.journal.trades.some((trade) => trade.symbol === "OFFLINE-NEW"));
   await page.locator(".file-button input").setInputFiles(backupFile); await page.locator(".modal").waitFor({ state: "detached" });
-  await page.reload({ waitUntil: "domcontentloaded" }); assert.equal(await page.getByLabel("Edit OFFLINE-NEW trade").count(), 0); await page.getByLabel("Edit RISK-ONE trade").click(); await page.locator(".attachment-editor-card .attachment-preview-btn img").waitFor(); await close();
+  await page.reload({ waitUntil: "domcontentloaded" }); await navigate("Trade journal"); assert.equal(await page.getByLabel("Edit OFFLINE-NEW trade").count(), 0); await page.getByLabel("Edit RISK-ONE trade").click(); await page.locator(".attachment-editor-card .attachment-preview-btn img").waitFor(); await close();
   await openSettings("Data"); assert.match(await page.locator(".backup-reminder-settings").innerText(), /No backup download started/); await close();
   // Exercise Patience offline: green-to-red giveback mirror, walk-away session log, privacy, simulator, and EN/ID toggle.
   await page.getByLabel("Filter by trading account").selectOption({ label: "Swing account" });
@@ -679,6 +680,42 @@ try {
   await page.getByText(new RegExp(`0 invalid · ${total3mRows} possible duplicates`)).waitFor();
   await close();
   console.log("PASS: 3-month dummy dataset + Chartbook PNG generation + lossless Excel (.xlsx) & CSV report round-trip work offline.");
+
+  // =========================================================================
+  // Overview YouTube Watch, Follow-Up & Motivation Panel (Recent trades & Trading activity removed)
+  // =========================================================================
+  await navigate("Overview");
+  assert.equal(await page.locator(".trade-row").count(), 0, "Recent trades removed from Overview");
+  assert.equal(await page.locator(".calendar-card").count(), 0, "Trading activity removed from Overview");
+  const ytPanel = page.locator(".yt-watch-card");
+  await ytPanel.waitFor();
+  assert.equal(await ytPanel.locator(".yt-queue-item").count(), 3, "3-month dataset populates 3 saved YouTube reminders");
+  await ytPanel.getByRole("button", { name: "Save video", exact: true }).click();
+  await ytPanel.getByLabel("YouTube link").fill("https://youtu.be/dQw4w9WgXcQ?t=45");
+  await ytPanel.locator(".yt-draft-preview").waitFor();
+  await ytPanel.getByLabel("Title (optional)").fill("My Daily Patience Reminder");
+  await ytPanel.getByRole("group", { name: "Purpose" }).getByRole("button", { name: "Motivation", exact: true }).click();
+  await ytPanel.getByLabel("Personal takeaway / reminder").fill("Wait calmly for the A+ setup; never chase mid-range candles.");
+  await ytPanel.locator(".yt-form").getByRole("button", { name: "Save video", exact: true }).click();
+  await ytPanel.getByRole("heading", { name: "My Daily Patience Reminder", exact: true }).waitFor();
+  assert.match(await ytPanel.locator(".yt-reminder-note").innerText(), /Wait calmly for the A\+ setup/);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Overview with YouTube panel fits 360px cleanly");
+
+  // Click Play on thumbnail stage -> mounts youtube-nocookie embed iframe with start=45, then return to thumbnail
+  await ytPanel.getByLabel("Play My Daily Patience Reminder").click();
+  const ytIframe = ytPanel.locator("iframe.yt-iframe");
+  await ytIframe.waitFor();
+  assert.match(await ytIframe.getAttribute("src"), /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ\?.*start=45/);
+  await ytPanel.getByRole("button", { name: "Show thumbnail", exact: true }).click();
+  await ytIframe.waitFor({ state: "detached" });
+  await ytPanel.getByRole("button", { name: "Pin My Daily Patience Reminder as main reminder" }).click();
+
+  // Reload and verify saved YouTube link & pinned reminder note persist
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.locator(".yt-watch-card").waitFor();
+  assert.equal(await page.locator(".yt-watch-card h3").innerText(), "My Daily Patience Reminder");
+  assert.match(await page.locator(".yt-watch-card .yt-reminder-note").innerText(), /Wait calmly for the A\+ setup/);
+  console.log("PASS: Overview YouTube watch, follow-up & motivation panel saves links, displays thumbnails, plays embeds, and persists.");
   if (!external) {
     const didFetch = await page.evaluate((url) => fetch(url).then(() => true).catch(() => false), new URL("api/private-test", base).href); assert.equal(didFetch, false, "API responses must not be cached");
   }

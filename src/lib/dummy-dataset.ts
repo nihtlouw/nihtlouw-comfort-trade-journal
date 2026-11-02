@@ -7,6 +7,7 @@ import type {
   MoodEntry,
   PlaybookRule,
   RuleSnapshot,
+  SavedYoutubeVideo,
   SetupBlueprint,
   Trade,
   TradingAccount,
@@ -829,6 +830,52 @@ export function createThreeMonthDummyData(
     },
   ];
 
+  const youtubeLinks: SavedYoutubeVideo[] = [
+    {
+      id: "yt-reminder-1",
+      videoId: "Q6ms3xJ2c1k",
+      url: "https://www.youtube.com/watch?v=Q6ms3xJ2c1k",
+      title: isId
+        ? "Berpikir dalam Probabilitas — Pengingat Pra-Sesi"
+        : "Thinking in Probabilities — Pre-Session Reminder",
+      category: "reminder",
+      note: isId
+        ? "Satu trade tidak menentukan kualitas prosesku. Tunggu setup A+ dan jaga risiko tetap terukur."
+        : "One trade never defines my edge. Wait for the A+ setup and keep risk strictly predefined.",
+      pinned: true,
+      addedAt: offsetDateString(12, baseDate),
+    },
+    {
+      id: "yt-followup-2",
+      videoId: "hR2A8vX5wP0",
+      url: "https://www.youtube.com/watch?v=hR2A8vX5wP0&t=120s",
+      title: isId
+        ? "Studi Struktur & Likuiditas Sesi London"
+        : "London Session Liquidity Sweep Case Study",
+      category: "followup",
+      note: isId
+        ? "Follow-up menit 02:00: perhatikan konfirmasi perpindahan struktur M15 sebelum entry."
+        : "Follow-up at 02:00: wait for clean M15 displacement after the sweep before entering.",
+      startSeconds: 120,
+      pinned: false,
+      addedAt: offsetDateString(6, baseDate),
+    },
+    {
+      id: "yt-motivation-3",
+      videoId: "9zL7mN4kR1v",
+      url: "https://www.youtube.com/watch?v=9zL7mN4kR1v",
+      title: isId
+        ? "Disiplin & Kesabaran untuk Konsistensi Jangka Panjang"
+        : "Patience & Walk-Away Discipline After Green Mornings",
+      category: "motivation",
+      note: isId
+        ? "Melindungi profit pagi dan menutup chart tepat waktu adalah kemenangan sejati."
+        : "Protecting a green morning and walking away calm is a real trading victory.",
+      pinned: false,
+      addedAt: offsetDateString(2, baseDate),
+    },
+  ];
+
   return {
     trades,
     settings: {
@@ -855,6 +902,7 @@ export function createThreeMonthDummyData(
       walkAwayLogs,
       dayJournals,
       setupBlueprints,
+      youtubeLinks,
     },
   };
 }

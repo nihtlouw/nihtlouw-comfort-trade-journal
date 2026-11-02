@@ -12,7 +12,8 @@ import { exportTradesXlsx, parseXlsxBuffer } from "@/lib/xlsx-report";
 import { parseBackup } from "@/lib/backup";
 import { validateImage } from "@/lib/attachments";
 import { buildRecapSummary } from "@/lib/recap-card";
-import type { Trade } from "@/lib/types";
+import { formatYoutubeTimestamp, parseYoutubeUrl, sortYoutubeVideos } from "@/lib/youtube";
+import type { SavedYoutubeVideo, Trade } from "@/lib/types";
 
 const makeTrade = (id: number, pnl: string, initialRisk = ""): Trade => ({ id, pnl, initialRisk, symbol: `TEST${id}`, market: "Stocks", side: "Long", setup: "Breakout", tradeDate: `2026-01-0${id}`, mood: "Calm", notes: "", isDemo: false });
 
@@ -957,6 +958,86 @@ test("styled OpenXML .xlsx report export & import round-trips losslessly in EN, 
       });
     }
   }
+});
+
+test("YouTube watch & reminder links parse all standard URL formats, reject untrusted hosts, and persist across backups", async () => {
+  const watch = parseYoutubeUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=2m15s");
+  assert.ok(watch);
+  assert.equal(watch.videoId, "dQw4w9WgXcQ");
+  assert.equal(watch.startSeconds, 135);
+  assert.equal(watch.thumbnailUrl, "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg");
+  assert.match(watch.embedUrl, /https:\/\/www\.youtube-nocookie\.com\/embed\/dQw4w9WgXcQ\?.*start=135/);
+  assert.equal(formatYoutubeTimestamp(135), "2:15");
+  assert.equal(formatYoutubeTimestamp(3725), "1:02:05");
+
+  assert.equal(parseYoutubeUrl("youtu.be/Q6ms3xJ2c1k?si=abc&t=45")?.videoId, "Q6ms3xJ2c1k");
+  assert.equal(parseYoutubeUrl("youtu.be/Q6ms3xJ2c1k?si=abc&t=45")?.startSeconds, 45);
+  assert.equal(parseYoutubeUrl("https://m.youtube.com/shorts/hR2A8vX5wP0")?.videoId, "hR2A8vX5wP0");
+  assert.equal(parseYoutubeUrl("https://www.youtube.com/live/9zL7mN4kR1v?feature=share")?.videoId, "9zL7mN4kR1v");
+  assert.equal(parseYoutubeUrl("https://www.youtube-nocookie.com/embed/9zL7mN4kR1v?start=90")?.startSeconds, 90);
+
+  // Reject untrusted or malformed URLs
+  assert.equal(parseYoutubeUrl("https://evil-youtube.com/watch?v=dQw4w9WgXcQ"), null);
+  assert.equal(parseYoutubeUrl("javascript:alert(1)"), null);
+  assert.equal(parseYoutubeUrl("https://www.youtube.com/watch?v=short"), null);
+
+  const items: SavedYoutubeVideo[] = [
+    {
+      id: "v1",
+      videoId: "Q6ms3xJ2c1k",
+      url: "https://www.youtube.com/watch?v=Q6ms3xJ2c1k",
+      title: "Follow-up Study",
+      category: "followup",
+      note: "Check M15 structure",
+      pinned: false,
+      addedAt: "2026-11-01",
+    },
+    {
+      id: "v2",
+      videoId: "dQw4w9WgXcQ",
+      url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      title: "Morning Discipline Reminder",
+      category: "reminder",
+      note: "Wait for A+ setup",
+      pinned: true,
+      addedAt: "2026-11-02",
+    },
+  ];
+  assert.equal(sortYoutubeVideos(items)[0].id, "v2");
+
+  const upgraded = normalizeJournalData(createDemoData());
+  assert.deepEqual(upgraded.settings.youtubeLinks, []);
+
+  upgraded.settings.youtubeLinks = items;
+  const parsed = await parseBackup(
+    JSON.stringify({
+      format: "bloom-journal-backup",
+      version: 2,
+      journal: upgraded,
+      images: [],
+    }),
+  );
+  assert.equal(parsed.journal.settings.youtubeLinks?.length, 2);
+  assert.equal(parsed.journal.settings.youtubeLinks?.[1].note, "Wait for A+ setup");
+
+  const dummy3m = normalizeJournalData(createThreeMonthDummyData("id"));
+  assert.equal(dummy3m.settings.youtubeLinks?.length, 3);
+
+  assert.throws(() =>
+    normalizeJournalData({
+      ...upgraded,
+      settings: { ...upgraded.settings, youtubeLinks: [items[0], items[0]] },
+    }),
+  );
+  assert.throws(() =>
+    normalizeJournalData({
+      ...upgraded,
+      settings: {
+        ...upgraded.settings,
+        youtubeLinks: [{ ...items[0], id: "bad-vid", videoId: "<script>bad" }],
+      },
+    }),
+  );
 });
 
 

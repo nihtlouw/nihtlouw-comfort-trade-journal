@@ -54,6 +54,21 @@ export type SetupBlueprint = {
   notes: string;
 };
 
+export const YOUTUBE_VIDEO_CATEGORIES = ["followup", "reminder", "motivation"] as const;
+export type YoutubeVideoCategory = (typeof YOUTUBE_VIDEO_CATEGORIES)[number];
+
+export type SavedYoutubeVideo = {
+  id: string;
+  videoId: string;
+  url: string;
+  title: string;
+  category: YoutubeVideoCategory;
+  note: string;
+  startSeconds?: number;
+  pinned?: boolean;
+  addedAt: string;
+};
+
 export type AudioMimeType =
   | "audio/mpeg"
   | "audio/wav"
@@ -132,6 +147,7 @@ export type JournalSettings = {
   walkAwayLogs?: WalkAwayLog[];
   dayJournals?: DayJournalEntry[];
   setupBlueprints?: SetupBlueprint[];
+  youtubeLinks?: SavedYoutubeVideo[];
 };
 
 export type JournalData = { trades: Trade[]; settings: JournalSettings };
