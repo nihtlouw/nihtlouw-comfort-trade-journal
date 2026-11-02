@@ -5214,6 +5214,444 @@ input:not([type="checkbox"]):not([type="file"]), select, textarea { min-width: 0
   box-shadow: inset 0 1px 0 rgba(255, 246, 234, 0.065);
 }
 
+/* ==========================================================================
+   Selectable Dual Dark-Mode Architecture:
+   - Model 1 ("forest"): Deep Botanical Forest (#0B1310 / #111C17 / #17251F)
+                         + Soft Botanical Sage Hero Balance Card
+   - Model 4 ("obsidian"): Layered Obsidian (#100F0D / #171512 / #201D19)
+                         + Warm Cream Linen Hero Balance Card
+   ========================================================================== */
+
+html:has(.app-shell[data-theme="dark"], .loading-screen[data-theme="dark"]) {
+  color-scheme: dark;
+  background: #0b1310;
+}
+
+html:has(.app-shell[data-theme="dark"][data-dark-variant="obsidian"], .loading-screen[data-theme="dark"][data-dark-variant="obsidian"]) {
+  background: #100f0d;
+}
+
+.loading-screen[data-theme="dark"] {
+  --loading-ink: #f4faf6;
+  --loading-soft: #9ab0a3;
+  --loading-track: #1f3129;
+  --loading-accent: #7ec091;
+  background: #0b1310;
+}
+
+.loading-screen[data-theme="dark"] .loading-glow {
+  background: radial-gradient(circle, rgba(124, 196, 144, 0.16) 0%, transparent 68%);
+}
+
+.loading-screen[data-theme="dark"] .loading-emblem {
+  border-color: #263a31;
+  box-shadow: 0 0 0 10px rgba(23, 37, 31, 0.65);
+}
+
+.loading-screen[data-theme="dark"][data-dark-variant="obsidian"] {
+  --loading-ink: #faf5ed;
+  --loading-soft: #b2a799;
+  --loading-track: #332e27;
+  --loading-accent: #88bc93;
+  background: #100f0d;
+}
+
+.loading-screen[data-theme="dark"][data-dark-variant="obsidian"] .loading-glow {
+  background: radial-gradient(circle, rgba(218, 196, 158, 0.12) 0%, transparent 68%);
+}
+
+.loading-screen[data-theme="dark"][data-dark-variant="obsidian"] .loading-emblem {
+  border-color: #38322a;
+  box-shadow: 0 0 0 10px rgba(32, 29, 25, 0.68);
+}
+
+/* Model 1 (Default Dark): Deep Botanical Forest */
+.app-shell[data-theme="dark"] {
+  --canvas: #0b1310;
+  --sidebar: #0b1310;
+  --stage-bg: #111c17;
+  --stage-border: #1f3129;
+  --surface: #17251f;
+  --surface-alt: #1d2e27;
+  --line: #263a31;
+  --ink: #e7f0ea;
+  --heading: #f4faf6;
+  --muted: #9ab0a3;
+  --soft: #71887b;
+  --accent: #7ec091;
+  --accent-dark: #bce3c6;
+  --accent-pale: #1e3329;
+  --chart-grid: #22352c;
+  --chart-line: #7cc490;
+  --chart-glow-top: #6bc084;
+  --chart-glow-mid: #a7d9b2;
+  --chart-stroke-start: #5ba974;
+  --chart-stroke-end: #b7e2c2;
+  --loss: #e2977e;
+  --kpi-glow: rgba(124, 196, 144, 0.14);
+  --icon-well: #1f3329;
+  --icon-border: rgba(132, 198, 150, 0.24);
+  --track-bg: #121e18;
+  --capsule-bg: #0d1612;
+  --capsule-active-bg: #dff0e2;
+  --capsule-active-ink: #13281d;
+  --stage-top-glow: rgba(122, 192, 142, 0.11);
+}
+
+/* Model 4: Layered Obsidian + Warm Cream Linen */
+.app-shell[data-theme="dark"][data-dark-variant="obsidian"] {
+  --canvas: #100f0d;
+  --sidebar: #100f0d;
+  --stage-bg: #171512;
+  --stage-border: #2a2621;
+  --surface: #201d19;
+  --surface-alt: #28241f;
+  --line: #332e27;
+  --ink: #efe9df;
+  --heading: #faf5ed;
+  --muted: #b2a799;
+  --soft: #877d70;
+  --accent: #88bc93;
+  --accent-dark: #c4e2c9;
+  --accent-pale: #252e24;
+  --chart-grid: #2d2822;
+  --chart-line: #8ac095;
+  --chart-glow-top: #7bb387;
+  --chart-glow-mid: #b8c286;
+  --chart-stroke-start: #6ca177;
+  --chart-stroke-end: #c2dec6;
+  --loss: #e2977e;
+  --kpi-glow: rgba(214, 194, 156, 0.1);
+  --icon-well: #272d25;
+  --icon-border: rgba(146, 192, 154, 0.22);
+  --track-bg: #28231e;
+  --capsule-bg: #11100e;
+  --capsule-active-bg: #efe7da;
+  --capsule-active-ink: #1a1714;
+  --stage-top-glow: rgba(218, 196, 158, 0.095);
+}
+
+/* Desktop Floating Stage Frame (seamless sidebar + rounded 24px workspace stage) */
+@media (min-width: 901px) {
+  .app-shell[data-theme="dark"] {
+    padding: 12px 12px 12px 0;
+  }
+
+  .app-shell[data-theme="dark"] .sidebar {
+    top: 12px;
+    height: calc(100vh - 24px);
+    padding: 20px 16px 12px 18px;
+    border-right: 0;
+    background: var(--sidebar);
+  }
+
+  .app-shell[data-theme="dark"] .main-shell {
+    min-height: calc(100vh - 24px);
+    border-radius: 24px;
+    border: 1px solid var(--stage-border);
+    background-color: var(--stage-bg);
+    background-image: radial-gradient(60% 340px at 50% 0%, var(--stage-top-glow) 0%, transparent 72%);
+    box-shadow:
+      0 20px 50px rgba(0, 0, 0, 0.36),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+}
+
+@media (max-width: 900px) {
+  .app-shell[data-theme="dark"] .main-shell {
+    background-color: var(--stage-bg);
+    background-image: radial-gradient(75% 260px at 50% 0%, var(--stage-top-glow) 0%, transparent 72%);
+  }
+
+  .app-shell[data-theme="dark"] .mobile-bottom-nav {
+    background: var(--sidebar);
+    border-top-color: var(--line);
+  }
+}
+
+/* Unified Dark Cards, Cohesive Botanical Icons, Capsule Controls & Surfaces */
+.app-shell[data-theme="dark"] .card {
+  border-radius: 18px;
+  border-color: var(--line);
+  background-color: var(--surface);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.024) 0%, rgba(255, 255, 255, 0) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 10px 26px -12px rgba(0, 0, 0, 0.44);
+}
+
+.app-shell[data-theme="dark"] .stat-card-sage,
+.app-shell[data-theme="dark"] .stat-card-lavender,
+.app-shell[data-theme="dark"] .stat-card-peach,
+.app-shell[data-theme="dark"] .stat-card-butter {
+  background-image: radial-gradient(165px 105px at 100% 0%, var(--kpi-glow) 0%, transparent 74%);
+}
+
+.app-shell[data-theme="dark"] :is(.stat-icon.sage, .stat-icon.lavender, .stat-icon.peach, .stat-icon.butter) {
+  background-color: var(--icon-well);
+  color: var(--accent-dark);
+  border: 1px solid var(--icon-border);
+  border-radius: 11px;
+}
+
+.app-shell[data-theme="dark"] .stat-note-dot {
+  background: var(--accent);
+}
+
+.app-shell[data-theme="dark"] :is(.progress-track, .breakdown-track) {
+  background-color: var(--track-bg);
+}
+
+.app-shell[data-theme="dark"] .button-primary {
+  border-radius: 999px;
+}
+
+.app-shell[data-theme="dark"] .sidebar-nav button {
+  border-radius: 11px;
+}
+
+.app-shell[data-theme="dark"] :is(.period-control, .segment-control) {
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--capsule-bg);
+  border: 1px solid var(--line);
+}
+
+.app-shell[data-theme="dark"] :is(.period-control, .segment-control) button {
+  border-radius: 999px;
+}
+
+.app-shell[data-theme="dark"] :is(.period-control, .segment-control) button.selected {
+  background-color: var(--capsule-active-bg);
+  background-image: none;
+  color: var(--capsule-active-ink);
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+}
+
+.app-shell[data-theme="dark"] :is(.cmd-trigger-btn, .zen-top-btn, .sidebar-tool-btn, .cassette-mini) {
+  background: var(--surface);
+  border-color: var(--line);
+  border-radius: 12px;
+}
+
+.app-shell[data-theme="dark"] :is(.cmd-trigger-btn, .zen-top-btn, .sidebar-tool-btn, .cassette-mini):hover {
+  background: var(--surface-alt);
+  border-color: var(--accent);
+}
+
+.app-shell[data-theme="dark"] :is(.sidebar-encouragement, .sidebar-quote, .gentle-note, .journal-intro, .soft-intro, .inline-reminder, .review-intro, .patience-intro, .mindset-hero) {
+  background-color: var(--surface);
+  border-color: var(--line);
+}
+
+/* Signature Hero Balance Card — Model 1 (Soft Botanical Sage Watercolor) */
+.app-shell[data-theme="dark"] .balance-banner {
+  border-color: #a9ceb0;
+  background-color: #d8ead9;
+  background-image:
+    radial-gradient(380px 180px at 92% 0%, rgba(255, 252, 242, 0.85) 0%, rgba(255, 252, 242, 0) 68%),
+    radial-gradient(320px 180px at 15% 100%, rgba(114, 172, 128, 0.42) 0%, transparent 72%),
+    linear-gradient(120deg, #cbe2cd 0%, #dfeee0 52%, #eef6ec 100%);
+  box-shadow:
+    0 14px 32px -12px rgba(8, 18, 13, 0.52),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.app-shell[data-theme="dark"] .balance-banner :is(h2, strong) {
+  color: #162e21;
+}
+
+.app-shell[data-theme="dark"] .balance-banner :is(small, span) {
+  color: #365844;
+}
+
+.app-shell[data-theme="dark"] .balance-banner .text-link {
+  color: #1f5c39;
+}
+
+.app-shell[data-theme="dark"] .balance-banner .balance-breakdown > div {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(22, 46, 33, 0.12);
+  border-radius: 13px;
+}
+
+.app-shell[data-theme="dark"] .balance-banner .balance-breakdown .positive-text {
+  color: #1b683c !important;
+}
+
+.app-shell[data-theme="dark"] .balance-banner .balance-breakdown .loss-text {
+  color: #9e3d2b !important;
+}
+
+.app-shell[data-theme="dark"] .balance-banner .balance-primary {
+  background-color: #13261c;
+  background-image: linear-gradient(135deg, #183124 0%, #112219 100%);
+  border: 1px solid #2b4a39;
+  border-radius: 14px;
+}
+
+.app-shell[data-theme="dark"] .balance-banner .balance-primary strong {
+  color: #f3faf5;
+}
+
+.app-shell[data-theme="dark"] .balance-banner .balance-primary strong.loss-text {
+  color: #f4b19e !important;
+}
+
+.app-shell[data-theme="dark"] .balance-banner.balance-unset .stat-icon.sage {
+  background-color: #162d21;
+  color: #bce3c6;
+  border-color: #2b4a39;
+}
+
+.app-shell[data-theme="dark"] .balance-banner.balance-unset .button-secondary {
+  background-color: #13261c;
+  background-image: linear-gradient(180deg, #1a3326 0%, #112219 100%);
+  border-color: #2b4a39;
+  border-radius: 999px;
+  color: #f3faf5;
+}
+
+.app-shell[data-theme="dark"] .balance-banner.balance-unset .button-secondary:hover:not(:disabled) {
+  background-color: #1b3527;
+  border-color: #3d664f;
+}
+
+/* Signature Hero Balance Card — Model 4 (Warm Cream Linen & Sage) */
+.app-shell[data-theme="dark"][data-dark-variant="obsidian"] .balance-banner {
+  border-color: #d6cbb8;
+  background-color: #efe9dd;
+  background-image:
+    radial-gradient(360px 180px at 100% 0%, rgba(210, 232, 212, 0.72) 0%, transparent 70%),
+    linear-gradient(120deg, #f3ede2 0%, #e7efe4 100%);
+  box-shadow:
+    0 14px 32px -12px rgba(6, 5, 4, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+}
+
+.app-shell[data-theme="dark"][data-dark-variant="obsidian"] .balance-banner :is(h2, strong) {
+  color: #1f2d23;
+}
+
+.app-shell[data-theme="dark"][data-dark-variant="obsidian"] .balance-banner :is(small, span) {
+  color: #4b594e;
+}
+
+.app-shell[data-theme="dark"][data-dark-variant="obsidian"] .balance-banner .text-link {
+  color: #265f3d;
+}
+
+.app-shell[data-theme="dark"][data-dark-variant="obsidian"] .balance-banner .balance-breakdown > div {
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(31, 45, 35, 0.12);
+}
+
+.app-shell[data-theme="dark"][data-dark-variant="obsidian"] .balance-banner .balance-primary {
+  background-color: #1b2820;
+  background-image: linear-gradient(135deg, #213327 0%, #18231c 100%);
+  border-color: #354d3c;
+}
+
+.app-shell[data-theme="dark"][data-dark-variant="obsidian"] .balance-banner .balance-primary strong {
+  color: #f5faf6;
+}
+
+.app-shell[data-theme="dark"][data-dark-variant="obsidian"] .balance-banner.balance-unset .stat-icon.sage {
+  background-color: #1d2b22;
+  color: #c4e2c9;
+  border-color: #354d3c;
+}
+
+.app-shell[data-theme="dark"][data-dark-variant="obsidian"] .balance-banner.balance-unset .button-secondary {
+  background-color: #1b2820;
+  background-image: linear-gradient(180deg, #223328 0%, #17221b 100%);
+  border-color: #354d3c;
+  color: #f5faf6;
+}
+
+/* Settings Modal — 2-Card Dark Mode Palette Selector */
+.settings-row.settings-row-palette {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.dark-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.dark-palette-card {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 58px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 13px;
+  border: 1.5px solid var(--line);
+  background: var(--surface-alt);
+  color: var(--ink);
+  text-align: left;
+  transition: border-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+}
+
+.dark-palette-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.dark-palette-card.selected {
+  border-color: var(--accent);
+  background: var(--accent-pale);
+  box-shadow: 0 4px 14px -6px rgba(74, 132, 92, 0.28);
+}
+
+.dark-palette-swatches {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.dark-palette-swatches > i {
+  display: block;
+  width: 13px;
+  height: 26px;
+  border-radius: 5px;
+  border: 1px solid rgba(128, 128, 128, 0.28);
+}
+
+.dark-palette-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dark-palette-copy strong {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--heading);
+  line-height: 1.25;
+}
+
+.dark-palette-copy small {
+  font-size: 10.5px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+@media (max-width: 560px) {
+  .dark-palette-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+
 
 
 

@@ -856,6 +856,36 @@ try {
   assert.equal(gradientChecks.pnlStops, 3, "Equity curve area fill uses 3-stop gradient");
   assert.equal(gradientChecks.pnlStrokeStops, 3, "Equity curve stroke uses 3-stop gradient");
 
+  // Verify selectable Dark Mode palettes: Model 1 ("Botanical Forest") and Model 4 ("Obsidian & Linen")
+  await openSettings("General");
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Settings with Dark mode palette selector fits 360px cleanly");
+  await page.getByRole("radio", { name: /Botanical Forest/i }).click();
+  assert.equal(await page.locator(".app-shell").getAttribute("data-theme"), "dark");
+  assert.equal(await page.locator(".app-shell").getAttribute("data-dark-variant"), "forest");
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.locator(".modal").waitFor({ state: "detached" });
+  assert.equal(
+    await page.locator(".balance-banner").evaluate((el) => getComputedStyle(el).backgroundColor),
+    "rgb(216, 234, 217)",
+    "Model 1 renders Soft Botanical Sage hero balance banner",
+  );
+
+  await openSettings("General");
+  await page.getByRole("radio", { name: /Obsidian & Linen/i }).click();
+  assert.equal(await page.locator(".app-shell").getAttribute("data-dark-variant"), "obsidian");
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.locator(".modal").waitFor({ state: "detached" });
+  assert.equal(
+    await page.locator(".balance-banner").evaluate((el) => getComputedStyle(el).backgroundColor),
+    "rgb(239, 233, 221)",
+    "Model 4 renders Warm Cream Linen hero balance banner",
+  );
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.locator(".balance-banner").waitFor();
+  assert.equal(await page.locator(".app-shell").getAttribute("data-theme"), "dark");
+  assert.equal(await page.locator(".app-shell").getAttribute("data-dark-variant"), "obsidian");
+  console.log("PASS: Selectable Dark Mode styles (Botanical Forest & Obsidian & Linen) switch cleanly and persist offline.");
+
   console.log("PASS: Simplified YouTube watch panel + right-side Strategy PDF & idea link mini-list work offline and persist.");
   if (!external) {
     const didFetch = await page.evaluate((url) => fetch(url).then(() => true).catch(() => false), new URL("api/private-test", base).href); assert.equal(didFetch, false, "API responses must not be cached");

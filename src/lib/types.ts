@@ -19,6 +19,7 @@ export type TradeAttachment = {
 
 export type AppLocale = "en" | "id";
 export type PatienceLocale = AppLocale;
+export type DarkModeVariant = "forest" | "obsidian";
 export type RuleSnapshot = { id: string; text: string; checked: boolean };
 export type TradingAccount = {
   id: string;
@@ -153,6 +154,8 @@ export type JournalSettings = {
   moodHistory?: MoodEntry[];
   reflections?: WeeklyReflection[];
   theme?: "light" | "dark";
+  /** Dark workspace color architecture: Model 1 ("forest") or Model 4 ("obsidian"). */
+  darkVariant?: DarkModeVariant;
   /** App-wide interface language (English or Bahasa Indonesia). */
   locale?: AppLocale;
   /** Reduce interface motion regardless of the device preference. */
