@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createDemoData } from "@/lib/demo-data";
 import { inspectBrowserJournal, saveBrowserJournal, storageKey } from "@/lib/browser-journal";
 import { isDate, normalizeJournalData } from "@/lib/journal-data";
-import { getStats, todayString, dateFromString } from "@/lib/format";
+import { calendarDayCurrency, getStats, todayString, dateFromString } from "@/lib/format";
 import { readLimitedBody } from "@/lib/request-body";
 import { groupTrades, maxRealizedDrawdown, monthGrid, performanceSeries, previousPeriodTrades } from "@/lib/analytics";
 import { csvRowsToTrades, exportTradesCsv, parseCsv } from "@/lib/csv";
@@ -698,6 +698,23 @@ test("Tahap D: buildRecapSummary guarantees zero $ leakage in r_only and process
   assert.equal(full.headlineValue, "+$340.00");
   assert.equal(full.netPnl, 340);
 });
+
+test("calendarDayCurrency formats compact signed daily total P&L cleanly for narrow Android calendar cells", () => {
+  assert.equal(calendarDayCurrency(285), "+$285");
+  assert.equal(calendarDayCurrency(420.5), "+$421");
+  assert.equal(calendarDayCurrency(-180), "−$180");
+  assert.equal(calendarDayCurrency(-95), "−$95");
+  assert.equal(calendarDayCurrency(0), "$0");
+  assert.equal(calendarDayCurrency(0.5), "+$0.5");
+  assert.equal(calendarDayCurrency(-0.25), "−$0.25");
+  assert.equal(calendarDayCurrency(1645.5), "+$1.6k");
+  assert.equal(calendarDayCurrency(123456.78), "+$123k");
+  assert.equal(calendarDayCurrency(-98765.43), "−$99k");
+  assert.equal(calendarDayCurrency(1250000), "+$1.3M");
+  assert.equal(calendarDayCurrency(285, true), "•••");
+  assert.equal(calendarDayCurrency(-180, true), "•••");
+});
+
 
 
 

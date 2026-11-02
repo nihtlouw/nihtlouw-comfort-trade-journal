@@ -8,6 +8,7 @@ import {
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { AppLocale, DayJournalEntry, JournalSettings, Trade } from "@/lib/types";
 import {
+  calendarDayCurrency,
   compactCurrency,
   currency,
   formatRMultiple,
@@ -246,7 +247,7 @@ export function TradingCalendar({ trades, dayJournals = [], hidden, onDay, compa
         {hasNote && <i className="calendar-note-dot" aria-hidden="true"/>}
         <span>{Number(day.slice(-2))}</span>
         {result ? (
-          <small><span className="calendar-value-full">{compact ? "" : currency(value, value > 0, hidden)}</span><span className="calendar-value-marker" aria-hidden="true">{value > 0 ? "+" : value < 0 ? "−" : "="}</span></small>
+          <small><span className="calendar-value-full">{compact ? "" : currency(value, value > 0, hidden)}</span><span className="calendar-value-marker" aria-hidden="true">{calendarDayCurrency(value, hidden)}</span></small>
         ) : isRestDay ? (
           <small className="calendar-rest-tag"><span className="calendar-value-full">{compact ? "" : <><Leaf size={10} aria-hidden="true" /> {copy.noTradeCellLabel}</>}</span><span className="calendar-value-marker" aria-hidden="true"><Leaf size={11} /></span></small>
         ) : null}
