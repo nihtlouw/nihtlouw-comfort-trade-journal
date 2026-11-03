@@ -844,8 +844,8 @@ try {
     const butterCardBg = getComputedStyle(document.querySelector(".stat-card-butter")).backgroundImage;
     const balancePrimaryBg = getComputedStyle(document.querySelector(".balance-primary")).backgroundImage;
     const progressFillBg = getComputedStyle(document.querySelector(".progress-track > span")).backgroundImage;
-    const pnlStops = document.querySelectorAll("linearGradient#pnl-gradient stop").length;
-    const pnlStrokeStops = document.querySelectorAll("linearGradient#pnl-stroke stop").length;
+    const pnlStops = document.querySelectorAll('.performance-card linearGradient[id^="pnl-split-area-"] stop').length;
+    const pnlStrokeStops = document.querySelectorAll('.performance-card linearGradient[id^="pnl-split-stroke-"] stop').length;
     return {
       primaryBtnBg,
       sageCardBg,
@@ -865,8 +865,8 @@ try {
   assert.match(gradientChecks.butterCardBg, /radial-gradient/);
   assert.match(gradientChecks.balancePrimaryBg, /linear-gradient/);
   assert.match(gradientChecks.progressFillBg, /linear-gradient/);
-  assert.equal(gradientChecks.pnlStops, 3, "Equity curve area fill uses 3-stop gradient");
-  assert.equal(gradientChecks.pnlStrokeStops, 3, "Equity curve stroke uses 3-stop gradient");
+  assert.ok(gradientChecks.pnlStops >= 3, "Equity curve area fill uses multi-stop split-zero gradient");
+  assert.ok(gradientChecks.pnlStrokeStops >= 3, "Equity curve stroke uses multi-stop split-zero gradient");
 
   // Verify selectable Dark Mode palettes: Model 1 ("Botanical Forest") and Model 4 ("Obsidian & Linen")
   await openSettings("General");
@@ -907,6 +907,39 @@ try {
   await page.getByRole("button", { name: "Reset search & filters", exact: true }).click();
   assert.equal(await page.getByLabel("Filter by market").inputValue(), "All markets", "Reset search & filters clears active filters");
   assert.ok(await page.locator(".trade-row").count() > 0, "Reset search & filters restores journal trades");
+
+  // Verify Upgraded Performance Over Time Chart ($ / R toggle + Daily impulse bars + 1-click Day drill-down + 320px fit)
+  await navigate("Overview");
+  await page.locator(".performance-card").waitFor();
+  assert.equal(await page.locator(".performance-card .chart-unit-toggle button").count(), 2, "Overview PerformanceChart renders $ | R unit toggle");
+  assert.ok(await page.locator(".performance-card .recharts-bar-rectangles rect, .performance-card .recharts-bar rect").count() > 0, "PerformanceChart renders daily impulse bars alongside equity curve");
+  await page.locator(".performance-card .chart-unit-toggle").getByRole("button", { name: "R", exact: true }).click();
+  assert.match(await page.locator(".performance-card .chart-headline > strong").innerText(), /R$/, "Switching to R updates headline to Cumulative R-multiple");
+  assert.match(await page.locator(".performance-card .chart-headline > span").innerText(), /Cumulative R-multiple/i);
+
+  // Privacy mode hides $ amounts while keeping R-multiples readable
+  await page.getByLabel("Hide amounts").click();
+  assert.match(await page.locator(".performance-card .chart-headline > strong").innerText(), /R$/, "R-multiple remains readable when Hide amounts is active");
+  assert.equal(await page.locator(".performance-card .chart-kpi-chip.is-interactive").innerText(), "••••••", "Secondary $ pill stays masked in Privacy mode");
+  await page.getByLabel("Show amounts").click();
+  await page.locator(".performance-card .chart-unit-toggle").getByRole("button", { name: "$", exact: true }).click();
+
+  // Verify 320px narrow Android width has zero horizontal overflow with $ | R + 1W 1M 3M ALL controls
+  await page.setViewportSize({ width: 320, height: 740 });
+  const chart320Overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+  assert.equal(chart320Overflow, false, "PerformanceChart controls have zero horizontal overflow at 320px width");
+  await page.setViewportSize({ width: 360, height: 800 });
+
+  // Verify Analytics also renders upgraded chart + 1-click day drill-down opens Trade journal filtered to that date
+  await navigate("Analytics");
+  assert.equal(await page.locator(".performance-card .chart-unit-toggle button").count(), 2, "Analytics PerformanceChart also renders $ | R unit toggle");
+  await page.locator(".performance-card details.chart-data > summary").click();
+  const firstDrillBtn = page.locator(".performance-card .chart-table-day-btn").first();
+  await firstDrillBtn.waitFor();
+  await firstDrillBtn.click();
+  await page.locator(`.view-motion[data-view="Trade journal"]`).waitFor();
+  assert.equal(await page.locator(".selected-day").count(), 1, "Clicking active day on PerformanceChart drills into Trade journal filtered to that day");
+  console.log("PASS: Upgraded PerformanceChart ($ / R toggle, daily impulse bars, privacy-aware R, and day drill-down) verified.");
   console.log("PASS: Selectable Dark Mode styles (Botanical Forest & Obsidian & Linen) and cross-view workflows pass offline.");
 
   console.log("PASS: Simplified YouTube watch panel + right-side Strategy PDF & idea link mini-list work offline and persist.");

@@ -1048,6 +1048,23 @@ export const UI_COPY = {
     cloudMigratedToast: (trades: number, files: number) => `Synced to Cloud (${trades} new trades, ${files} files uploaded).`,
     cloudBillingSuccessToast: "Payment received! Cloud Sync Pro is active.",
     cmdActionCloudSync: "Cloud Sync & Pro subscription",
+
+    // Upgraded Performance Chart (Equity + Daily Impulse Bars + $ / R Toggle)
+    chartUnitAria: "Performance unit",
+    cumNetR: "Cumulative R-multiple",
+    chartCumRChip: (r: string) => `${r} Cum.`,
+    chartBestWorstChip: (best: string, worst: string) => `Best ${best} · Worst ${worst}`,
+    chartPeakChip: (peak: string) => `Peak ${peak}`,
+    chartPeakTag: "Peak!",
+    chartDrawdownTag: (dd: string) => `DD ${dd}`,
+    chartTooltipDayRow: (val: string) => `Day: ${val}`,
+    chartTooltipTradesBreakdown: (total: number, wins: number, losses: number) =>
+      `${total} ${total === 1 ? "trade" : "trades"} (${wins}W · ${losses}L)`,
+    chartTooltipNoTrades: "No trades",
+    chartTooltipClickCue: "Click to view day’s trades →",
+    chartNoRiskNote: "Add Initial Risk ($1R) on trades to track R-multiples",
+    colDailyR: "Daily R",
+    colCumulativeR: "Cumulative R",
   },
   id: {
     brandSub: "JURNAL TRADING",
@@ -1948,6 +1965,23 @@ export const UI_COPY = {
     cloudMigratedToast: (trades: number, files: number) => `Tersinkron ke Cloud (${trades} trade baru, ${files} file diunggah).`,
     cloudBillingSuccessToast: "Pembayaran diterima! Cloud Sync Pro telah aktif.",
     cmdActionCloudSync: "Cloud Sync & langganan Pro",
+
+    // Upgraded Performance Chart (Equity + Daily Impulse Bars + $ / R Toggle)
+    chartUnitAria: "Satuan grafik performa",
+    cumNetR: "Kumulatif R-multiple",
+    chartCumRChip: (r: string) => `${r} Kum.`,
+    chartBestWorstChip: (best: string, worst: string) => `Terbaik ${best} · Terburuk ${worst}`,
+    chartPeakChip: (peak: string) => `Puncak ${peak}`,
+    chartPeakTag: "Puncak!",
+    chartDrawdownTag: (dd: string) => `DD ${dd}`,
+    chartTooltipDayRow: (val: string) => `Harian: ${val}`,
+    chartTooltipTradesBreakdown: (total: number, wins: number, losses: number) =>
+      `${total} trade (${wins}M · ${losses}K)`,
+    chartTooltipNoTrades: "Tanpa trade",
+    chartTooltipClickCue: "Klik untuk lihat trade hari ini →",
+    chartNoRiskNote: "Isi Risiko Awal ($1R) pada trade untuk melacak R",
+    colDailyR: "R harian",
+    colCumulativeR: "Kumulatif R",
   },
 } as const;
 

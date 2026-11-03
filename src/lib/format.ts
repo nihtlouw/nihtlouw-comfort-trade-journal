@@ -59,6 +59,12 @@ export function formatRMultiple(value: number | null): string {
   const abs = Math.abs(value).toFixed(2);
   return `${value < 0 ? "−" : value > 0 ? "+" : ""}${abs}R`;
 }
+export function compactRMultiple(value: number): string {
+  if (!Number.isFinite(value) || Math.abs(value) < 0.005) return "0R";
+  const sign = value < 0 ? "−" : "+";
+  const abs = Math.abs(value);
+  return `${sign}${abs >= 10 ? abs.toFixed(0) : abs.toFixed(1).replace(/\.0$/, "")}R`;
+}
 export function periodStart(period: Period, allTrades: Trade[]) {
   const today = dateFromString(todayString());
   if (period === "ALL") {
