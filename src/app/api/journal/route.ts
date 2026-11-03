@@ -1,21 +1,29 @@
 import { normalizeJournalData } from "@/lib/journal-data";
 import { PayloadTooLargeError, readLimitedBody } from "@/lib/request-body";
+import { hasCloudSyncAccess } from "@/lib/server-billing";
 
 export async function GET(request: Request) {
   if (!process.env.DATABASE_URL) return Response.json({ error: "Private account storage is not configured." }, { status: 503 });
   const { auth } = await import("@/lib/auth");
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session) return Response.json({ error: "Please sign in." }, { status: 401 });
+  if (!(await hasCloudSyncAccess(session.user.id))) {
+    return Response.json({ error: "Active Cloud Sync Pro subscription required." }, { status: 402 });
+  }
   const { getPrivateJournal } = await import("@/lib/server-journal");
   const result = await getPrivateJournal(session.user.id, session.user.name);
   return Response.json(result, { headers: { "Cache-Control": "private, no-store" } });
 }
+
 export async function PUT(request: Request) {
   if (!process.env.DATABASE_URL) return Response.json({ error: "Private account storage is not configured." }, { status: 503 });
   const { auth, isAllowedMutation } = await import("@/lib/auth");
   if (!isAllowedMutation(request)) return Response.json({ error: "Invalid request origin." }, { status: 403 });
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session) return Response.json({ error: "Please sign in again." }, { status: 401 });
+  if (!(await hasCloudSyncAccess(session.user.id))) {
+    return Response.json({ error: "Active Cloud Sync Pro subscription required." }, { status: 402 });
+  }
   let data;
   let revision: number;
   try {

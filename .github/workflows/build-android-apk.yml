@@ -1,0 +1,82 @@
+name: Build Android APK & Play Bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      saas_server_url:
+        description: "Optional live HTTPS SaaS URL for Cloud Sync hybrid mode (leave blank for 100% standalone offline APK)"
+        required: false
+        default: ""
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Build Capacitor Android (.apk & .aab)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Setup Java 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies & build Android web bundle
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build:android
+
+      - name: Configure optional SaaS Cloud Sync URL
+        if: ${{ inputs.saas_server_url != '' }}
+        env:
+          SAAS_URL: ${{ inputs.saas_server_url }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const cfg = JSON.parse(fs.readFileSync("capacitor.config.json", "utf8"));
+            cfg.server = { ...cfg.server, url: process.env.SAAS_URL, cleartext: false };
+            fs.writeFileSync("capacitor.config.json", JSON.stringify(cfg, null, 2));
+          '
+
+      - name: Add & sync Capacitor Android project
+        run: |
+          npm install --no-save @capacitor/core@^7.0.0 @capacitor/cli@^7.0.0 @capacitor/android@^7.0.0
+          npx cap add android
+          npx cap sync android
+
+      - name: Build installable APK & Play Store AAB
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug bundleRelease --no-daemon
+
+      - name: Upload installable Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bloom-trading-journal-android-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Upload Google Play Bundle (.aab)
+        uses: actions/upload-artifact@v4
+        with:
+          name: bloom-trading-journal-play-bundle-aab
+          path: android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: warn

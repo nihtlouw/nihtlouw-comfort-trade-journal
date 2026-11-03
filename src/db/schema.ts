@@ -70,9 +70,39 @@ export const privateJournals = pgTable("bloom_private_journals", {
 });
 export const journalImages = pgTable("bloom_journal_images", {
   id: text("id").primaryKey(), userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
-  name: text("name").notNull(), type: text("type").notNull(), size: integer("size").notNull(), data: text("data").notNull(),
+  name: text("name").notNull(), type: text("type").notNull(), size: integer("size").notNull(),
+  data: text("data").notNull().default(""),
+  storageKey: text("storage_key"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index("bloom_journal_images_user_idx").on(table.userId)]);
+
+export const subscriptions = pgTable("bloom_subscriptions", {
+  userId: text("user_id").primaryKey().references(() => user.id, { onDelete: "cascade" }),
+  plan: text("plan").notNull().default("free"),
+  status: text("status").notNull().default("inactive"),
+  provider: text("provider"),
+  currency: text("currency"),
+  billingCycle: text("billing_cycle"),
+  externalCustomerId: text("external_customer_id"),
+  externalSubscriptionId: text("external_subscription_id"),
+  lastOrderId: text("last_order_id"),
+  currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+  cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("bloom_subscriptions_status_idx").on(table.status, table.currentPeriodEnd),
+  index("bloom_subscriptions_ext_sub_idx").on(table.externalSubscriptionId),
+]);
+
+export const billingEvents = pgTable("bloom_billing_events", {
+  eventKey: text("event_key").primaryKey(),
+  provider: text("provider").notNull(),
+  userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+  eventType: text("event_type").notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+  processedAt: timestamp("processed_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const audioTracks = pgTable("bloom_audio_tracks", {
   id: text("id").primaryKey(),

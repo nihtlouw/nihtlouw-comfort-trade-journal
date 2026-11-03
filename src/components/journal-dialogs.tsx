@@ -2,8 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import Image from "next/image";
-import { Check, ChevronDown, CircleHelp, Download, FileImage, FileSpreadsheet, ImagePlus, Maximize2, Pause, Pencil, Play, Plus, RotateCcw, ShieldCheck, Sparkles, Trash2, Upload, X } from "lucide-react";
+import Link from "next/link";
+import { Check, ChevronDown, CircleHelp, Cloud, CreditCard, Download, FileImage, FileSpreadsheet, Globe, ImagePlus, Maximize2, Pause, Pencil, Play, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Trash2, Upload, X } from "lucide-react";
 import { getAttachment, type StorageMode } from "@/lib/attachments";
+import type { BillingCurrency, BillingCycle, BillingProvider, CloudContext } from "@/lib/billing";
+import type { LocalDeviceSummary } from "@/lib/cloud-migration";
 import { downloadFile } from "@/lib/backup";
 import { collectNewAccountsFromRows, CSV_FIELDS, csvRowsToTrades, exportTradesCsv, parseImportFile, type CsvMapping, type CsvPreview } from "@/lib/csv";
 import { createThreeMonthDummyData } from "@/lib/dummy-dataset";
@@ -700,7 +703,7 @@ function parseBalanceField(raw: string): { ok: true; value: number | null } | { 
   return { ok: true, value: Math.round(n * 100) / 100 };
 }
 
-export type SettingsTab = "General" | "Data" | "Accounts" | "Risk";
+export type SettingsTab = "General" | "Cloud" | "Data" | "Accounts" | "Risk";
 export function SettingsModal({
   data,
   mode,
@@ -710,6 +713,10 @@ export function SettingsModal({
   backupAvailable,
   backupEnabled,
   hidden = false,
+  cloudContext,
+  localSummary,
+  onStartCheckout,
+  onMigrateLocalToCloud,
   onClose,
   onUpdate,
   onClearSamples,
@@ -732,6 +739,10 @@ export function SettingsModal({
   backupAvailable: boolean;
   backupEnabled: boolean;
   hidden?: boolean;
+  cloudContext?: CloudContext;
+  localSummary?: LocalDeviceSummary | null;
+  onStartCheckout?: (provider: BillingProvider, cycle: BillingCycle) => Promise<void>;
+  onMigrateLocalToCloud?: () => Promise<void>;
   onClose: () => void;
   onUpdate: (patch: Partial<JournalData["settings"]>) => Promise<boolean>;
   onClearSamples: () => Promise<boolean>;
@@ -757,6 +768,12 @@ export function SettingsModal({
   const [accountError, setAccountError] = useState("");
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<SettingsTab>(initialTab);
+  const [billingCurrency, setBillingCurrency] = useState<BillingCurrency>(() => {
+    if (cloudContext?.midtransEnabled && !cloudContext?.lemonSqueezyEnabled) return "IDR";
+    if (cloudContext?.lemonSqueezyEnabled && !cloudContext?.midtransEnabled) return "USD";
+    return locale === "id" ? "IDR" : "USD";
+  });
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
   const [perTradeLimit, setPerTradeLimit] = useState(data.settings.riskLimits?.perTrade?.toString() ?? "");
   const [dailyLimit, setDailyLimit] = useState(data.settings.riskLimits?.dailyLoss?.toString() ?? "");
   const [riskError, setRiskError] = useState("");
@@ -841,7 +858,7 @@ export function SettingsModal({
     <ModalShell onClose={onClose} label="settings-modal-title" wide>
       <ModalHeader id="settings-modal-title" title={copy.settingsTitle} description={copy.settingsDesc} onClose={onClose} closeLabel={copy.close} />
       <div className="settings-tabs">
-        {(["General", "Data", "Accounts", "Risk"] as const).map((item) => (
+        {(["General", "Cloud", "Data", "Accounts", "Risk"] as const).map((item) => (
           <button type="button" key={item} className={tab === item ? "selected" : ""} aria-pressed={tab === item} onClick={() => setTab(item)}>
             {copy.settingsTabs[item]}
           </button>
@@ -985,6 +1002,168 @@ export function SettingsModal({
             </div>
           </form>
         )}
+
+        {tab === "Cloud" && (() => {
+          const isPro = mode === "server" || Boolean(cloudContext?.subscription?.isPro);
+          const pricing = cloudContext?.pricing ?? {
+            idrMonthly: 49_000,
+            idrYearly: 469_000,
+            usdMonthly: 6,
+            usdYearly: 58,
+          };
+          const selectedProvider: BillingProvider = billingCurrency === "IDR" ? "midtrans" : "lemonsqueezy";
+          const gatewayReady =
+            billingCurrency === "IDR"
+              ? Boolean(cloudContext?.midtransEnabled)
+              : Boolean(cloudContext?.lemonSqueezyEnabled);
+          const displayPrice =
+            billingCurrency === "IDR"
+              ? `Rp ${new Intl.NumberFormat("id-ID").format(billingCycle === "monthly" ? pricing.idrMonthly : pricing.idrYearly)}`
+              : `$${billingCycle === "monthly" ? pricing.usdMonthly : pricing.usdYearly}`;
+          const periodEndText = cloudContext?.subscription?.currentPeriodEnd
+            ? new Date(cloudContext.subscription.currentPeriodEnd).toLocaleDateString(
+                locale === "id" ? "id-ID" : "en-US",
+                { year: "numeric", month: "short", day: "numeric" },
+              )
+            : null;
+
+          return (
+            <div className="cloud-settings">
+              <div className={`cloud-hero-card ${isPro ? "is-pro" : "is-local"}`}>
+                <div className="cloud-hero-top">
+                  <span className={`cloud-tier-badge ${isPro ? "pro" : "free"}`}>
+                    <Cloud size={13} />
+                    {isPro ? copy.cloudTierProBadge : copy.cloudTierFreeBadge}
+                  </span>
+                  {cloudContext?.signedIn && onSignOut && (
+                    <button type="button" className="button-secondary cloud-signout-btn" onClick={onSignOut}>
+                      {copy.signOutBtn}
+                    </button>
+                  )}
+                </div>
+                <strong>{isPro ? copy.cloudStatusProTitle : copy.cloudStatusLocalTitle}</strong>
+                <p>{isPro ? copy.cloudStatusProDesc : copy.cloudStatusLocalDesc}</p>
+                {cloudContext?.user?.email && (
+                  <div className="cloud-account-meta">
+                    <span>{copy.cloudSignedInAs(cloudContext.user.email)}</span>
+                    {periodEndText && <span>· {copy.cloudRenewsOn(periodEndText)}</span>}
+                  </div>
+                )}
+                {cloudContext?.available && !cloudContext.signedIn && (
+                  <div className="cloud-hero-actions">
+                    <Link className="button-primary" href="/?auth=1">
+                      {copy.cloudSignInCta}
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              {isPro && localSummary?.hasLocalData && onMigrateLocalToCloud && (
+                <div className="cloud-migrate-card">
+                  <div>
+                    <strong>{copy.cloudMigrateTitle}</strong>
+                    <p>{copy.cloudMigrateDesc}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="button-primary"
+                    disabled={busy}
+                    onClick={async () => {
+                      setBusy(true);
+                      await onMigrateLocalToCloud();
+                      setBusy(false);
+                    }}
+                  >
+                    <RefreshCw size={15} />
+                    {busy ? copy.cloudMigratingBtn : copy.cloudMigrateBtn}
+                  </button>
+                </div>
+              )}
+
+              {!isPro && (
+                <div className="cloud-pricing-card">
+                  <div className="cloud-pricing-controls">
+                    <div className="segment-control cloud-segment" role="group" aria-label={copy.cloudRegionLabel}>
+                      <button
+                        type="button"
+                        className={billingCurrency === "IDR" ? "selected" : ""}
+                        aria-pressed={billingCurrency === "IDR"}
+                        onClick={() => setBillingCurrency("IDR")}
+                      >
+                        <CreditCard size={13} /> IDR · QRIS
+                      </button>
+                      <button
+                        type="button"
+                        className={billingCurrency === "USD" ? "selected" : ""}
+                        aria-pressed={billingCurrency === "USD"}
+                        onClick={() => setBillingCurrency("USD")}
+                      >
+                        <Globe size={13} /> USD · Global
+                      </button>
+                    </div>
+                    <div className="segment-control cloud-segment" role="group" aria-label="Billing cycle">
+                      <button
+                        type="button"
+                        className={billingCycle === "monthly" ? "selected" : ""}
+                        aria-pressed={billingCycle === "monthly"}
+                        onClick={() => setBillingCycle("monthly")}
+                      >
+                        {copy.cloudCycleMonthly}
+                      </button>
+                      <button
+                        type="button"
+                        className={billingCycle === "yearly" ? "selected" : ""}
+                        aria-pressed={billingCycle === "yearly"}
+                        onClick={() => setBillingCycle("yearly")}
+                      >
+                        {copy.cloudCycleYearly}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="cloud-price-row">
+                    <div className="cloud-price-amount">
+                      <strong>{displayPrice}</strong>
+                      <span>{billingCycle === "monthly" ? copy.cloudPerMonth : copy.cloudPerYear}</span>
+                    </div>
+                    <span className="cloud-region-caption">
+                      {billingCurrency === "IDR" ? copy.cloudRegionIdr : copy.cloudRegionUsd}
+                    </span>
+                  </div>
+
+                  <ul className="cloud-feature-list">
+                    <li><Check size={15} /> <span>{copy.cloudFeature1}</span></li>
+                    <li><Check size={15} /> <span>{copy.cloudFeature2}</span></li>
+                    <li><Check size={15} /> <span>{copy.cloudFeature3}</span></li>
+                  </ul>
+
+                  {!cloudContext?.available ? (
+                    <p className="cloud-setup-note">{copy.cloudStaticServerNote}</p>
+                  ) : !cloudContext.signedIn ? (
+                    <Link className="button-primary cloud-checkout-btn" href="/?auth=1&mode=signup">
+                      {copy.cloudSignInCta}
+                    </Link>
+                  ) : gatewayReady && onStartCheckout ? (
+                    <button
+                      type="button"
+                      className="button-primary cloud-checkout-btn"
+                      disabled={busy}
+                      onClick={async () => {
+                        setBusy(true);
+                        await onStartCheckout(selectedProvider, billingCycle);
+                        setBusy(false);
+                      }}
+                    >
+                      {billingCurrency === "IDR" ? copy.cloudSubscribeIdrBtn : copy.cloudSubscribeUsdBtn}
+                    </button>
+                  ) : (
+                    <p className="cloud-setup-note">{copy.cloudGatewaySetupNote}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {tab === "Data" && (
           <div className="data-settings">

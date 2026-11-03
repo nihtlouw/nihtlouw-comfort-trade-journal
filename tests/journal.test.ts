@@ -25,6 +25,17 @@ import {
   updateYoutubePlaybackPosition,
   writeYoutubePlaybackCache,
 } from "@/lib/youtube";
+import { createHmac } from "node:crypto";
+import { signS3Request } from "@/lib/object-storage";
+import {
+  computeMidtransSignature,
+  interpretLemonSqueezyWebhook,
+  interpretMidtransWebhook,
+  isProEntitled,
+  verifyLemonSqueezySignature,
+  verifyMidtransSignature,
+} from "@/lib/billing";
+import { mergeLocalIntoCloudJournal } from "@/lib/cloud-migration";
 import type { SavedYoutubeVideo, StrategyLibraryItem, Trade } from "@/lib/types";
 
 const makeTrade = (id: number, pnl: string, initialRisk = ""): Trade => ({ id, pnl, initialRisk, symbol: `TEST${id}`, market: "Stocks", side: "Long", setup: "Breakout", tradeDate: `2026-01-0${id}`, mood: "Calm", notes: "", isDemo: false });
@@ -1196,6 +1207,181 @@ test("YouTube playback cache parses player postMessages, persists paused timesta
   const manuallyCleared = clearYoutubePlaybackPosition(reloaded, "dQw4w9WgXcQ");
   assert.equal(manuallyCleared.positions.dQw4w9WgXcQ, undefined);
 });
+
+test("Cloudflare R2 / S3 AWS SigV4 signs PUT, GET, and DELETE requests deterministically", () => {
+  const cfg = {
+    endpoint: "https://acc123.r2.cloudflarestorage.com",
+    bucket: "bloom-assets",
+    accessKeyId: "AKIA_TEST_KEY",
+    secretAccessKey: "SECRET_TEST_KEY_1234567890",
+    region: "auto",
+  };
+  const fixedDate = new Date("2026-11-03T07:00:00.000Z");
+  const payload = Buffer.from("webp-chart-bytes");
+  const signedPut = signS3Request({
+    config: cfg,
+    method: "PUT",
+    key: "charts/user_1/img_abc.webp",
+    body: payload,
+    contentType: "image/webp",
+    now: fixedDate,
+  });
+
+  assert.equal(signedPut.url, "https://acc123.r2.cloudflarestorage.com/bloom-assets/charts/user_1/img_abc.webp");
+  assert.equal(signedPut.headers["x-amz-date"], "20261103T070000Z");
+  assert.match(signedPut.headers.Authorization, /^AWS4-HMAC-SHA256 Credential=AKIA_TEST_KEY\/20261103\/auto\/s3\/aws4_request/);
+  assert.equal(signedPut.headers["Content-Type"], "image/webp");
+
+  const signedPutAgain = signS3Request({
+    config: cfg,
+    method: "PUT",
+    key: "charts/user_1/img_abc.webp",
+    body: payload,
+    contentType: "image/webp",
+    now: fixedDate,
+  });
+  assert.equal(signedPut.headers.Authorization, signedPutAgain.headers.Authorization);
+});
+
+test("Midtrans IDR signature verification and webhook settlement lifecycle", () => {
+  const orderId = "BLM-Y-1762153200-a1b2c3";
+  const serverKey = "SB-Mid-server-TestSecretKey99";
+  const statusCode = "200";
+  const grossAmount = "469000.00";
+  const validSig = computeMidtransSignature({ orderId, statusCode, grossAmount, serverKey });
+
+  assert.equal(
+    verifyMidtransSignature({
+      orderId,
+      statusCode,
+      grossAmount,
+      signatureKey: validSig,
+      serverKey,
+    }),
+    true,
+  );
+  assert.equal(
+    verifyMidtransSignature({
+      orderId,
+      statusCode: "201",
+      grossAmount,
+      signatureKey: validSig,
+      serverKey,
+    }),
+    false,
+  );
+
+  const settled = interpretMidtransWebhook({
+    order_id: orderId,
+    transaction_status: "settlement",
+    fraud_status: "accept",
+    custom_field1: "user_indo_1",
+    custom_field2: "yearly",
+  });
+  assert.equal(settled.kind, "activate");
+  if (settled.kind === "activate") {
+    assert.equal(settled.userId, "user_indo_1");
+    assert.equal(settled.cycle, "yearly");
+    assert.equal(settled.orderId, orderId);
+  }
+
+  const pending = interpretMidtransWebhook({
+    order_id: orderId,
+    transaction_status: "pending",
+    custom_field1: "user_indo_1",
+  });
+  assert.equal(pending.kind, "ignore");
+});
+
+test("Lemon Squeezy USD HMAC-SHA256 webhook verification and Pro entitlement lifecycle", () => {
+  const webhookSecret = "lsq_whsec_global_secret_987654";
+  const bodyObj = {
+    meta: {
+      event_name: "subscription_created",
+      custom_data: { user_id: "user_global_1", billing_cycle: "monthly" },
+    },
+    data: {
+      id: "sub_9911",
+      attributes: {
+        status: "active",
+        customer_id: 4412,
+        renews_at: "2027-12-03T00:00:00.000Z",
+        cancelled: false,
+        updated_at: "2026-11-03T07:00:00.000Z",
+      },
+    },
+  };
+  const rawBody = JSON.stringify(bodyObj);
+  const sig = createHmac("sha256", webhookSecret).update(rawBody, "utf8").digest("hex");
+
+  assert.equal(verifyLemonSqueezySignature({ rawBody, signatureHex: sig, webhookSecret }), true);
+  assert.equal(verifyLemonSqueezySignature({ rawBody, signatureHex: "deadbeef", webhookSecret }), false);
+
+  const action = interpretLemonSqueezyWebhook(bodyObj);
+  assert.equal(action.kind, "upsert");
+  if (action.kind === "upsert") {
+    assert.equal(action.userId, "user_global_1");
+    assert.equal(action.plan, "pro");
+    assert.equal(action.status, "active");
+    assert.equal(
+      isProEntitled(
+        {
+          plan: action.plan,
+          status: action.status,
+          currentPeriodEnd: action.currentPeriodEnd,
+        },
+        new Date("2026-11-03T08:00:00.000Z"),
+      ),
+      true,
+    );
+    assert.equal(
+      isProEntitled(
+        {
+          plan: action.plan,
+          status: action.status,
+          currentPeriodEnd: action.currentPeriodEnd,
+        },
+        new Date("2028-01-01T00:00:00.000Z"),
+      ),
+      false,
+    );
+  }
+});
+
+test("1-click Local-to-Cloud migration merges trades, accounts, and settings without duplicates", () => {
+  const cloud = createDemoData();
+  cloud.trades = [
+    { ...makeTrade(1, "120.00", "60.00"), symbol: "BTCUSDT", tradeDate: "2026-10-10" },
+  ];
+
+  const local = createDemoData();
+  const cloudImgId = "22222222-2222-4222-8222-222222222222";
+  local.trades = [
+    // Collides with cloud trade id=1, so merger must assign next safe id=2
+    {
+      ...makeTrade(1, "245.50", "80.00"),
+      symbol: "XAUUSD",
+      market: "Forex",
+      tradeDate: "2026-10-12",
+      attachments: [
+        { id: cloudImgId, name: "gold-entry.webp", type: "image/webp", size: 42_000, stage: "Entry" },
+      ],
+    },
+    // Duplicate trade signature of cloud's BTCUSDT trade -> skipped without duplicating
+    { ...makeTrade(2, "120.00", "60.00"), symbol: "BTCUSDT", tradeDate: "2026-10-10" },
+  ];
+
+  const result = mergeLocalIntoCloudJournal(local, cloud);
+
+  assert.equal(result.addedTrades, 1);
+  assert.equal(result.merged.trades.length, 2);
+  const goldTrade = result.merged.trades.find((t: Trade) => t.symbol === "XAUUSD");
+  assert.ok(goldTrade);
+  assert.equal(goldTrade.id, 2);
+  assert.equal(goldTrade.attachments?.[0]?.id, cloudImgId);
+  assert.equal(goldTrade.attachments?.[0]?.stage, "Entry");
+});
+
 
 
 

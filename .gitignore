@@ -1,6 +1,8 @@
 node_modules/
 .next/
 out/
+out-android/
+android/
 build/
 *.log
 *.tsbuildinfo

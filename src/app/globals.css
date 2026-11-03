@@ -5870,6 +5870,257 @@ html:has(.app-shell[data-theme="dark"][data-dark-variant="obsidian"], .loading-s
   color: var(--ink);
 }
 
+/* SaaS Cloud Sync, Google Auth, Midtrans (IDR) & Lemon Squeezy (USD) */
+.auth-google-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 42px;
+  margin-top: 14px;
+  font-weight: 700;
+}
+
+.auth-divider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 14px 0 8px;
+}
+
+.auth-divider::before {
+  content: "";
+  position: absolute;
+  inset: 50% 0 auto;
+  height: 1px;
+  background: var(--line);
+}
+
+.auth-divider span {
+  position: relative;
+  padding: 0 10px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.cloud-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cloud-hero-card,
+.cloud-migrate-card,
+.cloud-pricing-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-alt);
+}
+
+.cloud-hero-card.is-pro {
+  border-color: rgba(110, 158, 121, 0.45);
+  background: linear-gradient(135deg, var(--accent-pale) 0%, var(--surface-alt) 100%);
+}
+
+.cloud-hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cloud-tier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.cloud-tier-badge.pro {
+  border-color: rgba(93, 146, 107, 0.45);
+  background: var(--accent-pale);
+  color: var(--accent-dark);
+}
+
+.cloud-hero-card > strong,
+.cloud-migrate-card strong {
+  color: var(--heading);
+  font-size: 13.5px;
+}
+
+.cloud-hero-card > p,
+.cloud-migrate-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.cloud-account-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.cloud-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.cloud-migrate-card {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.cloud-migrate-card > button {
+  flex-shrink: 0;
+}
+
+.cloud-pricing-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.cloud-segment {
+  display: inline-flex;
+  flex-wrap: wrap;
+}
+
+.cloud-segment button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 10.5px;
+}
+
+.cloud-price-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 0 2px;
+}
+
+.cloud-price-amount {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.cloud-price-amount strong {
+  color: var(--heading);
+  font-family: "DM Serif Display", Georgia, serif;
+  font-size: 26px;
+  font-weight: 400;
+  line-height: 1.1;
+}
+
+.cloud-price-amount span,
+.cloud-region-caption {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.cloud-feature-list {
+  display: grid;
+  gap: 7px;
+  margin: 2px 0 4px;
+  padding: 0;
+  list-style: none;
+}
+
+.cloud-feature-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.cloud-feature-list svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--accent-dark);
+}
+
+.cloud-checkout-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 40px;
+  text-decoration: none;
+}
+
+.cloud-setup-note {
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px dashed var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+@media (max-width: 650px) {
+  .settings-tabs {
+    padding: 0 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .settings-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .settings-tabs button {
+    flex: 1 0 auto;
+    padding-right: 6px;
+    padding-left: 6px;
+    font-size: 10.5px;
+    white-space: nowrap;
+  }
+  .cloud-migrate-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .cloud-segment {
+    width: 100%;
+  }
+  .cloud-segment button {
+    flex: 1;
+    justify-content: center;
+    min-height: 38px;
+  }
+}
+
+
 
 
 

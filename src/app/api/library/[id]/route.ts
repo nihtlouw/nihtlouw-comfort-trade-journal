@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { journalImages } from "@/db/schema";
+import { deleteCloudObject, getCloudObject, getObjectStorageConfig } from "@/lib/object-storage";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -27,12 +28,22 @@ export async function GET(request: Request, context: Context) {
   if (!doc) {
     return Response.json({ error: "Not found." }, { status: 404 });
   }
+
+  let payload: Uint8Array;
+  if (doc.storageKey) {
+    const objectConfig = getObjectStorageConfig();
+    if (!objectConfig) return Response.json({ error: "Cloud object storage is not configured." }, { status: 503 });
+    payload = await getCloudObject({ config: objectConfig, key: doc.storageKey });
+  } else {
+    payload = new Uint8Array(Buffer.from(doc.data, "base64"));
+  }
+
   const safeName = doc.name.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
-  return new Response(new Uint8Array(Buffer.from(doc.data, "base64")), {
+  return new Response(new Blob([new Uint8Array(payload)]), {
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `inline; filename="${safeName}"`,
-      "Content-Length": String(doc.size),
+      "Content-Length": String(payload.byteLength),
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
     },
@@ -62,6 +73,14 @@ export async function DELETE(request: Request, context: Context) {
         eq(journalImages.type, "application/pdf"),
       ),
     )
-    .returning({ id: journalImages.id });
-  return deleted ? Response.json({ ok: true }) : Response.json({ error: "Not found." }, { status: 404 });
+    .returning({ id: journalImages.id, storageKey: journalImages.storageKey });
+  if (!deleted) return Response.json({ error: "Not found." }, { status: 404 });
+
+  if (deleted.storageKey) {
+    const objectConfig = getObjectStorageConfig();
+    if (objectConfig) {
+      await deleteCloudObject({ config: objectConfig, key: deleted.storageKey }).catch(() => {});
+    }
+  }
+  return Response.json({ ok: true });
 }
