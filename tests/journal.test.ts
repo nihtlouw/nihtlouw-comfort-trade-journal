@@ -1382,6 +1382,53 @@ test("1-click Local-to-Cloud migration merges trades, accounts, and settings wit
   assert.equal(goldTrade.attachments?.[0]?.stage, "Entry");
 });
 
+test("performanceSeries computes daily/cumulative R-multiples, win/loss counts, and high-water peaks", async () => {
+  const { compactRMultiple } = await import("@/lib/format");
+  const today = todayString();
+  const d1 = new Date(dateFromString(today).getTime() - 5 * 86_400_000).toISOString().slice(0, 10);
+  const d2 = new Date(dateFromString(today).getTime() - 2 * 86_400_000).toISOString().slice(0, 10);
+
+  const trades: Trade[] = [
+    { ...makeTrade(1, "200.00", "100.00"), tradeDate: d1 }, // +2.00R win
+    { ...makeTrade(2, "-50.00", "100.00"), tradeDate: d1 }, // -0.50R loss
+    { ...makeTrade(3, "80.00", ""), tradeDate: d1 }, // no initialRisk, still counts in $
+    { ...makeTrade(4, "-120.00", "80.00"), tradeDate: d2 }, // -1.50R loss
+  ];
+
+  const series = performanceSeries(trades, "1W");
+  const p1 = series.find((p) => p.date === d1)!;
+  const p2 = series.find((p) => p.date === d2)!;
+
+  assert.equal(p1.trades, 3);
+  assert.equal(p1.wins, 2);
+  assert.equal(p1.losses, 1);
+  assert.equal(p1.rTrades, 2);
+  assert.equal(p1.daily, 230);
+  assert.equal(p1.pnl, 230);
+  assert.equal(p1.peak, 230);
+  assert.equal(p1.drawdown, 0);
+  assert.ok(Math.abs(p1.dailyR - 1.5) < 1e-6);
+  assert.ok(Math.abs(p1.cumR - 1.5) < 1e-6);
+  assert.ok(Math.abs(p1.peakR - 1.5) < 1e-6);
+
+  assert.equal(p2.trades, 1);
+  assert.equal(p2.wins, 0);
+  assert.equal(p2.losses, 1);
+  assert.equal(p2.pnl, 110);
+  assert.equal(p2.peak, 230);
+  assert.equal(p2.drawdown, -120);
+  assert.ok(Math.abs(p2.dailyR - -1.5) < 1e-6);
+  assert.ok(Math.abs(p2.cumR - 0) < 1e-6);
+  assert.ok(Math.abs(p2.peakR - 1.5) < 1e-6);
+  assert.ok(Math.abs(p2.drawdownR - -1.5) < 1e-6);
+
+  assert.equal(compactRMultiple(0), "0R");
+  assert.equal(compactRMultiple(2.5), "+2.5R");
+  assert.equal(compactRMultiple(-1.2), "−1.2R");
+  assert.equal(compactRMultiple(18.3), "+18R");
+});
+
+
 
 
 

@@ -72,7 +72,7 @@ export function Overview(props: CommonProps) {
   return <div className={`overview-grid ${active ? "" : "overview-grid-parked"}`}><div className="overview-main">
     {active && <StatsCards trades={periodTrades} hidden={props.hidden} locale={locale}/>}
     {active && <AccountBalanceCard summary={balanceSummary} hidden={props.hidden} locale={locale} onOpenAccounts={props.onAccountsSettings}/>}
-    {active && <PerformanceChart trades={periodTrades} period={props.period} onPeriodChange={props.onPeriod} hidden={props.hidden} locale={locale}/>}
+    {active && <PerformanceChart trades={periodTrades} period={props.period} onPeriodChange={props.onPeriod} hidden={props.hidden} locale={locale} onSelectDay={props.onDay}/>}
     <YoutubeWatchPanel videos={props.settings.youtubeLinks ?? []} locale={locale} active={active} onPlayerMountChange={props.onYoutubePlayerMountChange} onReturnToOverview={() => props.onView("Overview")} onChange={(links, message) => props.onUpdateYoutubeLinks?.(links, message)}/>
     {active && !welcomeDismissed && (
       <section className="welcome-banner welcome-banner-compact" style={{ backgroundImage: `linear-gradient(90deg, var(--hero-fade) 0%, var(--hero-fade-soft) 37%, transparent 80%), url('${basePath}/images/bloom-landscape.png')` }}>
@@ -207,7 +207,7 @@ export function JournalView({
 const BREAKDOWN_TABS = ["Market", "Setup", "Session", "Tag", "Playbook", "Mood", "Day"] as const;
 type BreakdownGroup = (typeof BREAKDOWN_TABS)[number];
 
-export function AnalyticsView({ trades, allTrades, accountFilter, settings, hidden, period, onPeriod, onAccountsSettings, onFilterJournal }: { trades: Trade[]; allTrades: Trade[]; accountFilter: string; settings: JournalSettings; hidden: boolean; period: Period; onPeriod: (period: Period) => void; onAccountsSettings: () => void; onFilterJournal?: (preset: JournalFilterPreset) => void }) {
+export function AnalyticsView({ trades, allTrades, accountFilter, settings, hidden, period, onPeriod, onAccountsSettings, onFilterJournal, onDay }: { trades: Trade[]; allTrades: Trade[]; accountFilter: string; settings: JournalSettings; hidden: boolean; period: Period; onPeriod: (period: Period) => void; onAccountsSettings: () => void; onFilterJournal?: (preset: JournalFilterPreset) => void; onDay?: (date: string) => void }) {
   const locale = settings.locale ?? "en";
   const copy = UI_COPY[locale];
   const selected = filterTrades(trades, period); const stats = getStats(selected); const previous = getStats(previousPeriodTrades(trades, period)); const [group, setGroup] = useState<BreakdownGroup>("Market");
@@ -263,7 +263,7 @@ export function AnalyticsView({ trades, allTrades, accountFilter, settings, hidd
     { name: copy.realizedDrawdown, value: selected.length ? currency(maxRealizedDrawdown(selected), false, hidden) : "—", note: null },
     { name: copy.breakeven, value: String(stats.breakeven), note: null },
   ];
-  return <div className="view-stack"><AccountBalanceCard summary={balanceSummary} hidden={hidden} locale={locale} onOpenAccounts={onAccountsSettings}/><StatsCards trades={selected} hidden={hidden} locale={locale}/><PerformanceChart trades={selected} period={period} onPeriodChange={onPeriod} hidden={hidden} locale={locale}/>
+  return <div className="view-stack"><AccountBalanceCard summary={balanceSummary} hidden={hidden} locale={locale} onOpenAccounts={onAccountsSettings}/><StatsCards trades={selected} hidden={hidden} locale={locale}/><PerformanceChart trades={selected} period={period} onPeriodChange={onPeriod} hidden={hidden} locale={locale} onSelectDay={onDay}/>
     <section className="card comparison-card"><div><h2>{copy.comparedPrevTitle}</h2><p>{period === "ALL" ? copy.chooseRangeCompare : previous.count ? copy.precedingDaysCount(previous.count, period === "1W" ? "7" : period === "1M" ? "30" : "90") : copy.noTradesPrevPeriod}</p></div>{period !== "ALL" && previous.count > 0 && <div className="comparison-metrics"><div><small>{copy.netPnlChange}</small><strong>{currency(stats.net - previous.net, stats.net - previous.net > 0, hidden)}</strong></div><div><small>{copy.winRateChange}</small><strong>{stats.wins + stats.losses && previous.wins + previous.losses ? `${stats.winRate - previous.winRate > 0 ? "+" : ""}${stats.winRate - previous.winRate} pts` : "—"}</strong></div><div><small>{copy.tradesChange}</small><strong>{stats.count - previous.count > 0 ? "+" : ""}{stats.count - previous.count}</strong></div></div>}</section>
     <div className="insight-grid">{metrics.map((item) => <div className="card insight-card" key={item.name}><span>{item.name}</span><strong>{item.value}</strong>{item.note && <small>{item.note}</small>}</div>)}</div>
     <section className="card process-matrix-card">

@@ -1,7 +1,23 @@
 import type { AppLocale, DayJournalEntry, SetupBlueprint, Trade } from "@/lib/types";
 import { dateFromString, periodStart, shortDate, todayString, tradeRMultiple, type Period } from "@/lib/format";
 
-export type ChartPoint = { date: string; time: number; label: string; pnl: number; daily: number; trades: number; drawdown: number };
+export type ChartPoint = {
+  date: string;
+  time: number;
+  label: string;
+  pnl: number;
+  daily: number;
+  trades: number;
+  wins: number;
+  losses: number;
+  peak: number;
+  drawdown: number;
+  dailyR: number;
+  cumR: number;
+  peakR: number;
+  drawdownR: number;
+  rTrades: number;
+};
 export type TradeGroupRow = {
   name: string;
   count: number;
@@ -17,22 +33,67 @@ function computeAvgR(rows: Trade[]): number | null {
   return rValues.reduce((sum, v) => sum + v, 0) / rValues.length;
 }
 
-/** Daily realized P&L, rebased to zero for the selected period. */
+/** Daily realized P&L and R-multiples, rebased to zero for the selected period. */
 export function performanceSeries(trades: Trade[], period: Period): ChartPoint[] {
-  const totals = new Map<string, { daily: number; trades: number }>();
+  const totals = new Map<
+    string,
+    { daily: number; trades: number; wins: number; losses: number; dailyR: number; rTrades: number }
+  >();
   for (const trade of trades) {
-    const item = totals.get(trade.tradeDate) ?? { daily: 0, trades: 0 };
-    item.daily += Number(trade.pnl); item.trades++;
+    const item = totals.get(trade.tradeDate) ?? {
+      daily: 0,
+      trades: 0,
+      wins: 0,
+      losses: 0,
+      dailyR: 0,
+      rTrades: 0,
+    };
+    const tradePnl = Number(trade.pnl);
+    item.daily += tradePnl;
+    item.trades++;
+    if (tradePnl > 0) item.wins++;
+    else if (tradePnl < 0) item.losses++;
+    const rVal = tradeRMultiple(trade);
+    if (rVal !== null) {
+      item.dailyR += rVal;
+      item.rTrades++;
+    }
     totals.set(trade.tradeDate, item);
   }
   const start = periodStart(period, trades).toISOString().slice(0, 10);
   const end = todayString();
-  const dates = Array.from(new Set([start, ...totals.keys(), end])).filter((day) => day >= start && day <= end).sort();
-  let pnl = 0; let peak = 0;
+  const dates = Array.from(new Set([start, ...totals.keys(), end]))
+    .filter((day) => day >= start && day <= end)
+    .sort();
+  let pnl = 0;
+  let peak = 0;
+  let cumR = 0;
+  let peakR = 0;
   return dates.map((day) => {
-    const daily = totals.get(day)?.daily ?? 0;
-    pnl += daily; peak = Math.max(peak, pnl);
-    return { date: day, time: dateFromString(day).getTime(), label: shortDate(day), pnl, daily, trades: totals.get(day)?.trades ?? 0, drawdown: pnl - peak };
+    const bucket = totals.get(day);
+    const daily = bucket?.daily ?? 0;
+    const dailyR = bucket?.dailyR ?? 0;
+    pnl += daily;
+    peak = Math.max(peak, pnl);
+    cumR += dailyR;
+    peakR = Math.max(peakR, cumR);
+    return {
+      date: day,
+      time: dateFromString(day).getTime(),
+      label: shortDate(day),
+      pnl,
+      daily,
+      trades: bucket?.trades ?? 0,
+      wins: bucket?.wins ?? 0,
+      losses: bucket?.losses ?? 0,
+      peak,
+      drawdown: pnl - peak,
+      dailyR,
+      cumR,
+      peakR,
+      drawdownR: cumR - peakR,
+      rTrades: bucket?.rTrades ?? 0,
+    };
   });
 }
 
