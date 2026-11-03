@@ -1001,6 +1001,19 @@ export const UI_COPY = {
     libLimitError: "You can save up to 25 strategy items.",
     libSavedToast: "Added to strategy list.",
     libRemovedToast: "Removed from strategy list.",
+
+    // Workflow & Ergonomics Polish
+    todayBtn: "Today",
+    openDayJournalBtn: "Day note",
+    viewDayTradesBtn: (n: number) => `View trades (${n})`,
+    logTradeForDayBtn: "Log trade for this date",
+    noFilteredTradesTitle: "No matching trades.",
+    resetSearchFilters: "Reset search & filters",
+    liveRBadge: (r: string) => `Est. R: ${r}`,
+    blueprintCueLabel: "Blueprint",
+    openTradeNoteAria: (sym: string) => `Open ${sym} trade note`,
+    filterInJournalAria: (name: string) => `View ${name} trades in journal`,
+    dismissToastAria: "Dismiss notification",
   },
   id: {
     brandSub: "JURNAL TRADING",
@@ -1854,6 +1867,19 @@ export const UI_COPY = {
     libLimitError: "Maksimal 25 item strategi yang dapat disimpan.",
     libSavedToast: "Ditambahkan ke daftar strategi.",
     libRemovedToast: "Dihapus dari daftar strategi.",
+
+    // Workflow & Ergonomics Polish
+    todayBtn: "Hari ini",
+    openDayJournalBtn: "Catatan hari",
+    viewDayTradesBtn: (n: number) => `Lihat trade (${n})`,
+    logTradeForDayBtn: "Catat trade tanggal ini",
+    noFilteredTradesTitle: "Tidak ada trade yang cocok.",
+    resetSearchFilters: "Reset pencarian & filter",
+    liveRBadge: (r: string) => `Estimasi R: ${r}`,
+    blueprintCueLabel: "Blueprint",
+    openTradeNoteAria: (sym: string) => `Buka catatan trade ${sym}`,
+    filterInJournalAria: (name: string) => `Lihat trade ${name} di jurnal`,
+    dismissToastAria: "Tutup notifikasi",
   },
 } as const;
 

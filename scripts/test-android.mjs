@@ -70,6 +70,9 @@ export async function testAndroid(browser, url, errors, apiRequests) {
     assert.equal(await page.locator(".page-heading .new-trade-button").isVisible(), false, "no duplicate top + trade button on mobile");
     assert.ok((await page.getByLabel("Filter by trading account").boundingBox()).height >= 44);
     assert.ok((await page.locator(".mobile-bottom-nav button").first().boundingBox()).height >= 44);
+    const moreBox = await page.locator(".mobile-bottom-nav").getByRole("button", { name: "More", exact: true }).boundingBox();
+    const overviewBox = await page.locator(".mobile-bottom-nav").getByRole("button", { name: "Overview", exact: true }).boundingBox();
+    assert.ok(moreBox && overviewBox && moreBox.x < overviewBox.x, "More drawer button sits on the left side and Overview sits on the right side");
 
     await navigate("Trade journal");
     assert.equal(await page.locator(".mobile-bottom-nav").getByRole("button", { name: "Journal", exact: true }).getAttribute("aria-current"), "page");

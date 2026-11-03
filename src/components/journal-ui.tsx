@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   ArrowDownRight, ArrowRight, ArrowUpRight, BookOpenText,
-  ChevronLeft, ChevronRight, Images, Leaf, Pencil, Plus, Target, TrendingUp, Wallet,
+  ChevronLeft, ChevronRight, Images, Leaf, Pencil, Plus, RotateCcw, Target, TrendingUp, Wallet,
 } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { AppLocale, DayJournalEntry, JournalSettings, Trade } from "@/lib/types";
@@ -216,7 +216,7 @@ export function AssetIcon({ symbol }: { symbol: string }) {
   const icon = symbol.startsWith("BTC") ? "₿" : symbol.startsWith("ETH") ? "◆" : symbol.startsWith("EUR") ? "€" : symbol.startsWith("GBP") ? "£" : symbol.startsWith("XAU") ? "✦" : symbol.slice(0, 1);
   return <span className={`asset-icon ${symbolColor(symbol)}`}>{icon}</span>;
 }
-export function TradeTable({ trades, hidden, onEdit, onNew, onViewAll, onPreviewCharts, compact = false, locale = "en" }: { trades: Trade[]; hidden: boolean; onEdit: (trade: Trade) => void; onNew: () => void; onViewAll?: () => void; onPreviewCharts?: (trade: Trade) => void; compact?: boolean; locale?: AppLocale }) {
+export function TradeTable({ trades, hidden, onEdit, onNew, onViewAll, onPreviewCharts, compact = false, locale = "en", filteredEmpty = false, onResetFilters }: { trades: Trade[]; hidden: boolean; onEdit: (trade: Trade) => void; onNew: () => void; onViewAll?: () => void; onPreviewCharts?: (trade: Trade) => void; compact?: boolean; locale?: AppLocale; filteredEmpty?: boolean; onResetFilters?: () => void }) {
   const copy = UI_COPY[locale];
   return <section className="card trades-card"><CardTitle title={compact ? copy.recentTrades : copy.tradeHistory} description={compact ? copy.recentTradesDesc : copy.tradesInView(trades.length)} action={onViewAll && <button type="button" className="text-link" onClick={onViewAll}>{copy.viewJournal} <ArrowRight size={14}/></button>}/>
     <div className="table-scroll"><table className="trade-table" role="table"><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">{copy.colAsset}</th><th scope="col" role="columnheader">{copy.colDate}</th><th scope="col" role="columnheader">{copy.colSetup}</th><th scope="col" role="columnheader">{copy.colDirection}</th><th scope="col" role="columnheader">{copy.colNetPnl}</th><th scope="col" role="columnheader">{copy.colResult}</th><th scope="col" role="columnheader"><span className="sr-only">{copy.colActions}</span></th></tr></thead><tbody role="rowgroup">
@@ -229,14 +229,23 @@ export function TradeTable({ trades, hidden, onEdit, onNew, onViewAll, onPreview
         <td role="cell" className="trade-action"><div className="trade-action-group">{shotCount > 0 && onPreviewCharts && <button type="button" className="row-chart-pill" onClick={() => onPreviewCharts(trade)} aria-label={copy.viewTradeChartsAria(trade.symbol, shotCount)}><Images size={13}/><span>{shotCount}</span></button>}<button type="button" className="row-more" onClick={() => onEdit(trade)} aria-label={copy.editTradeAria(trade.symbol)}><Pencil size={14}/><span>{copy.edit}</span></button></div></td>
       </tr>; })}
     </tbody></table></div>
-    {!trades.length && <div className="empty-state"><span><BookOpenText size={20}/></span><strong>{copy.noTradesTitle}</strong><button type="button" className="text-link" onClick={onNew}><Plus size={14}/> {copy.logATrade}</button></div>}
+    {!trades.length && <div className="empty-state"><span><BookOpenText size={20}/></span><strong>{filteredEmpty && onResetFilters ? copy.noFilteredTradesTitle : copy.noTradesTitle}</strong>{filteredEmpty && onResetFilters ? <button type="button" className="text-link" onClick={onResetFilters}><RotateCcw size={14}/> {copy.resetSearchFilters}</button> : <button type="button" className="text-link" onClick={onNew}><Plus size={14}/> {copy.logATrade}</button>}</div>}
   </section>;
 }
 
-export function TradingCalendar({ trades, dayJournals = [], hidden, onDay, compact = false, locale = "en" }: { trades: Trade[]; dayJournals?: DayJournalEntry[]; hidden: boolean; onDay: (date: string) => void; compact?: boolean; locale?: AppLocale }) {
+export function TradingCalendar({ trades, dayJournals = [], hidden, onDay, compact = false, locale = "en", focusDate }: { trades: Trade[]; dayJournals?: DayJournalEntry[]; hidden: boolean; onDay: (date: string) => void; compact?: boolean; locale?: AppLocale; focusDate?: string }) {
   const copy = UI_COPY[locale];
   const now = new Date();
-  const [month, setMonth] = useState({ year: now.getFullYear(), month: now.getMonth(), direction: 0 });
+  const [month, setMonth] = useState(() => {
+    if (focusDate && /^\d{4}-\d{2}-\d{2}$/.test(focusDate)) {
+      const [y, m] = focusDate.split("-").map(Number);
+      if (Number.isFinite(y) && Number.isFinite(m) && m >= 1 && m <= 12) {
+        return { year: y, month: m - 1, direction: 0 };
+      }
+    }
+    return { year: now.getFullYear(), month: now.getMonth(), direction: 0 };
+  });
+  const isCurrentMonth = month.year === now.getFullYear() && month.month === now.getMonth();
   const days = monthGrid(month.year, month.month);
   const byDay = useMemo(() => {
     const map = new Map<string, { pnl: number; count: number }>();
@@ -254,9 +263,13 @@ export function TradingCalendar({ trades, dayJournals = [], hidden, onDay, compa
       return { year: date.getUTCFullYear(), month: date.getUTCMonth(), direction: amount };
     });
   }
+  function jumpToToday() {
+    const current = new Date();
+    setMonth({ year: current.getFullYear(), month: current.getMonth(), direction: 0 });
+  }
   const monthTrades = trades.filter((trade) => trade.tradeDate.startsWith(`${month.year}-${String(month.month + 1).padStart(2, "0")}`));
   return <section className={`card calendar-card ${compact ? "calendar-compact" : ""}`}>
-    <CardTitle title={compact ? copy.tradingActivity : copy.monthlyActivity} action={<div className="calendar-nav"><button type="button" onClick={() => shift(-1)} aria-label={copy.prevMonth}><ChevronLeft size={16}/></button><strong aria-live="polite" aria-atomic="true">{monthTitle(month.year, month.month, locale)}</strong><button type="button" onClick={() => shift(1)} aria-label={copy.nextMonth}><ChevronRight size={16}/></button></div>}/>
+    <CardTitle title={compact ? copy.tradingActivity : copy.monthlyActivity} action={<div className="calendar-nav">{!compact && !isCurrentMonth && <button type="button" className="calendar-today-btn" onClick={jumpToToday}>{copy.todayBtn}</button>}<button type="button" onClick={() => shift(-1)} aria-label={copy.prevMonth}><ChevronLeft size={16}/></button><strong aria-live="polite" aria-atomic="true">{monthTitle(month.year, month.month, locale)}</strong><button type="button" onClick={() => shift(1)} aria-label={copy.nextMonth}><ChevronRight size={16}/></button></div>}/>
     <div className="calendar-weekdays">{copy.weekdays.map((day) => <span key={day}>{day}</span>)}</div>
     <div className="calendar-grid" data-direction={month.direction < 0 ? "previous" : month.direction > 0 ? "next" : "initial"} key={`${month.year}-${month.month}`}>{days.map((day, index) => { if (!day) return <span className="calendar-blank" key={`blank-${index}`}/>;
       const result = byDay.get(day); const value = result?.pnl ?? 0;
@@ -267,7 +280,7 @@ export function TradingCalendar({ trades, dayJournals = [], hidden, onDay, compa
       const dayLabel = locale === "id"
         ? `${shortDate(day, true, locale)}: ${result ? `${result.count} trade, ${hidden ? "nominal disembunyikan" : currency(value)}` : isRestDay ? copy.noTradeAriaTag : "tidak ada trade"}`
         : `${shortDate(day, true, locale)}: ${result ? `${result.count} ${result.count === 1 ? "trade" : "trades"}, ${hidden ? "amount hidden" : currency(value)}` : isRestDay ? copy.noTradeAriaTag : "no trades"}`;
-      return <button type="button" key={day} className={`calendar-day ${state} ${day === todayString() ? "today" : ""}`} onClick={() => onDay(day)} aria-label={dayLabel}>
+      return <button type="button" key={day} className={`calendar-day ${state} ${day === todayString() ? "today" : ""} ${focusDate && day === focusDate ? "focused" : ""}`} onClick={() => onDay(day)} aria-label={dayLabel}>
         {hasNote && <i className="calendar-note-dot" aria-hidden="true"/>}
         <span>{Number(day.slice(-2))}</span>
         {result ? (

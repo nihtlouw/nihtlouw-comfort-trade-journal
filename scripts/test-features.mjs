@@ -470,14 +470,18 @@ try {
   await page.locator(".blueprint-card").waitFor();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Playbook blueprints fit 360px cleanly");
 
-  // Open Log a trade -> verify "London Sweep" automatically appears in Strategy presets chip!
+  // Open Log a trade -> verify "London Sweep" automatically appears in Strategy presets chip, auto-fills Timeframe & Session, shows Blueprint cue, and previews Live R!
   await page.getByRole("button", { name: "Log a trade", exact: true }).first().click();
   await page.getByRole("group", { name: "Strategy presets" }).getByRole("button", { name: "London Sweep", exact: true }).click();
   assert.equal(await page.locator(".modal").getByLabel("Setup", { exact: true }).inputValue(), "London Sweep");
+  assert.match(await page.locator(".blueprint-cue").innerText(), /Sweep of Asia low/);
   await page.getByLabel("Asset / symbol").fill("GBP/JPY");
   await page.getByLabel("Net P&L (USD)").fill("160");
   await page.getByRole("button", { name: /OPTIONAL DETAILS/ }).click();
+  assert.equal(await page.locator(".modal").getByLabel("Timeframe").inputValue(), "M15 / H1", "Setup blueprint auto-fills Timeframe");
+  assert.equal(await page.locator(".modal").getByLabel("Session").inputValue(), "London", "Setup blueprint auto-fills Session");
   await page.getByLabel("Initial risk (USD)").fill("80");
+  assert.match(await page.locator(".live-r-pill").innerText(), /\+2\.00R/, "Live R-multiple badge previews +2.00R before saving");
   await page.getByRole("button", { name: "Save trade", exact: true }).click();
   await page.locator(".modal").waitFor({ state: "detached" });
 
@@ -502,11 +506,19 @@ try {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 360, "Calendar with Day Journal fits 360px cleanly");
   assert.ok(await page.locator(".calendar-day.day-rest").count() >= 1, "Calendar highlights intentional no-trade day");
 
-  // Drill down into that rest day on Trade journal and confirm session note banner surfaces
+  // Drill down into that rest day on Trade journal, verify + pre-fills selectedDay, and jump back via "Day note"
   await page.locator(".calendar-day.day-rest").first().click();
   await page.locator(".selected-day-journal").waitFor();
   assert.match(await page.locator(".selected-day-journal").innerText(), /Intentional no-trade day/);
   assert.match(await page.locator(".selected-day-journal").innerText(), /Protected capital cleanly/);
+  await page.locator(".mobile-bottom-nav .mobile-nav-add").click();
+  await page.locator(".modal").waitFor();
+  assert.equal(await page.locator(".modal").getByLabel("Date").inputValue(), restDate, "Logging trade from selected day pre-fills selectedDay");
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.locator(".modal").waitFor({ state: "detached" });
+  await page.locator(".selected-day-note-btn").click();
+  await page.locator(`.view-motion[data-view="Calendar"]`).waitFor();
+  assert.equal(await page.getByLabel("Session note date").inputValue(), restDate, "Day note button jumps back to Calendar focused on selectedDay");
   console.log("PASS: 0 MB Web Audio Ambient Soundscapes, Setup Blueprints, and Calendar Intentional No-Trade Day & Session Notes work offline.");
 
   // =========================================================================
@@ -884,7 +896,18 @@ try {
   await page.locator(".balance-banner").waitFor();
   assert.equal(await page.locator(".app-shell").getAttribute("data-theme"), "dark");
   assert.equal(await page.locator(".app-shell").getAttribute("data-dark-variant"), "obsidian");
-  console.log("PASS: Selectable Dark Mode styles (Botanical Forest & Obsidian & Linen) switch cleanly and persist offline.");
+
+  // Verify Analytics -> Trade journal breakdown drill-down + Filtered-zero empty state reset
+  await navigate("Analytics");
+  await page.getByLabel("View Forex trades in journal").click();
+  await page.locator(`.view-motion[data-view="Trade journal"]`).waitFor();
+  assert.equal(await page.getByLabel("Filter by market").inputValue(), "Forex", "Analytics breakdown drills into Trade journal filtered by market");
+  await page.getByLabel("Search trades").fill("ZZZ-NO-MATCH-999");
+  assert.match(await page.locator(".empty-state").innerText(), /No matching trades/i, "Filtered-zero state distinguishes no matches from empty journal");
+  await page.getByRole("button", { name: "Reset search & filters", exact: true }).click();
+  assert.equal(await page.getByLabel("Filter by market").inputValue(), "All markets", "Reset search & filters clears active filters");
+  assert.ok(await page.locator(".trade-row").count() > 0, "Reset search & filters restores journal trades");
+  console.log("PASS: Selectable Dark Mode styles (Botanical Forest & Obsidian & Linen) and cross-view workflows pass offline.");
 
   console.log("PASS: Simplified YouTube watch panel + right-side Strategy PDF & idea link mini-list work offline and persist.");
   if (!external) {
