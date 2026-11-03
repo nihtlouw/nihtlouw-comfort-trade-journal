@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, CirclePlus, Compass, Download, FileSpreadsheet, Filter, Images, Leaf, List, Pencil, Plus, RotateCcw, Search, Sparkles, Target, Trash2, Upload, Wind, X } from "lucide-react";
+import { ArrowRight, ArrowUpRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, CirclePlus, Compass, Download, FileSpreadsheet, Filter, Images, Leaf, List, Pencil, Plus, RotateCcw, Search, Sparkles, Target, Trash2, Upload, Wind, X } from "lucide-react";
 import type { StorageMode } from "@/lib/attachments";
 import { evaluateTradeProcess, getProcessMatrix, getSetupBlueprintStats, groupTrades, groupTradesByTag, maxRealizedDrawdown, previousPeriodTrades } from "@/lib/analytics";
 import { currency, filterTrades, formatRMultiple, getAccountBalanceSummary, getStats, shortDate, todayString, type Period } from "@/lib/format";
@@ -96,6 +96,12 @@ export function Overview(props: CommonProps) {
   </aside>}</div>;
 }
 
+export type JournalFilterPreset = {
+  market?: string;
+  mood?: string;
+  query?: string;
+};
+
 export function JournalView({
   trades,
   dayJournals = [],
@@ -110,6 +116,8 @@ export function JournalView({
   onOpenSlides,
   selectedDay,
   clearDay,
+  onOpenCalendarDay,
+  initialPreset,
   locale = "en",
 }: {
   trades: Trade[];
@@ -125,16 +133,29 @@ export function JournalView({
   onOpenSlides?: (slides: ChartLightboxSlide[], index: number) => void;
   selectedDay: string;
   clearDay: () => void;
+  onOpenCalendarDay?: (date: string) => void;
+  initialPreset?: JournalFilterPreset | null;
   locale?: AppLocale;
 }) {
   const copy = UI_COPY[locale];
-  const [query, setQuery] = useState(""); const [market, setMarket] = useState("All markets"); const [result, setResult] = useState("All results");
-  const [side, setSide] = useState("All directions"); const [mood, setMood] = useState("All moods"); const [start, setStart] = useState(""); const [end, setEnd] = useState("");
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [query, setQuery] = useState(initialPreset?.query ?? "");
+  const [market, setMarket] = useState(initialPreset?.market ?? "All markets");
+  const [result, setResult] = useState("All results");
+  const [side, setSide] = useState("All directions");
+  const [mood, setMood] = useState(initialPreset?.mood ?? "All moods");
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(Boolean(initialPreset?.market || initialPreset?.mood));
   const [viewMode, setViewMode] = useState<"table" | "chartbook">("table");
   const [stageFilter, setStageFilter] = useState<StageFilterValue>("All");
   const activeFilters = [market !== "All markets", result !== "All results", side !== "All directions", mood !== "All moods", !!start, !!end].filter(Boolean).length;
   function clearFilters() { setMarket("All markets"); setResult("All results"); setSide("All directions"); setMood("All moods"); setStart(""); setEnd(""); }
+  const hasResettableCriteria = Boolean(query.trim() || activeFilters > 0 || selectedDay);
+  function resetAllCriteria() {
+    setQuery("");
+    clearFilters();
+    if (selectedDay) clearDay();
+  }
   const filtered = useMemo(() => trades.filter((trade) => {
     const value = Number(trade.pnl); const q = query.toLowerCase().trim();
     const translatedSearch = `${translateMarket(trade.market, locale)} ${translateSide(trade.side, locale)} ${translateMood(trade.mood, locale)}`.toLowerCase();
@@ -157,7 +178,7 @@ export function JournalView({
         <select aria-label={copy.filterMoodAria} value={mood} onChange={(event) => setMood(event.target.value)}><option value="All moods">{copy.allMoods}</option>{MOODS.map((item) => <option key={item} value={item}>{translateMood(item, locale)}</option>)}</select>
         <label className="date-filter"><span>{copy.from}</span><input aria-label={copy.fromDateAria} type="date" value={start} onChange={(event) => setStart(event.target.value)}/></label><label className="date-filter"><span>{copy.to}</span><input aria-label={copy.toDateAria} type="date" value={end} onChange={(event) => setEnd(event.target.value)}/></label>
         {activeFilters > 0 && <button type="button" className="clear-filters" onClick={clearFilters}>{copy.clearFilters}</button>}
-      </div>{selectedDay && <div className="selected-day"><CalendarDays size={14}/> {copy.showingDay} {shortDate(selectedDay, true, locale)} <button type="button" onClick={clearDay} aria-label={copy.clearSelectedDay}><X size={14}/></button></div>}
+      </div>{selectedDay && <div className="selected-day"><CalendarDays size={14}/> {copy.showingDay} {shortDate(selectedDay, true, locale)}<div className="selected-day-actions">{onOpenCalendarDay && <button type="button" className="selected-day-note-btn" onClick={() => onOpenCalendarDay(selectedDay)}>{copy.openDayJournalBtn}</button>}<button type="button" onClick={clearDay} aria-label={copy.clearSelectedDay}><X size={14}/></button></div></div>}
       {selectedDayNote && (selectedDayNote.intentionalNoTrade || selectedDayNote.preMarketPlan || selectedDayNote.postSessionNote) && (
         <div className="selected-day-journal">
           {selectedDayNote.intentionalNoTrade && <span className="rest-day-pill"><Leaf size={12} aria-hidden="true" /> {copy.noTradeToggleTitle}</span>}
@@ -167,7 +188,7 @@ export function JournalView({
       )}
     </div>
     {viewMode === "table" ? (
-      <TradeTable trades={filtered} hidden={hidden} onEdit={onEditTrade} onNew={onNewTrade} onPreviewCharts={onPreviewCharts} locale={locale}/>
+      <TradeTable trades={filtered} hidden={hidden} onEdit={onEditTrade} onNew={onNewTrade} onPreviewCharts={onPreviewCharts} locale={locale} filteredEmpty={trades.length > 0 && hasResettableCriteria} onResetFilters={resetAllCriteria}/>
     ) : (
       <ChartbookGallery
         trades={filtered}
@@ -186,7 +207,7 @@ export function JournalView({
 const BREAKDOWN_TABS = ["Market", "Setup", "Session", "Tag", "Playbook", "Mood", "Day"] as const;
 type BreakdownGroup = (typeof BREAKDOWN_TABS)[number];
 
-export function AnalyticsView({ trades, allTrades, accountFilter, settings, hidden, period, onPeriod, onAccountsSettings }: { trades: Trade[]; allTrades: Trade[]; accountFilter: string; settings: JournalSettings; hidden: boolean; period: Period; onPeriod: (period: Period) => void; onAccountsSettings: () => void }) {
+export function AnalyticsView({ trades, allTrades, accountFilter, settings, hidden, period, onPeriod, onAccountsSettings, onFilterJournal }: { trades: Trade[]; allTrades: Trade[]; accountFilter: string; settings: JournalSettings; hidden: boolean; period: Period; onPeriod: (period: Period) => void; onAccountsSettings: () => void; onFilterJournal?: (preset: JournalFilterPreset) => void }) {
   const locale = settings.locale ?? "en";
   const copy = UI_COPY[locale];
   const selected = filterTrades(trades, period); const stats = getStats(selected); const previous = getStats(previousPeriodTrades(trades, period)); const [group, setGroup] = useState<BreakdownGroup>("Market");
@@ -279,7 +300,25 @@ export function AnalyticsView({ trades, allTrades, accountFilter, settings, hidd
       </div>
     </section>
     <div className="analytics-grid analytics-grid-single"><section className="card breakdown-card"><CardTitle title={copy.perfBreakdownTitle}/><div className="segment-control breakdown-tabs">{BREAKDOWN_TABS.map((item) => <button type="button" className={group === item ? "selected" : ""} aria-pressed={group === item} key={item} onClick={() => setGroup(item)}>{copy.groupTabs[item]}</button>)}</div>
-      {groups.length ? <div className="breakdown-list">{groups.map((item) => <div className="breakdown-row" key={item.name}><div className="breakdown-line"><div><strong>{item.name}</strong><small>{copy.breakdownSub(item.count, item.wins + item.losses ? `${Math.round(item.wins / (item.wins + item.losses) * 100)}%` : "—")}{item.avgR !== null ? ` · ${formatRMultiple(item.avgR)}` : ""}</small></div><b className={item.pnl < 0 ? "loss-text" : item.pnl > 0 ? "positive-text" : ""}>{currency(item.pnl, item.pnl > 0, hidden)}</b></div><div className="breakdown-track"><span style={{ width: `${item.count / Math.max(...groups.map((value) => value.count)) * 100}%` }}/></div></div>)}</div> : <div className="simple-empty">{copy.breakdownEmpty}</div>}</section></div>
+      {groups.length ? <div className="breakdown-list">{groups.map((item) => {
+        const resolvePreset = (): JournalFilterPreset | null => {
+          if (!onFilterJournal) return null;
+          if (group === "Market") {
+            const matchedMarket = MARKETS.find((m) => translateMarket(m, locale) === item.name);
+            return matchedMarket ? { market: matchedMarket } : null;
+          }
+          if (group === "Mood") {
+            const matchedMood = MOODS.find((m) => translateMood(m, locale) === item.name);
+            return matchedMood ? { mood: matchedMood } : null;
+          }
+          if ((group === "Setup" || group === "Session" || group === "Tag") && item.name !== copy.notSpecified && item.name !== copy.noTagsBucket) {
+            return { query: item.name };
+          }
+          return null;
+        };
+        const preset = resolvePreset();
+        return <div className="breakdown-row" key={item.name}><div className="breakdown-line"><div><strong>{item.name}</strong><small>{copy.breakdownSub(item.count, item.wins + item.losses ? `${Math.round(item.wins / (item.wins + item.losses) * 100)}%` : "—")}{item.avgR !== null ? ` · ${formatRMultiple(item.avgR)}` : ""}</small></div><div className="breakdown-right"><b className={item.pnl < 0 ? "loss-text" : item.pnl > 0 ? "positive-text" : ""}>{currency(item.pnl, item.pnl > 0, hidden)}</b>{preset && <button type="button" className="icon-button breakdown-jump-btn" onClick={() => onFilterJournal?.(preset)} aria-label={copy.filterInJournalAria(item.name)} title={copy.filterInJournalAria(item.name)}><ArrowUpRight size={13}/></button>}</div></div><div className="breakdown-track"><span style={{ width: `${item.count / Math.max(...groups.map((value) => value.count)) * 100}%` }}/></div></div>;
+      })}</div> : <div className="simple-empty">{copy.breakdownEmpty}</div>}</section></div>
   </div>;
 }
 
@@ -290,6 +329,12 @@ function shiftIsoDate(dateStr: string, deltaDays: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+type DayDraft = {
+  intentionalNoTrade: boolean;
+  preMarketPlan: string;
+  postSessionNote: string;
+};
+
 export function CalendarView({
   trades,
   allTrades,
@@ -299,6 +344,8 @@ export function CalendarView({
   onDay,
   onAccountsSettings,
   onSaveDayJournal,
+  initialFocusDate,
+  onLogTradeForDate,
 }: {
   trades: Trade[];
   allTrades: Trade[];
@@ -308,52 +355,75 @@ export function CalendarView({
   onDay: (date: string) => void;
   onAccountsSettings: () => void;
   onSaveDayJournal?: (entry: DayJournalEntry) => Promise<boolean> | void;
+  initialFocusDate?: string;
+  onLogTradeForDate?: (date: string) => void;
 }) {
   const locale = settings.locale ?? "en";
   const copy = UI_COPY[locale];
   const stats = getStats(trades);
   const dayJournals = settings.dayJournals ?? [];
   const today = todayString();
-  const initialEntry = dayJournals.find((entry) => entry.date === today);
 
-  const [noteDate, setNoteDate] = useState(today);
-  const [intentionalNoTrade, setIntentionalNoTrade] = useState(initialEntry?.intentionalNoTrade ?? false);
-  const [preMarketPlan, setPreMarketPlan] = useState(initialEntry?.preMarketPlan ?? "");
-  const [postSessionNote, setPostSessionNote] = useState(initialEntry?.postSessionNote ?? "");
+  const [noteDate, setNoteDate] = useState(() => initialFocusDate || today);
+  const [drafts, setDrafts] = useState<Record<string, DayDraft>>({});
+
+  const savedEntry = dayJournals.find((entry) => entry.date === noteDate);
+  const activeDraft: DayDraft = drafts[noteDate] ?? {
+    intentionalNoTrade: savedEntry?.intentionalNoTrade ?? false,
+    preMarketPlan: savedEntry?.preMarketPlan ?? "",
+    postSessionNote: savedEntry?.postSessionNote ?? "",
+  };
+  const { intentionalNoTrade, preMarketPlan, postSessionNote } = activeDraft;
+
+  const updateDraft = (patch: Partial<DayDraft>) => {
+    setDrafts((prev) => ({
+      ...prev,
+      [noteDate]: { ...activeDraft, ...patch },
+    }));
+  };
 
   const loadForDate = (targetDate: string) => {
     setNoteDate(targetDate);
-    const found = dayJournals.find((entry) => entry.date === targetDate);
-    setIntentionalNoTrade(found?.intentionalNoTrade ?? false);
-    setPreMarketPlan(found?.preMarketPlan ?? "");
-    setPostSessionNote(found?.postSessionNote ?? "");
+  };
+
+  const clearDraftForDate = (targetDate: string) => {
+    setDrafts((prev) => {
+      if (!(targetDate in prev)) return prev;
+      const next = { ...prev };
+      delete next[targetDate];
+      return next;
+    });
   };
 
   const toggleNoTrade = () => {
     const nextVal = !intentionalNoTrade;
-    setIntentionalNoTrade(nextVal);
-    void onSaveDayJournal?.({
+    const payload = {
       date: noteDate,
       intentionalNoTrade: nextVal,
       preMarketPlan,
       postSessionNote,
+    };
+    updateDraft({ intentionalNoTrade: nextVal });
+    void Promise.resolve(onSaveDayJournal?.(payload)).then((ok) => {
+      if (ok !== false) clearDraftForDate(noteDate);
     });
   };
 
   const saveDayForm = (event: React.FormEvent) => {
     event.preventDefault();
-    void onSaveDayJournal?.({
+    const payload = {
       date: noteDate,
       intentionalNoTrade,
       preMarketPlan,
       postSessionNote,
+    };
+    void Promise.resolve(onSaveDayJournal?.(payload)).then((ok) => {
+      if (ok !== false) clearDraftForDate(noteDate);
     });
   };
 
   const clearDayForm = () => {
-    setIntentionalNoTrade(false);
-    setPreMarketPlan("");
-    setPostSessionNote("");
+    clearDraftForDate(noteDate);
     void onSaveDayJournal?.({
       date: noteDate,
       intentionalNoTrade: false,
@@ -363,6 +433,7 @@ export function CalendarView({
   };
 
   const restDaysCount = dayJournals.filter((entry) => entry.intentionalNoTrade).length;
+  const tradesOnNoteDate = useMemo(() => trades.filter((t) => t.tradeDate === noteDate).length, [trades, noteDate]);
   const accounts = (settings.accounts ?? [DEFAULT_ACCOUNT]).map((item) => ({
     ...item,
     name: translateAccountName(item.name, locale),
@@ -373,7 +444,7 @@ export function CalendarView({
   );
   return (
     <div className="calendar-layout">
-      <TradingCalendar trades={trades} dayJournals={dayJournals} hidden={hidden} onDay={onDay} locale={locale} />
+      <TradingCalendar trades={trades} dayJournals={dayJournals} hidden={hidden} onDay={onDay} locale={locale} focusDate={initialFocusDate || undefined} />
       <aside className="calendar-side">
         <section className="card calendar-summary">
           <span className="widget-icon green"><CalendarDays size={18} /></span>
@@ -436,7 +507,7 @@ export function CalendarView({
                 maxLength={600}
                 rows={2}
                 value={preMarketPlan}
-                onChange={(event) => setPreMarketPlan(event.target.value)}
+                onChange={(event) => updateDraft({ preMarketPlan: event.target.value })}
                 placeholder={copy.preMarketPlanPlaceholder}
               />
             </label>
@@ -446,7 +517,7 @@ export function CalendarView({
                 maxLength={1000}
                 rows={3}
                 value={postSessionNote}
-                onChange={(event) => setPostSessionNote(event.target.value)}
+                onChange={(event) => updateDraft({ postSessionNote: event.target.value })}
                 placeholder={copy.postSessionNotePlaceholder}
               />
             </label>
@@ -457,6 +528,16 @@ export function CalendarView({
               )}
             </div>
           </form>
+
+          {tradesOnNoteDate > 0 ? (
+            <button type="button" className="text-link day-journal-jump" onClick={() => onDay(noteDate)}>
+              {copy.viewDayTradesBtn(tradesOnNoteDate)} <ArrowRight size={13} />
+            </button>
+          ) : !intentionalNoTrade && onLogTradeForDate ? (
+            <button type="button" className="text-link day-journal-jump" onClick={() => onLogTradeForDate(noteDate)}>
+              <Plus size={13} /> {copy.logTradeForDayBtn}
+            </button>
+          ) : null}
 
           {dayJournals.length > 0 && (
             <div className="day-journal-recent">
@@ -923,17 +1004,19 @@ export function PlaybookView({
   );
 }
 
-export function MindsetView({ settings, trades, onMood, onSaveMoodNote, onBreath, onPatience, onSaveReflection, onDeleteReflection }: { settings: JournalSettings; trades: Trade[]; onMood: (mood: string) => void; onSaveMoodNote: (note: string) => void; onBreath: () => void; onPatience?: () => void; onSaveReflection: (reflection: WeeklyReflection) => Promise<boolean>; onDeleteReflection: (id: string) => void }) {
+export function MindsetView({ settings, trades, onMood, onSaveMoodNote, onBreath, onPatience, onFilterMood, onSaveReflection, onDeleteReflection }: { settings: JournalSettings; trades: Trade[]; onMood: (mood: string) => void; onSaveMoodNote: (note: string) => void; onBreath: () => void; onPatience?: () => void; onFilterMood?: (mood: string) => void; onSaveReflection: (reflection: WeeklyReflection) => Promise<boolean>; onDeleteReflection: (id: string) => void }) {
   const locale = settings.locale ?? "en";
   const copy = UI_COPY[locale];
   const today = todayString(); const todayMood = settings.moodHistory?.find((item) => item.date === today);
-  const [note, setNote] = useState(todayMood?.note ?? ""); const [wentWell, setWentWell] = useState(""); const [learned, setLearned] = useState(""); const [nextWeek, setNextWeek] = useState(""); const [saving, setSaving] = useState(false);
+  const [draftNote, setDraftNote] = useState<string | null>(null);
+  const effectiveNote = draftNote ?? todayMood?.note ?? "";
+  const [wentWell, setWentWell] = useState(""); const [learned, setLearned] = useState(""); const [nextWeek, setNextWeek] = useState(""); const [saving, setSaving] = useState(false);
   const moodGroups = groupTrades(trades, (trade) => translateMood(trade.mood, locale), copy.notSpecified);
   async function saveReflection(event: React.FormEvent) { event.preventDefault(); if (!wentWell.trim() && !learned.trim() && !nextWeek.trim()) return; setSaving(true); const ok = await onSaveReflection({ id: crypto.randomUUID(), date: today, wentWell: wentWell.trim(), learned: learned.trim(), nextWeek: nextWeek.trim() }); setSaving(false); if (ok) { setWentWell(""); setLearned(""); setNextWeek(""); } }
   return <div className="view-stack"><section className="mindset-hero mindset-hero-compact"><div><h2>{copy.breathingHeroTitle}</h2><div className="mindset-hero-actions"><button type="button" className="button-primary" onClick={onBreath}><Wind size={16}/> {copy.startBreathing}</button>{onPatience && <button type="button" className="button-secondary" onClick={onPatience}>{copy.openPatience} <ArrowRight size={14}/></button>}</div></div><div className="mindset-orbit" aria-hidden="true"><span>✳</span></div></section>
-    <div className="mindset-grid"><MoodCard settings={settings} onMood={onMood} locale={locale}/><section className="card checkin-note"><CardTitle title={copy.todaysNoteTitle}/><label className="sr-only" htmlFor="daily-checkin-note">{copy.todaysNoteAria}</label><textarea id="daily-checkin-note" maxLength={1000} value={note} onChange={(event) => setNote(event.target.value)} placeholder={copy.todaysNotePlaceholder}/><button type="button" className="button-secondary" disabled={!todayMood} onClick={() => onSaveMoodNote(note)}>{copy.saveTodaysNote} <ArrowRight size={14}/></button>{!todayMood && <small>{copy.chooseFeelingFirst}</small>}</section><section className="card mood-history"><CardTitle title={copy.recentCheckinsTitle}/>{settings.moodHistory?.length ? [...settings.moodHistory].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map((entry) => <div className="history-row" key={entry.date}><span className="history-dot"/><div><strong>{translateMood(entry.mood, locale)}</strong><small>{shortDate(entry.date, true, locale)}{entry.note ? ` · ${entry.note}` : ""}</small></div></div>) : <div className="simple-empty">{copy.noCheckinsYet}</div>}</section></div>
+    <div className="mindset-grid"><MoodCard settings={settings} onMood={onMood} locale={locale}/><section className="card checkin-note"><CardTitle title={copy.todaysNoteTitle}/><label className="sr-only" htmlFor="daily-checkin-note">{copy.todaysNoteAria}</label><textarea id="daily-checkin-note" maxLength={1000} value={effectiveNote} onChange={(event) => setDraftNote(event.target.value)} placeholder={copy.todaysNotePlaceholder}/><button type="button" className="button-secondary" disabled={!todayMood && !effectiveNote.trim()} onClick={() => { onSaveMoodNote(effectiveNote); setDraftNote(null); }}>{copy.saveTodaysNote} <ArrowRight size={14}/></button>{!todayMood && !effectiveNote.trim() && <small>{copy.chooseFeelingFirst}</small>}</section><section className="card mood-history"><CardTitle title={copy.recentCheckinsTitle}/>{settings.moodHistory?.length ? [...settings.moodHistory].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map((entry) => <div className="history-row" key={entry.date}><span className="history-dot"/><div><strong>{translateMood(entry.mood, locale)}</strong><small>{shortDate(entry.date, true, locale)}{entry.note ? ` · ${entry.note}` : ""}</small></div></div>) : <div className="simple-empty">{copy.noCheckinsYet}</div>}</section></div>
     <div className="reflection-grid"><section className="card reflection-form"><CardTitle title={copy.weeklyReflectionTitle}/><form onSubmit={saveReflection}><label>{copy.qWentWell}<textarea maxLength={2000} value={wentWell} onChange={(event) => setWentWell(event.target.value)} placeholder={copy.pWentWell}/></label><label>{copy.qLearned}<textarea maxLength={2000} value={learned} onChange={(event) => setLearned(event.target.value)} placeholder={copy.pLearned}/></label><label>{copy.qCarryForward}<textarea maxLength={2000} value={nextWeek} onChange={(event) => setNextWeek(event.target.value)} placeholder={copy.pCarryForward}/></label><button type="submit" className="button-primary" disabled={saving}>{saving ? copy.saving : copy.saveReflection} <ArrowRight size={15}/></button></form></section>
-      <div className="reflection-side"><section className="card mood-pattern"><CardTitle title={copy.tradesByMoodTitle}/>{moodGroups.length ? moodGroups.map((group) => <div className="mood-pattern-row" key={group.name}><span>{group.name}</span><small>{group.count} {locale === "id" ? "trade" : group.count === 1 ? "trade" : "trades"}</small><strong>{group.wins + group.losses ? `${Math.round(group.wins / (group.wins + itemCount(group.wins, group.losses)) * 100)}%` : "—"} {copy.winsPctSuffix}</strong></div>) : <div className="simple-empty">{copy.addTradeForMoods}</div>}</section><section className="card reflection-history"><CardTitle title={copy.pastReflectionsTitle}/>{settings.reflections?.length ? [...settings.reflections].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map((item) => <article key={item.id}><div><strong>{shortDate(item.date, true, locale)}</strong><button type="button" className="icon-button" onClick={() => onDeleteReflection(item.id)} aria-label={`Delete reflection from ${shortDate(item.date, true, locale)}`}><Trash2 size={14}/></button></div><div className="reflection-answers">{item.wentWell && <p><strong>{copy.wentWellLabel}:</strong> {item.wentWell}</p>}{item.learned && <p><strong>{copy.learnedLabel}:</strong> {item.learned}</p>}{item.nextWeek && <p><strong>{copy.carryForwardLabel}:</strong> {item.nextWeek}</p>}</div></article>) : <div className="simple-empty">{copy.noReflectionsYet}</div>}</section></div></div>
+      <div className="reflection-side"><section className="card mood-pattern"><CardTitle title={copy.tradesByMoodTitle}/>{moodGroups.length ? moodGroups.map((group) => { const canonicalMood = MOODS.find((m) => translateMood(m, locale) === group.name); return <div className="mood-pattern-row" key={group.name}><span>{group.name}</span><small>{group.count} {locale === "id" ? "trade" : group.count === 1 ? "trade" : "trades"}</small><div className="mood-pattern-right"><strong>{group.wins + group.losses ? `${Math.round(group.wins / (group.wins + itemCount(group.wins, group.losses)) * 100)}%` : "—"} {copy.winsPctSuffix}</strong>{canonicalMood && onFilterMood && <button type="button" className="icon-button breakdown-jump-btn" onClick={() => onFilterMood(canonicalMood)} aria-label={copy.filterInJournalAria(group.name)} title={copy.filterInJournalAria(group.name)}><ArrowUpRight size={13}/></button>}</div></div>; }) : <div className="simple-empty">{copy.addTradeForMoods}</div>}</section><section className="card reflection-history"><CardTitle title={copy.pastReflectionsTitle}/>{settings.reflections?.length ? [...settings.reflections].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map((item) => <article key={item.id}><div><strong>{shortDate(item.date, true, locale)}</strong><button type="button" className="icon-button" onClick={() => onDeleteReflection(item.id)} aria-label={`Delete reflection from ${shortDate(item.date, true, locale)}`}><Trash2 size={14}/></button></div><div className="reflection-answers">{item.wentWell && <p><strong>{copy.wentWellLabel}:</strong> {item.wentWell}</p>}{item.learned && <p><strong>{copy.learnedLabel}:</strong> {item.learned}</p>}{item.nextWeek && <p><strong>{copy.carryForwardLabel}:</strong> {item.nextWeek}</p>}</div></article>) : <div className="simple-empty">{copy.noReflectionsYet}</div>}</section></div></div>
   </div>;
 }
 

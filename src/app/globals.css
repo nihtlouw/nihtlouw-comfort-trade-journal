@@ -5651,6 +5651,226 @@ html:has(.app-shell[data-theme="dark"][data-dark-variant="obsidian"], .loading-s
   }
 }
 
+/* ============================================================================
+   Workflow & Mobile Navigation Ergonomics Polish
+   ============================================================================ */
+
+@media (max-width: 900px) {
+  .mobile-bottom-nav button {
+    position: relative;
+    border-radius: 10px;
+    transition: color 160ms ease, background-color 160ms ease, transform 120ms ease;
+  }
+
+  .mobile-bottom-nav button:active {
+    transform: scale(0.96);
+  }
+
+  .mobile-bottom-nav button.active:not(.mobile-nav-add)::before {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 50%;
+    width: 18px;
+    height: 3px;
+    border-radius: 999px;
+    background: var(--accent);
+    transform: translateX(-50%);
+  }
+}
+
+.selected-day {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.selected-day-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+}
+
+.selected-day button.selected-day-note-btn {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  min-height: 26px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--accent-dark);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.selected-day button.selected-day-note-btn:hover {
+  border-color: var(--accent);
+}
+
+@media (max-width: 650px) {
+  .selected-day button.selected-day-note-btn {
+    min-height: 34px;
+    padding: 0 10px;
+  }
+}
+
+.calendar-nav .calendar-today-btn {
+  width: auto;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-alt);
+  color: var(--accent-dark);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.calendar-nav .calendar-today-btn:hover {
+  border-color: var(--accent);
+  color: var(--heading);
+}
+
+.calendar-day.focused {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.day-journal-jump {
+  margin-top: 10px;
+  font-size: 11px;
+}
+
+.live-r-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: var(--surface-alt);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.live-r-pill.win {
+  color: var(--accent-dark);
+  background: var(--accent-pale);
+  border-color: rgba(88, 152, 108, 0.3);
+}
+
+.live-r-pill.loss {
+  color: #bd6a57;
+  background: rgba(196, 106, 86, 0.12);
+  border-color: rgba(196, 106, 86, 0.28);
+}
+
+.app-shell[data-theme="dark"] .live-r-pill.loss {
+  color: #f0b5a6;
+  background: rgba(196, 106, 86, 0.16);
+}
+
+.blueprint-cue {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface-alt);
+}
+
+.blueprint-cue strong {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--heading);
+}
+
+.blueprint-cue small {
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.breakdown-right,
+.mood-pattern-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.breakdown-jump-btn {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+.breakdown-jump-btn:hover {
+  color: var(--heading);
+  background: var(--surface-alt);
+}
+
+.review-note-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.review-note-open {
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  min-height: 26px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.review-note-open:hover {
+  color: var(--heading);
+  background: var(--surface-alt);
+}
+
+.toast > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.toast > button.toast-dismiss {
+  display: inline-grid;
+  place-items: center;
+  padding: 4px;
+  margin-left: 2px;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.72;
+}
+
+.toast > button.toast-dismiss:hover {
+  opacity: 1;
+  background: rgba(128, 128, 128, 0.12);
+}
+
+.app-shell[data-theme="dark"] .toast:not(.toast-error) {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+
 
 
 

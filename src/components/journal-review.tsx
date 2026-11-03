@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, BookOpenText, ChevronLeft, ChevronRight, CircleAlert, ImageDown, ShieldCheck } from "lucide-react";
+import { ArrowRight, BookOpenText, ChevronLeft, ChevronRight, CircleAlert, ImageDown, Pencil, ShieldCheck } from "lucide-react";
 import { currency, shortDate, todayString } from "@/lib/format";
 import { translateAccountName, UI_COPY } from "@/lib/i18n";
 import { getWeeklyReview, shiftWeek, weekBounds } from "@/lib/review";
@@ -62,7 +62,7 @@ export function WeeklyReview({ trades, settings, hidden, onMindset, onSettings, 
         {review.setups.length ? <div className="review-setup-list">{review.setups.map((setup) => <div key={setup.name}><span className="review-setup-mark"><BookOpenText size={15}/></span><span><strong>{setup.name === "Not specified" ? copy.notSpecified : setup.name}</strong><small>{copy.setupStatsLine(setup.count, setup.wins, setup.losses)}</small></span><b className={setup.pnl < 0 ? "loss-text" : ""}>{currency(setup.pnl, setup.pnl > 0, hidden)}</b></div>)}</div> : <div className="simple-empty">{copy.noTradesThisWeek}</div>}
       </section>
       <section className="card review-card"><CardTitle title={copy.tradeNotesTitle}/>
-        {review.tradeNotes.length ? <div className="review-notes">{review.tradeNotes.slice(0, 10).map((trade) => <article key={trade.id}><div><strong>{trade.symbol}</strong><small>{shortDate(trade.tradeDate, true, locale)} · {accountName(accounts, trade.accountId ?? DEFAULT_ACCOUNT.id, locale)}{trade.isDemo ? ` · ${copy.sampleBadge}` : ""}</small></div><p>{trade.notes}</p></article>)}{review.tradeNotes.length > 10 && <p className="review-footnote">{copy.showing10Notes(review.tradeNotes.length)}</p>}</div> : <div className="simple-empty">{copy.noTradeNotesWeek}</div>}
+        {review.tradeNotes.length ? <div className="review-notes">{review.tradeNotes.slice(0, 10).map((trade) => <article key={trade.id}><div className="review-note-head"><div><strong>{trade.symbol}</strong><small>{shortDate(trade.tradeDate, true, locale)} · {accountName(accounts, trade.accountId ?? DEFAULT_ACCOUNT.id, locale)}{trade.isDemo ? ` · ${copy.sampleBadge}` : ""}</small></div><button type="button" className="icon-button review-note-open" onClick={() => onEditTrade(trade)} aria-label={copy.openTradeNoteAria(trade.symbol)} title={copy.openTradeNoteAria(trade.symbol)}><Pencil size={13}/></button></div><p>{trade.notes}</p></article>)}{review.tradeNotes.length > 10 && <p className="review-footnote">{copy.showing10Notes(review.tradeNotes.length)}</p>}</div> : <div className="simple-empty">{copy.noTradeNotesWeek}</div>}
       </section>
     </div><div className="review-column">
       <section className="card review-card risk-review"><CardTitle title={copy.riskInRecordsTitle}/>

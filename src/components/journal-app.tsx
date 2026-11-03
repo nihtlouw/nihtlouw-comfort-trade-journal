@@ -21,7 +21,7 @@ import { isBackupReminderDue, loadBackupReminder, recordBackupDownload, snoozeBa
 import { WeeklyReview } from "@/components/journal-review";
 import { PatienceView } from "@/components/journal-patience";
 import { LocalPwaStatus } from "@/components/local-pwa";
-import { AnalyticsView, CalendarView, GoalsView, JournalView, MindsetView, Overview, PlaybookView, type View } from "@/components/journal-views";
+import { AnalyticsView, CalendarView, GoalsView, JournalView, MindsetView, Overview, PlaybookView, type JournalFilterPreset, type View } from "@/components/journal-views";
 import { BreathingModal, ImportModal, SettingsModal, TradeModal, type PendingAttachmentFile, type SettingsTab, type TradeDraft } from "@/components/journal-dialogs";
 import { CassetteDeckModal, CassetteSidebarMini, useCassetteDeck } from "@/components/cassette-player";
 import { ChartLightbox, type ChartLightboxSlide } from "@/components/chart-lightbox";
@@ -56,6 +56,9 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
   const [ytKeepAlive, setYtKeepAlive] = useState(false);
   const [syncBannerDismissed, setSyncBannerDismissed] = useState(false);
   const [recapWeekStart, setRecapWeekStart] = useState<string | undefined>(undefined);
+  const [newTradeDate, setNewTradeDate] = useState<string>("");
+  const [calendarFocus, setCalendarFocus] = useState<{ nonce: number; date: string }>({ nonce: 0, date: "" });
+  const [journalPresetState, setJournalPresetState] = useState<{ nonce: number; preset: JournalFilterPreset } | null>(null);
   const toastTimer = useRef<number | null>(null); const modalCloseTimer = useRef<number | null>(null); const modalLayer = useRef<HTMLDivElement>(null); const mobileClose = useRef<HTMLButtonElement>(null);
 
   const locale: AppLocale = data.settings.locale ?? "en";
@@ -257,7 +260,16 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
     return ok;
   }
   async function clearSamples() { const current = dataRef.current; const samples = current.trades.filter((trade) => trade.isDemo); const ok = await commit({ ...current, trades: current.trades.filter((trade) => !trade.isDemo) }, locale === "id" ? "Trade contoh dihapus." : "Sample trades cleared."); if (ok) await removeUnusedImages(samples.flatMap((trade) => trade.attachments ?? [])); return ok; }
-  function newTrade() { setEditing(null); openModal("trade"); }
+  function newTrade(explicitDate?: unknown) {
+    const prefill = typeof explicitDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(explicitDate)
+      ? explicitDate
+      : view === "Trade journal" && selectedDay
+        ? selectedDay
+        : "";
+    setNewTradeDate(prefill);
+    setEditing(null);
+    openModal("trade");
+  }
   function editTrade(trade: Trade) { setEditing(trade); openModal("trade"); }
   function openTradeCharts(trade: Trade, startIndex = 0) {
     const shots = trade.attachments ?? [];
@@ -275,10 +287,48 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
     });
   }
   function scrollToTop() { window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? "auto" : "smooth" }); }
-  function navigate(next: View) { setView(next); setMobileMenu(false); if (next !== "Trade journal") setSelectedDay(""); scrollToTop(); }
-  function day(date: string) { setSelectedDay(date); setView("Trade journal"); scrollToTop(); }
+  function navigate(next: View) {
+    setView(next);
+    setMobileMenu(false);
+    if (next !== "Trade journal") {
+      setSelectedDay("");
+      setJournalPresetState(null);
+    }
+    if (next === "Calendar") {
+      setCalendarFocus({ nonce: 0, date: "" });
+    }
+    scrollToTop();
+  }
+  function day(date: string) { setJournalPresetState(null); setSelectedDay(date); setView("Trade journal"); scrollToTop(); }
+  function openCalendarDay(date: string) {
+    setMobileMenu(false);
+    setSelectedDay("");
+    setCalendarFocus((prev) => ({ nonce: prev.nonce + 1, date }));
+    setView("Calendar");
+    scrollToTop();
+  }
+  function filterJournal(preset: JournalFilterPreset) {
+    setMobileMenu(false);
+    setSelectedDay("");
+    setJournalPresetState((prev) => ({ nonce: (prev?.nonce ?? 0) + 1, preset }));
+    setView("Trade journal");
+    scrollToTop();
+  }
   function selectMood(mood: string) { const today = todayString(); const previous = dataRef.current.settings.moodHistory ?? []; const note = previous.find((item) => item.date === today)?.note ?? ""; void updateSettings({ mood, moodDate: today, moodHistory: [...previous.filter((item) => item.date !== today), { date: today, mood, note }] }, locale === "id" ? "Kondisi hari ini tersimpan." : "Check-in saved."); }
-  function saveMoodNote(note: string) { const today = todayString(); const previous = dataRef.current.settings.moodHistory ?? []; void updateSettings({ moodHistory: previous.map((item) => item.date === today ? { ...item, note: note.trim().slice(0, 1000) } : item) }, locale === "id" ? "Catatan kondisi tersimpan." : "Check-in note saved."); }
+  function saveMoodNote(note: string) {
+    const today = todayString();
+    const trimmed = note.trim().slice(0, 1000);
+    const previous = dataRef.current.settings.moodHistory ?? [];
+    const exists = previous.some((item) => item.date === today);
+    const fallbackMood = dataRef.current.settings.mood || "Calm";
+    const nextHistory = exists
+      ? previous.map((item) => item.date === today ? { ...item, note: trimmed } : item)
+      : [...previous, { date: today, mood: fallbackMood, note: trimmed }];
+    void updateSettings(
+      { ...(exists ? {} : { mood: fallbackMood, moodDate: today }), moodHistory: nextHistory },
+      locale === "id" ? "Catatan kondisi tersimpan." : "Check-in note saved.",
+    );
+  }
   function saveDayJournal(entry: DayJournalEntry) {
     const next = upsertDayJournal(dataRef.current.settings.dayJournals ?? [], entry);
     return updateSettings({ dayJournals: next }, copy.dayJournalSavedToast);
@@ -528,27 +578,27 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
         {showTradeControls && <div className="workspace-controls"><div className="account-select-wrap"><span className="account-select-icon">✳</span><label><span>{copy.accountLabel}</span><select aria-label={copy.filterByAccount} value={accountFilter} onChange={(event) => setAccountFilter(event.target.value)}><option value="all">{copy.allAccounts}</option>{accounts.map((account) => <option key={account.id} value={account.id}>{translateAccountName(account.name, locale)}</option>)}</select></label><ChevronDown size={14}/></div><div className="workspace-control-right">{sampleCount > 0 && <button type="button" className={`sample-toggle ${data.settings.includeSamples !== false ? "on" : ""}`} onClick={() => void updateSettings({ includeSamples: data.settings.includeSamples === false }, data.settings.includeSamples === false ? (locale === "id" ? "Trade contoh disertakan." : "Sample trades included.") : (locale === "id" ? "Trade contoh disembunyikan." : "Sample trades hidden."))} aria-pressed={data.settings.includeSamples !== false}><span className="sample-indicator-dot"/> {data.settings.includeSamples === false ? copy.samplesHidden : copy.samplesIncluded}<span className="switch"><i/></span></button>}<span className="save-indicator"><span/>{saving ? copy.saving : storage === "browser" ? copy.savedOnDevice : copy.privateSynced}</span></div></div>}
         <div className="view-motion" data-view={view}>
         {(view === "Overview" || ytKeepAlive) && <Overview {...common} active={view === "Overview"} onYoutubePlayerMountChange={setYtKeepAlive}/>}
-        {view === "Trade journal" && <JournalView trades={visibleTrades} dayJournals={data.settings.dayJournals} hidden={hidden} mode={storage} onEditTrade={editTrade} onNewTrade={newTrade} onImport={() => openModal("import")} onExport={exportCsv} onExportXlsx={exportXlsx} onPreviewCharts={openTradeCharts} onOpenSlides={(slides, index) => setLightbox({ slides, index })} selectedDay={selectedDay} clearDay={() => setSelectedDay("")} locale={locale}/>}
-        {view === "Analytics" && <AnalyticsView trades={visibleTrades} allTrades={data.trades} accountFilter={accountFilter} settings={data.settings} hidden={hidden} period={period} onPeriod={setPeriod} onAccountsSettings={() => openSettings("Accounts")}/>}
-        {view === "Weekly review" && <WeeklyReview trades={visibleTrades} settings={data.settings} hidden={hidden} onMindset={() => navigate("Mindset")} onSettings={() => openSettings("Risk")} onEditTrade={editTrade} onNewTrade={newTrade} onJournal={() => navigate("Trade journal")} onPreviewCharts={openTradeCharts} onOpenRecap={(ws) => openRecap(ws)}/>}
-        {view === "Calendar" && <CalendarView trades={visibleTrades} allTrades={data.trades} accountFilter={accountFilter} settings={data.settings} hidden={hidden} onDay={day} onAccountsSettings={() => openSettings("Accounts")} onSaveDayJournal={saveDayJournal}/>}
+        {view === "Trade journal" && <JournalView key={journalPresetState ? `preset-${journalPresetState.nonce}` : "journal"} trades={visibleTrades} dayJournals={data.settings.dayJournals} hidden={hidden} mode={storage} onEditTrade={editTrade} onNewTrade={() => newTrade()} onImport={() => openModal("import")} onExport={exportCsv} onExportXlsx={exportXlsx} onPreviewCharts={openTradeCharts} onOpenSlides={(slides, index) => setLightbox({ slides, index })} selectedDay={selectedDay} clearDay={() => setSelectedDay("")} onOpenCalendarDay={openCalendarDay} initialPreset={journalPresetState?.preset ?? null} locale={locale}/>}
+        {view === "Analytics" && <AnalyticsView trades={visibleTrades} allTrades={data.trades} accountFilter={accountFilter} settings={data.settings} hidden={hidden} period={period} onPeriod={setPeriod} onAccountsSettings={() => openSettings("Accounts")} onFilterJournal={filterJournal}/>}
+        {view === "Weekly review" && <WeeklyReview trades={visibleTrades} settings={data.settings} hidden={hidden} onMindset={() => navigate("Mindset")} onSettings={() => openSettings("Risk")} onEditTrade={editTrade} onNewTrade={() => newTrade()} onJournal={() => navigate("Trade journal")} onPreviewCharts={openTradeCharts} onOpenRecap={(ws) => openRecap(ws)}/>}
+        {view === "Calendar" && <CalendarView key={calendarFocus.nonce ? `cal-${calendarFocus.nonce}` : "cal"} trades={visibleTrades} allTrades={data.trades} accountFilter={accountFilter} settings={data.settings} hidden={hidden} onDay={day} onAccountsSettings={() => openSettings("Accounts")} onSaveDayJournal={saveDayJournal} initialFocusDate={calendarFocus.date || undefined} onLogTradeForDate={(targetDate) => newTrade(targetDate)}/>}
         {view === "Playbook" && <PlaybookView settings={data.settings} trades={visibleTrades} hidden={hidden} onUpdate={(playbook: PlaybookRule[]) => void updateSettings({ playbook })} onUpdateBlueprints={(setupBlueprints: SetupBlueprint[], msg?: string) => void updateSettings({ setupBlueprints }, msg)}/>}
-        {view === "Mindset" && <MindsetView settings={data.settings} trades={visibleTrades} onMood={selectMood} onSaveMoodNote={saveMoodNote} onBreath={() => openModal("breathing")} onPatience={() => navigate("Patience")} onSaveReflection={(reflection: WeeklyReflection) => updateSettings({ reflections: [...(dataRef.current.settings.reflections ?? []), reflection] }, locale === "id" ? "Refleksi tersimpan." : "Reflection saved.")} onDeleteReflection={(reflectionId) => { if (window.confirm(locale === "id" ? "Hapus refleksi ini?" : "Delete this reflection?")) void updateSettings({ reflections: (dataRef.current.settings.reflections ?? []).filter((item) => item.id !== reflectionId) }, locale === "id" ? "Refleksi dihapus." : "Reflection removed."); }}/>}
+        {view === "Mindset" && <MindsetView settings={data.settings} trades={visibleTrades} onMood={selectMood} onSaveMoodNote={saveMoodNote} onBreath={() => openModal("breathing")} onPatience={() => navigate("Patience")} onFilterMood={(mood) => filterJournal({ mood })} onSaveReflection={(reflection: WeeklyReflection) => updateSettings({ reflections: [...(dataRef.current.settings.reflections ?? []), reflection] }, locale === "id" ? "Refleksi tersimpan." : "Reflection saved.")} onDeleteReflection={(reflectionId) => { if (window.confirm(locale === "id" ? "Hapus refleksi ini?" : "Delete this reflection?")) void updateSettings({ reflections: (dataRef.current.settings.reflections ?? []).filter((item) => item.id !== reflectionId) }, locale === "id" ? "Refleksi dihapus." : "Reflection removed."); }}/>}
         {view === "Patience" && <PatienceView trades={visibleTrades} settings={data.settings} accountFilter={accountFilter} hidden={hidden} onDay={day} onUpdateSettings={updateSettings}/>}
         {view === "Goals" && <GoalsView settings={data.settings} onMark={markGoal} onUndo={undoGoal} onReset={resetGoal} onDelete={deleteGoal} onAdd={addGoal}/>}
         </div>
       </div><footer className="app-footer"><span>{storage === "browser" ? copy.footerBrowser : copy.footerServer}</span></footer></main>
     <nav className="mobile-bottom-nav" aria-label={copy.navLabelMobile}>
-      <button type="button" className={view === "Overview" ? "active" : ""} aria-current={view === "Overview" ? "page" : undefined} onClick={() => navigate("Overview")}><LayoutDashboard size={19}/><span>{copy.views["Overview"].nav}</span></button>
+      <button type="button" className={!["Overview", "Trade journal", "Calendar"].includes(view) ? "active" : ""} onClick={() => setMobileMenu((open) => !open)} aria-expanded={mobileMenu} aria-controls="primary-sidebar"><span className="mobile-more-icon"><Menu size={19}/>{cassetteDeck.status === "playing" && <i className="mobile-audio-dot" aria-hidden="true"/>}</span><span>{copy.more}</span></button>
       <button type="button" className={view === "Trade journal" ? "active" : ""} aria-current={view === "Trade journal" ? "page" : undefined} onClick={() => navigate("Trade journal")}><NotebookPen size={19}/><span>{copy.journalShort}</span></button>
-      <button type="button" className="mobile-nav-add" onClick={newTrade} aria-label={copy.logATrade}><Plus size={20} strokeWidth={2.4}/></button>
+      <button type="button" className="mobile-nav-add" onClick={() => newTrade()} aria-label={copy.logATrade}><Plus size={20} strokeWidth={2.4}/></button>
       <button type="button" className={view === "Calendar" ? "active" : ""} aria-current={view === "Calendar" ? "page" : undefined} onClick={() => navigate("Calendar")}><CalendarDays size={19}/><span>{copy.views["Calendar"].nav}</span></button>
-      <button type="button" className={!["Overview", "Trade journal", "Calendar"].includes(view) ? "active" : ""} onClick={() => setMobileMenu(true)} aria-expanded={mobileMenu} aria-controls="primary-sidebar"><span className="mobile-more-icon"><Menu size={19}/>{cassetteDeck.status === "playing" && <i className="mobile-audio-dot" aria-hidden="true"/>}</span><span>{copy.more}</span></button>
+      <button type="button" className={view === "Overview" ? "active" : ""} aria-current={view === "Overview" ? "page" : undefined} onClick={() => navigate("Overview")}><LayoutDashboard size={19}/><span>{copy.views["Overview"].nav}</span></button>
     </nav>
     {modal && <div ref={modalLayer} className={`modal-layer ${modalClosing ? "is-closing" : ""}`}
       onClickCapture={(event) => { if (modalClosing) { event.preventDefault(); event.stopPropagation(); } }}
       onSubmitCapture={(event) => { if (modalClosing) { event.preventDefault(); event.stopPropagation(); } }}>
-    {modal === "trade" && <TradeModal key={editing?.id ?? "new"} trade={editing} trades={data.trades} limits={data.settings.riskLimits ?? { perTrade: null, dailyLoss: null }} hidden={hidden} accounts={accounts} playbook={data.settings.playbook} setupBlueprints={data.settings.setupBlueprints} defaultAccount={defaultAccount} mode={storage} locale={locale} onClose={closeModal} onSave={saveTrade} onDelete={deleteTrade}/>}
+    {modal === "trade" && <TradeModal key={editing ? `edit-${editing.id}` : `new-${newTradeDate}`} trade={editing} trades={data.trades} limits={data.settings.riskLimits ?? { perTrade: null, dailyLoss: null }} hidden={hidden} accounts={accounts} playbook={data.settings.playbook} setupBlueprints={data.settings.setupBlueprints} defaultAccount={defaultAccount} initialDate={editing ? undefined : (newTradeDate || undefined)} mode={storage} locale={locale} onClose={closeModal} onSave={saveTrade} onDelete={deleteTrade}/>}
     {modal === "settings" && <SettingsModal data={data} mode={storage} sampleCount={sampleCount} initialTab={settingsTab} backupState={backupTracking?.state ?? null} backupAvailable={backupTracking?.available ?? false} backupEnabled={damaged === null} hidden={hidden} onClose={closeModal} onUpdate={updateSettings} onClearSamples={clearSamples} onBackup={backup} onRestore={restore} onExportCsv={() => exportCsv(dataRef.current.trades)} onExportXlsx={() => exportXlsx(dataRef.current.trades)} onImportCsv={() => openModal("import")} onLoadDummyData={loadThreeMonthDummy} onAddAccount={addAccount} onUpdateAccount={updateAccount} onRemoveAccount={removeAccount} onSignOut={storage === "server" ? signOut : undefined}/>}
     {modal === "import" && <ImportModal trades={data.trades} accounts={accounts} defaultAccount={defaultAccount} locale={locale} onClose={closeModal} onImport={importTrades}/>}
     {modal === "breathing" && <BreathingModal onClose={closeModal} locale={locale}/>}
@@ -576,6 +626,6 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
         onEditTrade={editTrade}
       />
     )}
-    {toast && <div className={`toast ${toast.error ? "toast-error" : ""}`} role="status">{toast.error ? <CircleAlert size={18}/> : <CheckCircle2 size={18}/>} {toast.message}{toast.breath && <><button type="button" onClick={() => { setToast(null); openModal("breathing"); }}>{copy.takeABreath}</button><button type="button" onClick={() => { setToast(null); navigate("Patience"); }}>Patience</button></>}</div>}
+    {toast && <div className={`toast ${toast.error ? "toast-error" : ""}`} role="status">{toast.error ? <CircleAlert size={18}/> : <CheckCircle2 size={18}/>} <span>{toast.message}</span>{toast.breath && <><button type="button" onClick={() => { setToast(null); openModal("breathing"); }}>{copy.takeABreath}</button><button type="button" onClick={() => { setToast(null); navigate("Patience"); }}>Patience</button></>}<button type="button" className="toast-dismiss" onClick={() => setToast(null)} aria-label={copy.dismissToastAria}><X size={14}/></button></div>}
   </div>;
 }

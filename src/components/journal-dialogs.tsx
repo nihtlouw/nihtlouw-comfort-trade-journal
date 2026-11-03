@@ -40,6 +40,7 @@ export function ModalShell({ children, onClose, label, wide = false }: { childre
     document.body.style.overflow = "hidden";
     const timeout = window.setTimeout(() => dialog.current?.querySelector<HTMLElement>("input:not([type=hidden]), button, select, textarea")?.focus(), 0);
     const key = (event: KeyboardEvent) => {
+      if (document.querySelector(".chart-lightbox-backdrop")) return;
       if (event.key === "Escape") { event.preventDefault(); onClose(); }
       if (event.key === "Tab" && dialog.current) {
         const focusable = Array.from(dialog.current.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])')).filter((item) => item.offsetParent !== null);
@@ -191,10 +192,10 @@ type TradeForm = {
 };
 export type TradeDraft = Omit<TradeForm, "tags"> & { tags: string[] };
 
-export function TradeModal({ trade, trades, limits, hidden, accounts, playbook, setupBlueprints = [], defaultAccount, mode, locale = "en", onClose, onSave, onDelete }: { trade: Trade | null; trades: Trade[]; limits: RiskLimits; hidden: boolean; accounts: TradingAccount[]; playbook: PlaybookRule[]; setupBlueprints?: SetupBlueprint[]; defaultAccount: string; mode: StorageMode; locale?: AppLocale; onClose: () => void; onSave: (draft: TradeDraft, files: PendingAttachmentFile[], removed: TradeAttachment[], id?: number) => Promise<boolean>; onDelete: (id: number) => Promise<boolean> }) {
+export function TradeModal({ trade, trades, limits, hidden, accounts, playbook, setupBlueprints = [], defaultAccount, initialDate, mode, locale = "en", onClose, onSave, onDelete }: { trade: Trade | null; trades: Trade[]; limits: RiskLimits; hidden: boolean; accounts: TradingAccount[]; playbook: PlaybookRule[]; setupBlueprints?: SetupBlueprint[]; defaultAccount: string; initialDate?: string; mode: StorageMode; locale?: AppLocale; onClose: () => void; onSave: (draft: TradeDraft, files: PendingAttachmentFile[], removed: TradeAttachment[], id?: number) => Promise<boolean>; onDelete: (id: number) => Promise<boolean> }) {
   const copy = UI_COPY[locale];
   const [form, setForm] = useState<TradeForm>(() => ({
-    symbol: trade?.symbol ?? "", market: trade?.market ?? "Forex", side: trade?.side ?? "Long", tradeDate: trade?.tradeDate ?? todayString(), pnl: trade?.pnl ?? "",
+    symbol: trade?.symbol ?? "", market: trade?.market ?? "Forex", side: trade?.side ?? "Long", tradeDate: trade?.tradeDate ?? (initialDate || todayString()), pnl: trade?.pnl ?? "",
     setup: trade?.setup ?? "", mood: trade?.mood ?? "Calm", notes: trade?.notes ?? "", accountId: trade?.accountId ?? defaultAccount,
     entryPrice: trade?.entryPrice ?? "", exitPrice: trade?.exitPrice ?? "", positionSize: trade?.positionSize ?? "", stopLoss: trade?.stopLoss ?? "", takeProfit: trade?.takeProfit ?? "", fees: trade?.fees ?? "", initialRisk: trade?.initialRisk ?? "", timeframe: trade?.timeframe ?? "", session: trade?.session ?? "", tags: (trade?.tags ?? []).join(", "),
     followedPlan: typeof trade?.followedPlan === "boolean" ? trade.followedPlan : null,
@@ -204,6 +205,34 @@ export function TradeModal({ trade, trades, limits, hidden, accounts, playbook, 
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const update = <K extends keyof TradeForm>(key: K, value: TradeForm[K]) => setForm((current) => ({ ...current, [key]: value }));
   const suggestions = useMemo(() => getSmartEntrySuggestions(trades, setupBlueprints), [trades, setupBlueprints]);
+  const matchedBlueprint = useMemo(
+    () => setupBlueprints.find((bp) => bp.name.trim().toLowerCase() === form.setup.trim().toLowerCase() && Boolean(form.setup.trim())),
+    [setupBlueprints, form.setup],
+  );
+  const liveR = useMemo(() => {
+    if (!form.pnl.trim() || !form.initialRisk.trim()) return null;
+    const pnlNum = Number(form.pnl);
+    const riskNum = Number(form.initialRisk);
+    if (!Number.isFinite(pnlNum) || !Number.isFinite(riskNum) || riskNum <= 0) return null;
+    return pnlNum / riskNum;
+  }, [form.pnl, form.initialRisk]);
+  function applySymbolChip(sym: string) {
+    setForm((current) => {
+      const recent = !trade ? trades.find((t) => t.symbol.trim().toUpperCase() === sym.toUpperCase()) : undefined;
+      const nextMarket = recent && (MARKETS as readonly string[]).includes(recent.market) ? recent.market : current.market;
+      return { ...current, symbol: sym, market: nextMarket };
+    });
+  }
+  function applySetupChip(item: string) {
+    const bp = setupBlueprints.find((entry) => entry.name.trim().toLowerCase() === item.trim().toLowerCase());
+    setForm((current) => ({
+      ...current,
+      setup: item,
+      market: bp?.market && bp.market !== "All" && (MARKETS as readonly string[]).includes(bp.market) ? bp.market : current.market,
+      timeframe: !current.timeframe.trim() && bp?.timeframe?.trim() ? bp.timeframe.trim() : current.timeframe,
+      session: !current.session.trim() && bp?.session?.trim() ? bp.session.trim() : current.session,
+    }));
+  }
   const activeTagNorms = useMemo(
     () => new Set(form.tags.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean)),
     [form.tags],
@@ -246,7 +275,7 @@ export function TradeModal({ trade, trades, limits, hidden, accounts, playbook, 
                   key={sym}
                   className={`smart-chip ${active ? "selected" : ""}`}
                   aria-pressed={active}
-                  onClick={() => update("symbol", sym)}
+                  onClick={() => applySymbolChip(sym)}
                 >
                   {sym}
                 </button>
@@ -258,7 +287,14 @@ export function TradeModal({ trade, trades, limits, hidden, accounts, playbook, 
       <label>{copy.marketLabel}<select value={form.market} onChange={(event) => update("market", event.target.value)}>{MARKETS.map((market) => <option key={market} value={market}>{translateMarket(market, locale)}</option>)}</select></label>
       <label>{copy.directionLabel}<select value={form.side} onChange={(event) => update("side", event.target.value as "Long" | "Short")}><option value="Long">{translateSide("Long", locale)}</option><option value="Short">{translateSide("Short", locale)}</option></select></label>
       <label>{copy.tradeDateLabel}<input type="date" required value={form.tradeDate} onChange={(event) => update("tradeDate", event.target.value)}/></label>
-      <label>{copy.netPnlLabel}<input type="number" step="0.01" required placeholder="e.g. 125 or -50" value={form.pnl} onChange={(event) => update("pnl", event.target.value)}/><small>{copy.netPnlHint}</small></label>
+      <div className="field-with-chips">
+        <label>{copy.netPnlLabel}<input type="number" step="0.01" required placeholder="e.g. 125 or -50" value={form.pnl} onChange={(event) => update("pnl", event.target.value)}/><small>{copy.netPnlHint}</small></label>
+        {liveR !== null && (
+          <span className={`live-r-pill ${liveR > 0 ? "win" : liveR < 0 ? "loss" : "even"}`} role="status">
+            {copy.liveRBadge(`${liveR > 0 ? "+" : ""}${liveR.toFixed(2)}R`)}
+          </span>
+        )}
+      </div>
       <label>{copy.tradingAccountLabel}<select value={form.accountId} onChange={(event) => update("accountId", event.target.value)}>{accounts.map((account) => <option value={account.id} key={account.id}>{translateAccountName(account.name, locale)}</option>)}</select></label>
       <div className="field-with-chips">
         <label>{copy.setupLabel}<input maxLength={80} placeholder={copy.setupPlaceholder} value={form.setup} onChange={(event) => update("setup", event.target.value)}/></label>
@@ -272,12 +308,19 @@ export function TradeModal({ trade, trades, limits, hidden, accounts, playbook, 
                   key={item}
                   className={`smart-chip ${active ? "selected" : ""}`}
                   aria-pressed={active}
-                  onClick={() => update("setup", item)}
+                  onClick={() => applySetupChip(item)}
                 >
                   {item}
                 </button>
               );
             })}
+          </div>
+        )}
+        {matchedBlueprint && (matchedBlueprint.entryTrigger || matchedBlueprint.invalidation) && (
+          <div className="blueprint-cue" role="note">
+            <strong>{copy.blueprintCueLabel} · {matchedBlueprint.name}</strong>
+            {matchedBlueprint.entryTrigger && <small>{matchedBlueprint.entryTrigger}</small>}
+            {matchedBlueprint.invalidation && <small>{matchedBlueprint.invalidation}</small>}
           </div>
         )}
       </div>
