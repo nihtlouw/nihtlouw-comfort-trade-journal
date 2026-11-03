@@ -63,6 +63,7 @@ export function CommandPaletteModal({
   onToggleLocale,
   onDownloadBackup,
   onOpenSettings,
+  onOpenCloudSync,
   onEditTrade,
 }: {
   trades: Trade[];
@@ -84,6 +85,7 @@ export function CommandPaletteModal({
   onToggleLocale: () => void;
   onDownloadBackup: () => void;
   onOpenSettings: () => void;
+  onOpenCloudSync?: () => void;
   onEditTrade: (trade: Trade) => void;
 }) {
   const copy = UI_COPY[locale];
@@ -219,6 +221,21 @@ export function CommandPaletteModal({
           onDownloadBackup();
         },
       },
+      ...(onOpenCloudSync
+        ? [
+            {
+              id: "act-cloud-sync",
+              section: "actions" as const,
+              title: copy.cmdActionCloudSync,
+              keywords: "cloud sync pro subscription midtrans qris lemonsqueezy login google sinkron langganan",
+              icon: Globe,
+              run: () => {
+                onClose();
+                onOpenCloudSync();
+              },
+            },
+          ]
+        : []),
     ];
 
     const viewDefs: { view: View; icon: ElementType; extra: string }[] = [
@@ -307,6 +324,7 @@ export function CommandPaletteModal({
     onNewTrade,
     onOpenBreathing,
     onOpenCassette,
+    onOpenCloudSync,
     onOpenRecap,
     onOpenSettings,
     onPlaySoftRain,

@@ -5,6 +5,7 @@
     "dev": "next dev",
     "build": "next build",
     "build:pages": "node scripts/build-pages.mjs",
+    "build:android": "node scripts/build-android-web.mjs",
     "test:pages": "node scripts/test-pages.mjs",
     "start": "next start",
     "lint": "eslint .",

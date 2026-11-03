@@ -37,15 +37,57 @@ async function browserAsset<T>(mode: IDBTransactionMode, action: (store: IDBObje
     transaction.onabort = () => { db.close(); reject(new Error("Screenshot storage was interrupted.")); };
   });
 }
+export async function compressChartForCloud(file: Blob, name: string): Promise<{ blob: Blob; name: string }> {
+  if (
+    typeof window === "undefined" ||
+    typeof document === "undefined" ||
+    file.size < 160_000 ||
+    file.type === "image/gif" ||
+    file.type === "image/webp"
+  ) {
+    return { blob: file, name };
+  }
+  try {
+    const bitmap = await createImageBitmap(file);
+    const maxDim = 1920;
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height, 1));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      bitmap.close();
+      return { blob: file, name };
+    }
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+    const webp = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.84));
+    if (!webp || webp.size === 0 || webp.size >= file.size * 0.92) {
+      return { blob: file, name };
+    }
+    await validateImage(webp);
+    const baseName = name.replace(/\.(png|jpe?g)$/i, "");
+    return { blob: webp, name: `${baseName || "Screenshot"}.webp` };
+  } catch {
+    return { blob: file, name };
+  }
+}
+
 export async function saveAttachment(file: Blob, name: string, mode: StorageMode): Promise<TradeAttachment> {
-  const type = await validateImage(file);
+  await validateImage(file);
   const cleanName = name.slice(0, 200) || "Screenshot";
   if (mode === "browser") {
+    const type = await validateImage(file);
     const id = crypto.randomUUID();
     await browserAsset("readwrite", (store) => store.put(file, id));
     return { id, name: cleanName, type, size: file.size };
   }
-  const form = new FormData(); form.append("file", file, cleanName);
+  const optimized = await compressChartForCloud(file, cleanName);
+  const form = new FormData(); form.append("file", optimized.blob, optimized.name.slice(0, 200));
   const response = await fetch("/api/attachments", { method: "POST", body: form });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "Couldn't upload screenshot.");

@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ElementType } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ElementType } from "react";
 import { BarChart3, BookOpenCheck, CalendarDays, CheckCircle2, ChevronDown, CircleAlert, ClipboardList, CloudDownload, Eye, EyeOff, Heart, Hourglass, LayoutDashboard, Menu, NotebookPen, Plus, Search, Settings2, Smartphone, Sparkles, Sprout, Target, X } from "lucide-react";
 import type { AppLocale, DayJournalEntry, Intention, JournalData, JournalSettings, PlaybookRule, SavedYoutubeVideo, SetupBlueprint, StrategyLibraryItem, StrategyPdfResource, Trade, TradeAttachment, TradingAccount, WeeklyReflection } from "@/lib/types";
 import { DEFAULT_ACCOUNT, MAX_JOURNAL_IMAGE_BYTES, MAX_JOURNAL_PDF_BYTES, MAX_STRATEGY_ITEMS } from "@/lib/types";
 import { upsertDayJournal } from "@/lib/analytics";
+import type { BillingCycle, BillingProvider, CloudContext } from "@/lib/billing";
+import { getLocalDeviceSummary, syncLocalDeviceJournalToCloud } from "@/lib/cloud-migration";
 import { todayString, type Period } from "@/lib/format";
 import { greetingText, translateAccountName, UI_COPY, writeStoredLocale } from "@/lib/i18n";
 import { normalizeJournalData } from "@/lib/journal-data";
@@ -12,6 +14,7 @@ import { saveBrowserJournal } from "@/lib/browser-journal";
 import { createDemoData } from "@/lib/demo-data";
 import { createThreeMonthDummyData, generateDummyChartImages } from "@/lib/dummy-dataset";
 import { removeAttachment, saveAttachment, type StorageMode } from "@/lib/attachments";
+import { ensurePersistentDeviceStorage } from "@/lib/persistent-storage";
 import { buildSampleStrategyPdfBlob, cleanPdfTitle, removeStrategyPdf, saveStrategyPdf, type StoredPdfMeta } from "@/lib/strategy-library";
 import { createBackup, downloadFile, parseBackup, stageBackupImages } from "@/lib/backup";
 import { exportTradesCsv } from "@/lib/csv";
@@ -40,13 +43,32 @@ const personalNav: { label: View; icon: ElementType }[] = [{ label: "Mindset", i
 function sortTrades(trades: Trade[]) { return [...trades].sort((a, b) => b.tradeDate.localeCompare(a.tradeDate) || b.id - a.id); }
 function id() { return crypto.randomUUID(); }
 
-export function JournalApp({ initialData, storage = "browser", initialRevision = 0, initialDamaged = null, backupScope = "browser" }: { initialData: JournalData; storage?: StorageMode; initialRevision?: number; initialDamaged?: string | null; backupScope?: string }) {
+export function JournalApp({
+  initialData,
+  storage = "browser",
+  initialRevision = 0,
+  initialDamaged = null,
+  backupScope = "browser",
+  cloudContext,
+  initialOpenCloud = false,
+  initialBillingSuccess = false,
+}: {
+  initialData: JournalData;
+  storage?: StorageMode;
+  initialRevision?: number;
+  initialDamaged?: string | null;
+  backupScope?: string;
+  cloudContext?: CloudContext;
+  initialOpenCloud?: boolean;
+  initialBillingSuccess?: boolean;
+}) {
   const [data, setData] = useState(() => normalizeJournalData(initialData));
   const dataRef = useRef(data); const revision = useRef(initialRevision); const busyRef = useRef(false);
-  const [view, setView] = useState<View>("Overview"); const [period, setPeriod] = useState<Period>("1M"); const [modal, setModal] = useState<Modal>(null); const [modalClosing, setModalClosing] = useState(false);
+  const [view, setView] = useState<View>("Overview"); const [period, setPeriod] = useState<Period>("1M"); const [modal, setModal] = useState<Modal>(() => initialOpenCloud ? "settings" : null); const [modalClosing, setModalClosing] = useState(false);
   const [editing, setEditing] = useState<Trade | null>(null); const [hidden, setHidden] = useState(false); const [accountFilter, setAccountFilter] = useState("all");
   const [selectedDay, setSelectedDay] = useState(""); const [mobileMenu, setMobileMenu] = useState(false); const [saving, setSaving] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>("General");
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>(() => initialOpenCloud ? "Cloud" : "General");
+  const [migrationNonce, setMigrationNonce] = useState(0);
   const [backupTracking, setBackupTracking] = useState<{ state: BackupReminderState; available: boolean } | null>(null);
   const [backupBusy, setBackupBusy] = useState(false); const backupBusyRef = useRef(false);
   const [online, setOnline] = useState(true); const [reminderClock, setReminderClock] = useState(0);
@@ -76,12 +98,30 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
     toastTimer.current = window.setTimeout(() => setToast(null), error ? 6500 : 4000);
   }, []);
 
+  const cassetteMode: StorageMode = cloudContext?.saasMode ? "browser" : storage;
   const cassetteDeck = useCassetteDeck({
-    mode: storage,
+    mode: cassetteMode,
     locale,
     reduceMotion: data.settings.reduceMotion === true,
     onNotify: (msg, isErr) => notify(msg, Boolean(isErr)),
   });
+
+  useEffect(() => {
+    void ensurePersistentDeviceStorage();
+  }, []);
+
+  useEffect(() => {
+    if (!initialBillingSuccess) return;
+    const timer = window.setTimeout(() => {
+      notify(copy.cloudBillingSuccessToast);
+      if (window.history?.replaceState) {
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete("billing");
+        window.history.replaceState({}, "", cleanUrl.pathname + cleanUrl.search + cleanUrl.hash);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [copy.cloudBillingSuccessToast, initialBillingSuccess, notify]);
 
   const openModal = useCallback((next: Exclude<Modal, null>) => {
     if (modalCloseTimer.current !== null) window.clearTimeout(modalCloseTimer.current);
@@ -153,17 +193,70 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
   const visibleTrades = sortTrades(data.trades.filter((trade) => (data.settings.includeSamples !== false || !trade.isDemo) && (accountFilter === "all" || (trade.accountId ?? DEFAULT_ACCOUNT.id) === accountFilter)));
   const defaultAccount = accountFilter === "all" ? accounts[0]?.id ?? DEFAULT_ACCOUNT.id : accountFilter;
 
+  const cloudCacheKey = `bloom.cloudCache.${cloudContext?.user?.id ?? backupScope}`;
+  const cloudDirtyKey = `bloom.cloudDirty.${cloudContext?.user?.id ?? backupScope}`;
+
+  useEffect(() => {
+    if (storage !== "server") return;
+    try {
+      window.localStorage.setItem(cloudCacheKey, JSON.stringify(dataRef.current));
+    } catch {
+      // Ignore quota errors on local cache mirror
+    }
+    const flushOfflineChanges = async () => {
+      if (busyRef.current || !window.navigator.onLine) return;
+      try {
+        if (window.localStorage.getItem(cloudDirtyKey) !== "1") return;
+        const cachedRaw = window.localStorage.getItem(cloudCacheKey);
+        if (!cachedRaw) return;
+        const cachedData = normalizeJournalData(JSON.parse(cachedRaw));
+        busyRef.current = true;
+        setSaving(true);
+        const response = await fetch("/api/journal", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ revision: revision.current, data: cachedData }),
+        });
+        if (response.ok) {
+          const result = (await response.json()) as { revision: number };
+          revision.current = result.revision;
+          window.localStorage.removeItem(cloudDirtyKey);
+        }
+      } catch {
+        // Keep dirty flag for next reconnect
+      } finally {
+        busyRef.current = false;
+        setSaving(false);
+      }
+    };
+    window.addEventListener("online", flushOfflineChanges);
+    return () => window.removeEventListener("online", flushOfflineChanges);
+  }, [cloudCacheKey, cloudDirtyKey, storage]);
+
   async function commit(next: JournalData, success?: string, allowReplaceDamaged = false) {
     if (busyRef.current) { notify(locale === "id" ? "Sedang menyelesaikan penyimpanan sebelumnya. Coba sesaat lagi." : "Finishing the last save. Please try again in a moment.", true); return false; }
     busyRef.current = true; setSaving(true);
     try {
       const normalized = normalizeJournalData(next);
       if (storage === "browser") saveBrowserJournal(window.localStorage, normalized, allowReplaceDamaged);
-      else {
+      else if (!window.navigator.onLine) {
+        try {
+          window.localStorage.setItem(cloudCacheKey, JSON.stringify(normalized));
+          window.localStorage.setItem(cloudDirtyKey, "1");
+        } catch {
+          throw new Error("Offline cache storage is full.");
+        }
+      } else {
         const response = await fetch("/api/journal", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revision: revision.current, data: normalized }) });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || "Couldn’t save your journal.");
         revision.current = result.revision;
+        try {
+          window.localStorage.setItem(cloudCacheKey, JSON.stringify(normalized));
+          window.localStorage.removeItem(cloudDirtyKey);
+        } catch {
+          // Non-fatal offline mirror write
+        }
       }
       dataRef.current = normalized; setData(normalized); if (allowReplaceDamaged) setDamaged(null); if (success) notify(success); return true;
     } catch (error) { notify(error instanceof Error ? error.message : "Couldn’t save your journal.", true); return false; }
@@ -520,6 +613,53 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
       window.location.replace("/");
     } catch (error) { notify(error instanceof Error ? error.message : "Couldn’t sign out.", true); }
   }
+  async function startCheckout(provider: BillingProvider, cycle: BillingCycle) {
+    try {
+      const response = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, cycle }),
+      });
+      const result = (await response.json()) as { url?: string; error?: string };
+      if (!response.ok || !result.url) {
+        throw new Error(result.error || "Couldn’t start checkout.");
+      }
+      window.location.assign(result.url);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Couldn’t start checkout.", true);
+    }
+  }
+  async function migrateLocalToCloud() {
+    if (storage !== "server") return;
+    try {
+      const { addedTrades, uploadedImages, uploadedPdfs, mergedData, revision: nextRevision } =
+        await syncLocalDeviceJournalToCloud();
+      revision.current = nextRevision;
+      dataRef.current = mergedData;
+      setData(mergedData);
+      try {
+        window.localStorage.setItem(cloudCacheKey, JSON.stringify(mergedData));
+        window.localStorage.removeItem(cloudDirtyKey);
+      } catch {
+        // Non-fatal offline mirror write
+      }
+      notify(copy.cloudMigratedToast(addedTrades, uploadedImages + uploadedPdfs));
+      setMigrationNonce((n) => n + 1);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Couldn’t sync local data to Cloud.", true);
+    }
+  }
+
+  const localSummary = useMemo(() => {
+    void migrationNonce;
+    void data;
+    if (storage !== "server" || typeof window === "undefined") return null;
+    try {
+      return getLocalDeviceSummary();
+    } catch {
+      return null;
+    }
+  }, [data, migrationNonce, storage]);
 
   const displayPersonName = locale === "id" && data.settings.name === "friend" ? "kawan" : data.settings.name;
   const common = {
@@ -599,12 +739,12 @@ export function JournalApp({ initialData, storage = "browser", initialRevision =
       onClickCapture={(event) => { if (modalClosing) { event.preventDefault(); event.stopPropagation(); } }}
       onSubmitCapture={(event) => { if (modalClosing) { event.preventDefault(); event.stopPropagation(); } }}>
     {modal === "trade" && <TradeModal key={editing ? `edit-${editing.id}` : `new-${newTradeDate}`} trade={editing} trades={data.trades} limits={data.settings.riskLimits ?? { perTrade: null, dailyLoss: null }} hidden={hidden} accounts={accounts} playbook={data.settings.playbook} setupBlueprints={data.settings.setupBlueprints} defaultAccount={defaultAccount} initialDate={editing ? undefined : (newTradeDate || undefined)} mode={storage} locale={locale} onClose={closeModal} onSave={saveTrade} onDelete={deleteTrade}/>}
-    {modal === "settings" && <SettingsModal data={data} mode={storage} sampleCount={sampleCount} initialTab={settingsTab} backupState={backupTracking?.state ?? null} backupAvailable={backupTracking?.available ?? false} backupEnabled={damaged === null} hidden={hidden} onClose={closeModal} onUpdate={updateSettings} onClearSamples={clearSamples} onBackup={backup} onRestore={restore} onExportCsv={() => exportCsv(dataRef.current.trades)} onExportXlsx={() => exportXlsx(dataRef.current.trades)} onImportCsv={() => openModal("import")} onLoadDummyData={loadThreeMonthDummy} onAddAccount={addAccount} onUpdateAccount={updateAccount} onRemoveAccount={removeAccount} onSignOut={storage === "server" ? signOut : undefined}/>}
+    {modal === "settings" && <SettingsModal data={data} mode={storage} sampleCount={sampleCount} initialTab={settingsTab} backupState={backupTracking?.state ?? null} backupAvailable={backupTracking?.available ?? false} backupEnabled={damaged === null} hidden={hidden} cloudContext={cloudContext} localSummary={localSummary} onStartCheckout={startCheckout} onMigrateLocalToCloud={migrateLocalToCloud} onClose={closeModal} onUpdate={updateSettings} onClearSamples={clearSamples} onBackup={backup} onRestore={restore} onExportCsv={() => exportCsv(dataRef.current.trades)} onExportXlsx={() => exportXlsx(dataRef.current.trades)} onImportCsv={() => openModal("import")} onLoadDummyData={loadThreeMonthDummy} onAddAccount={addAccount} onUpdateAccount={updateAccount} onRemoveAccount={removeAccount} onSignOut={(storage === "server" || cloudContext?.signedIn) ? signOut : undefined}/>}
     {modal === "import" && <ImportModal trades={data.trades} accounts={accounts} defaultAccount={defaultAccount} locale={locale} onClose={closeModal} onImport={importTrades}/>}
     {modal === "breathing" && <BreathingModal onClose={closeModal} locale={locale}/>}
-    {modal === "cassette" && <CassetteDeckModal deck={cassetteDeck} mode={storage} locale={locale} onClose={closeModal}/>}
+    {modal === "cassette" && <CassetteDeckModal deck={cassetteDeck} mode={cassetteMode} locale={locale} onClose={closeModal}/>}
     {modal === "recap" && <RecapCardModal trades={visibleTrades} dayJournals={data.settings.dayJournals} reflections={data.settings.reflections} accountLabel={activeAccountLabel} defaultTheme={data.settings.theme ?? "light"} initialWeekStart={recapWeekStart} locale={locale} onNotify={(msg, err) => notify(msg, Boolean(err))} onClose={closeModal}/>}
-    {modal === "command" && <CommandPaletteModal trades={visibleTrades} settings={data.settings} hidden={hidden} zenMode={zenMode} locale={locale} onClose={closeModal} onNavigate={navigate} onNewTrade={newTrade} onOpenRecap={() => openRecap()} onToggleZen={() => setZenMode((z) => !z)} onOpenBreathing={() => openModal("breathing")} onOpenCassette={() => openModal("cassette")} onPlaySoftRain={() => void cassetteDeck.selectAmbient("soft_rain")} onTogglePrivacy={() => setHidden((h) => !h)} onToggleTheme={() => void updateSettings({ theme: (data.settings.theme ?? "light") === "dark" ? "light" : "dark" })} onSelectDarkVariant={(darkVariant) => void updateSettings({ theme: "dark", darkVariant })} onToggleLocale={() => { const next = locale === "en" ? "id" : "en"; void updateSettings({ locale: next, patienceLocale: next }); }} onDownloadBackup={() => void backup()} onOpenSettings={() => openSettings()} onEditTrade={editTrade}/>}
+    {modal === "command" && <CommandPaletteModal trades={visibleTrades} settings={data.settings} hidden={hidden} zenMode={zenMode} locale={locale} onClose={closeModal} onNavigate={navigate} onNewTrade={newTrade} onOpenRecap={() => openRecap()} onToggleZen={() => setZenMode((z) => !z)} onOpenBreathing={() => openModal("breathing")} onOpenCassette={() => openModal("cassette")} onPlaySoftRain={() => void cassetteDeck.selectAmbient("soft_rain")} onTogglePrivacy={() => setHidden((h) => !h)} onToggleTheme={() => void updateSettings({ theme: (data.settings.theme ?? "light") === "dark" ? "light" : "dark" })} onSelectDarkVariant={(darkVariant) => void updateSettings({ theme: "dark", darkVariant })} onToggleLocale={() => { const next = locale === "en" ? "id" : "en"; void updateSettings({ locale: next, patienceLocale: next }); }} onDownloadBackup={() => void backup()} onOpenSettings={() => openSettings()} onOpenCloudSync={() => openSettings("Cloud")} onEditTrade={editTrade}/>}
     </div>}
     {zenMode && (
       <div className="zen-floating-bar" role="region" aria-label={copy.zenModeActiveBadge}>

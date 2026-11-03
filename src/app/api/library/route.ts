@@ -1,5 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
+import { deleteCloudObject, getObjectStorageConfig, putCloudObject } from "@/lib/object-storage";
 import { PayloadTooLargeError, readLimitedBody } from "@/lib/request-body";
+import { hasCloudSyncAccess } from "@/lib/server-billing";
 import { validatePdfBlob } from "@/lib/strategy-library";
 import { MAX_JOURNAL_PDF_BYTES, MAX_STRATEGY_PDF_BYTES } from "@/lib/types";
 
@@ -15,6 +17,12 @@ export async function POST(request: Request) {
   if (!session) {
     return Response.json({ error: "Please sign in again." }, { status: 401 });
   }
+  if (!(await hasCloudSyncAccess(session.user.id))) {
+    return Response.json({ error: "Active Cloud Sync Pro subscription required." }, { status: 402 });
+  }
+
+  let uploadedR2Key: string | null = null;
+  const objectConfig = getObjectStorageConfig();
 
   try {
     const contentType = request.headers.get("content-type");
@@ -36,10 +44,10 @@ export async function POST(request: Request) {
     const fileId = crypto.randomUUID();
     const rawName = (file.name.trim() || "strategy.pdf").slice(0, 196);
     const fileName = /\.pdf$/i.test(rawName) ? rawName : `${rawName}.pdf`;
+    const rawBytes = new Uint8Array(await file.arrayBuffer());
 
     const { db } = await import("@/db");
     const { journalImages } = await import("@/db/schema");
-    const encoded = Buffer.from(await file.arrayBuffer()).toString("base64");
 
     await db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${session.user.id}))`);
@@ -55,14 +63,30 @@ export async function POST(request: Request) {
       if (Number(usage.bytes) + file.size > MAX_JOURNAL_PDF_BYTES) {
         throw new Error("Strategy PDF storage quota reached (40 MB).");
       }
-      await tx.insert(journalImages).values({
-        id: fileId,
-        userId: session.user.id,
-        name: fileName,
-        type: "application/pdf",
-        size: file.size,
-        data: encoded,
-      });
+      if (objectConfig) {
+        const key = `users/${session.user.id}/library/${fileId}`;
+        await putCloudObject({ config: objectConfig, key, bytes: rawBytes, contentType: "application/pdf" });
+        uploadedR2Key = key;
+        await tx.insert(journalImages).values({
+          id: fileId,
+          userId: session.user.id,
+          name: fileName,
+          type: "application/pdf",
+          size: file.size,
+          data: "",
+          storageKey: key,
+        });
+      } else {
+        const encoded = Buffer.from(rawBytes).toString("base64");
+        await tx.insert(journalImages).values({
+          id: fileId,
+          userId: session.user.id,
+          name: fileName,
+          type: "application/pdf",
+          size: file.size,
+          data: encoded,
+        });
+      }
     });
 
     return Response.json(
@@ -70,6 +94,9 @@ export async function POST(request: Request) {
       { status: 201, headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {
+    if (uploadedR2Key && objectConfig) {
+      await deleteCloudObject({ config: objectConfig, key: uploadedR2Key }).catch(() => {});
+    }
     if (error instanceof PayloadTooLargeError) {
       return Response.json({ error: "Each strategy PDF must be 10 MB or less." }, { status: 413 });
     }
