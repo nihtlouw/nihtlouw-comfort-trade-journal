@@ -13,7 +13,7 @@ import { ChartbookGallery, type ChartLightboxSlide, type StageFilterValue } from
 import { StrategyShelf } from "@/components/strategy-shelf";
 import { YoutubeWatchPanel } from "@/components/youtube-watch-panel";
 
-export type View = "Overview" | "Trade journal" | "Analytics" | "Calendar" | "Playbook" | "Mindset" | "Patience" | "Goals" | "Weekly review";
+export type View = "Overview" | "Trade journal" | "Analytics" | "Calendar" | "Playbook" | "Mindset" | "Patience" | "Exit board" | "Goals" | "Weekly review";
 export type CommonProps = {
   trades: Trade[];
   allTrades: Trade[];
