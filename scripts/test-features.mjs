@@ -941,21 +941,24 @@ try {
   assert.equal(await page.locator(".selected-day").count(), 1, "Clicking active day on PerformanceChart drills into Trade journal filtered to that day");
   console.log("PASS: Upgraded PerformanceChart ($ / R toggle, daily impulse bars, privacy-aware R, and day drill-down) verified.");
 
-  // Verify Standalone "Exit board" ("Papan tulis") concise technical 8-step material & HC vs FC simulator
+  // Verify Standalone "Exit board" ("Papan tulis") immediate Dual-Chart Advisor Simulator + Real-Case Analogy
   await navigate("Exit board");
   await page.locator(".exit-board-view").waitFor();
   assert.equal(await page.getByLabel("Filter by trading account").count(), 0, "Exit board stays standalone without trading account filter clutter");
-  assert.equal(await page.locator(".exit-hero-card").count(), 0, "Non-essential hero intro text banner is omitted");
-  assert.equal(await page.locator(".exit-context-strip").count(), 0, "Verbose prose boxes are omitted");
-  await page.locator(".exit-lang-mini").getByRole("button", { name: "ID", exact: true }).click();
-  assert.match(await page.locator(".exit-sim-results").innerText(), /Usia 33/, "Default Rp20 jt / Saham 10% computes target S=80% crossover at Usia 33");
-  assert.match(await page.locator(".exit-sim-results").innerText(), /Rp4 jt/, "Default Rp20 jt displays S=80% spending cap at Rp4 jt");
+  assert.equal(await page.locator(".exit-narasi-card").count(), 0, "Progressive 8-step walkthrough card is removed; charts render complete immediately");
+  assert.equal(await page.locator(".exit-dual-charts svg").count(), 2, "Exit board renders both complete charts (HC vs FC + 5-Asset Comparison) immediately");
+  assert.equal(await page.locator(".exit-advisor-kpis .exit-res-card").count(), 4, "Exit board displays 4 Financial Advisor KPI cards (Crossover, Principal, Gain, Total)");
+  assert.equal(await page.locator(".exit-comp-row").count(), 5, "Chart 2 compares all 5 asset classes side-by-side");
+  assert.equal(await page.locator(".exit-ms-box").count(), 4, "Exit board renders 4 wealth growth milestones from principal to snowball");
+  assert.equal(await page.locator(".exit-advisor-card").count(), 2, "Exit board renders Real-Case Analogy + 4-Point Simulation Scheme below charts");
 
-  // Verify progressive 8-step technical navigation + simulator persistence
-  await page.locator(".exit-replay-link").click();
-  assert.match(await page.locator(".exit-narasi-card h3").innerText(), /Sumbu Usia & Nilai Modal/);
-  await page.locator(".exit-narasi-actions").getByRole("button", { name: "Berikutnya", exact: true }).click();
-  assert.match(await page.locator(".exit-narasi-card h3").innerText(), /Human Capital \(HC\)/);
+  await page.locator(".exit-lang-mini").getByRole("button", { name: "ID", exact: true }).click();
+  assert.match(await page.locator(".exit-advisor-kpis").innerText(), /Usia 33/, "Default Rp20 jt / Saham 10% computes target S=80% crossover at Usia 33");
+  assert.match(await page.locator(".exit-advisor-kpis").innerText(), /Modal Pokok Disetor/, "Advisor KPI separates out-of-pocket principal from compounding gain");
+  assert.match(await page.locator(".exit-advisor-notes-grid").innerText(), /Pesawat Dua Mesin/, "Bottom advisor card includes relatable Twin-Engine real-case analogy");
+
+  // Verify horizon switching, preset + asset selection, 320px responsiveness, and reload persistence
+  await page.locator(".exit-horizon-switch").getByRole("button", { name: "Titik Silang", exact: true }).click();
   await page.locator(".exit-preset-row").getByRole("button", { name: "S 80%", exact: true }).click();
   await page.locator(".exit-asset-pills").getByRole("radio", { name: "Kripto", exact: true }).click();
 
@@ -972,7 +975,7 @@ try {
     "true",
     "Exit board simulator state persists across offline reloads in localStorage",
   );
-  console.log("PASS: Exit board (Papan tulis HC vs FC) concise technical steps, live simulator, and 320px layout verified.");
+  console.log("PASS: Exit board (Papan tulis) dual complete charts, advisor principal-vs-profit breakdown, real-case analogy, and 320px layout verified.");
   console.log("PASS: Selectable Dark Mode styles (Botanical Forest & Obsidian & Linen) and cross-view workflows pass offline.");
 
   console.log("PASS: Simplified YouTube watch panel + right-side Strategy PDF & idea link mini-list work offline and persist.");

@@ -10,6 +10,7 @@ export const ASSET_RUNG_IDS = ["cash", "obligasi", "properti", "saham", "kripto"
 export type AssetRungId = (typeof ASSET_RUNG_IDS)[number];
 
 export type ExitBoardLocaleOverride = AppLocale | null;
+export type ComparisonHorizonMode = "10y" | "20y" | "crossover" | "age60";
 
 export const DEFAULT_ASSET_RETURNS_PCT: Record<AssetRungId, number> = {
   cash: 3,
@@ -20,8 +21,8 @@ export const DEFAULT_ASSET_RETURNS_PCT: Record<AssetRungId, number> = {
 };
 
 export type ExitBoardState = {
-  step: number;
   localeOverride?: ExitBoardLocaleOverride;
+  horizonMode?: ComparisonHorizonMode;
   monthlyIncomeJuta: number;
   initialFcJuta: number;
   savingRatePct: number;
@@ -31,8 +32,8 @@ export type ExitBoardState = {
 };
 
 export const DEFAULT_EXIT_BOARD_STATE: ExitBoardState = {
-  step: 4,
   localeOverride: null,
+  horizonMode: "20y",
   monthlyIncomeJuta: 20,
   initialFcJuta: 0,
   savingRatePct: 25,
@@ -43,10 +44,14 @@ export const DEFAULT_EXIT_BOARD_STATE: ExitBoardState = {
 
 export type ExitBoardCurvePoint = {
   age: number;
+  yearsElapsed: number;
   hcJuta: number;
+  principalCurrentJuta: number;
+  gainCurrentJuta: number;
   fcCurrentJuta: number;
+  principalTargetJuta: number;
   fcTargetJuta: number;
-  fcBaseline25Juta: number;
+  byAssetJuta: Record<AssetRungId, number>;
 };
 
 export type CrossoverPoint = {
@@ -56,6 +61,42 @@ export type CrossoverPoint = {
   displayAge: number | null;
   /** Value (in juta Rupiah) at crossover. */
   valueJuta: number | null;
+};
+
+export type WealthBreakdownSnapshot = {
+  age: number;
+  yearsElapsed: number;
+  isCrossover: boolean;
+  principalJuta: number;
+  gainJuta: number;
+  totalJuta: number;
+  gainPct: number;
+  multiple: number;
+  monthlyPassiveJuta: number;
+};
+
+export type AssetComparisonItem = {
+  id: AssetRungId;
+  returnPct: number;
+  crossoverAge: number | null;
+  evalAge: number;
+  evalYears: number;
+  principalJuta: number;
+  gainJuta: number;
+  totalJuta: number;
+  gainPct: number;
+  multiple: number;
+};
+
+export type ExitBoardMilestone = {
+  id: "early" | "mid" | "crossover" | "retirement";
+  age: number;
+  yearsElapsed: number;
+  principalJuta: number;
+  gainJuta: number;
+  totalJuta: number;
+  gainPct: number;
+  profitSharePct: number;
 };
 
 export type ExitBoardSimulationResult = {
@@ -72,18 +113,13 @@ export type ExitBoardSimulationResult = {
   points: ExitBoardCurvePoint[];
   currentCrossover: CrossoverPoint;
   target80Crossover: CrossoverPoint;
-  baseline25Crossover: CrossoverPoint;
+  assetCrossovers: Record<AssetRungId, CrossoverPoint>;
+  primarySnapshot: WealthBreakdownSnapshot;
+  target80Snapshot: WealthBreakdownSnapshot;
+  snowballAge: number | null;
+  milestones: ExitBoardMilestone[];
   fcAt65CurrentJuta: number;
   fcAt65Target80Juta: number;
-  maxChartValueJuta: number;
-};
-
-export type ExitBoardStepCopy = {
-  step: number;
-  title: string;
-  body: string;
-  keyLabel: string;
-  keyValue: string;
 };
 
 export function clampNumber(value: number, min: number, max: number): number {
@@ -99,13 +135,20 @@ export function normalizeExitBoardState(raw: unknown): ExitBoardState {
     };
   }
   const obj = raw as Partial<ExitBoardState> & { voiceMode?: string };
-  const step = Math.round(clampNumber(Number(obj.step ?? DEFAULT_EXIT_BOARD_STATE.step), 1, 8));
   let localeOverride: ExitBoardLocaleOverride =
     obj.localeOverride === "id" || obj.localeOverride === "en" ? obj.localeOverride : null;
   if (!localeOverride && typeof obj.voiceMode === "string") {
     if (obj.voiceMode === "en") localeOverride = "en";
     else if (obj.voiceMode.startsWith("id")) localeOverride = "id";
   }
+
+  const horizonMode: ComparisonHorizonMode =
+    obj.horizonMode === "10y" ||
+    obj.horizonMode === "20y" ||
+    obj.horizonMode === "crossover" ||
+    obj.horizonMode === "age60"
+      ? obj.horizonMode
+      : "20y";
 
   const monthlyIncomeJuta = Number(
     clampNumber(Number(obj.monthlyIncomeJuta ?? DEFAULT_EXIT_BOARD_STATE.monthlyIncomeJuta), 1, 500).toFixed(1),
@@ -136,8 +179,8 @@ export function normalizeExitBoardState(raw: unknown): ExitBoardState {
   };
 
   return {
-    step,
     localeOverride,
+    horizonMode,
     monthlyIncomeJuta,
     initialFcJuta,
     savingRatePct,
@@ -205,6 +248,36 @@ function findCrossover(
   return { exactAge: null, displayAge: null, valueJuta: null };
 }
 
+function buildSnapshotAtAge(
+  points: ExitBoardCurvePoint[],
+  targetAge: number,
+  isCrossover: boolean,
+  annualReturnPct: number,
+  useTarget80 = false,
+): WealthBreakdownSnapshot {
+  const pt =
+    points.find((p) => p.age === targetAge) ??
+    points[points.length - 1];
+  const principal = useTarget80 ? pt.principalTargetJuta : pt.principalCurrentJuta;
+  const total = useTarget80 ? pt.fcTargetJuta : pt.fcCurrentJuta;
+  const gain = Math.max(0, Number((total - principal).toFixed(2)));
+  const gainPct = principal > 0 ? Math.round((gain / principal) * 100) : 0;
+  const multiple = principal > 0 ? Number((total / principal).toFixed(1)) : 1;
+  const monthlyPassiveJuta = Number(((total * (annualReturnPct / 100)) / 12).toFixed(2));
+
+  return {
+    age: pt.age,
+    yearsElapsed: pt.yearsElapsed,
+    isCrossover,
+    principalJuta: Number(principal.toFixed(1)),
+    gainJuta: Number(gain.toFixed(1)),
+    totalJuta: Number(total.toFixed(1)),
+    gainPct,
+    multiple,
+    monthlyPassiveJuta,
+  };
+}
+
 export function simulateExitBoard(
   input: Pick<
     ExitBoardState,
@@ -228,10 +301,9 @@ export function simulateExitBoard(
     0,
     50,
   );
-  const r = annualReturnPct / 100;
+  const rSelected = annualReturnPct / 100;
   const sCurrent = savingRatePct / 100;
   const sTarget = TARGET_SAVING_RATE_PCT / 100;
-  const sBase25 = BASELINE_SAVING_RATE_PCT / 100;
 
   // Backward recursion for Human Capital: HC_74 = 0, HC_t = (HC_{t+1} + Y) / (1 + d)
   const hcByAge: Record<number, number> = { [endAge]: 0 };
@@ -239,22 +311,55 @@ export function simulateExitBoard(
     hcByAge[age] = (hcByAge[age + 1] + annualIncomeJuta) / (1 + hcDiscountRate);
   }
 
+  const assetTracker: Record<AssetRungId, number> = {
+    cash: initialFcJuta,
+    obligasi: initialFcJuta,
+    properti: initialFcJuta,
+    saham: initialFcJuta,
+    kripto: initialFcJuta,
+  };
+
   const points: ExitBoardCurvePoint[] = [];
   let fcCurrent = initialFcJuta;
   let fcTarget = initialFcJuta;
-  let fcBase25 = initialFcJuta;
+  let snowballAge: number | null = null;
+  const annualSavingCurrent = sCurrent * annualIncomeJuta;
 
   for (let age = startAge; age <= endAge; age++) {
+    const yearsElapsed = age - startAge;
+    const principalCurrent = initialFcJuta + yearsElapsed * annualSavingCurrent;
+    const principalTarget = initialFcJuta + yearsElapsed * (sTarget * annualIncomeJuta);
+    const gainCurrent = Math.max(0, fcCurrent - principalCurrent);
+
+    if (snowballAge === null && yearsElapsed >= 1 && fcCurrent * rSelected >= annualSavingCurrent && annualSavingCurrent > 0) {
+      snowballAge = age;
+    }
+
     points.push({
       age,
+      yearsElapsed,
       hcJuta: Number(hcByAge[age].toFixed(2)),
+      principalCurrentJuta: Number(principalCurrent.toFixed(2)),
+      gainCurrentJuta: Number(gainCurrent.toFixed(2)),
       fcCurrentJuta: Number(fcCurrent.toFixed(2)),
+      principalTargetJuta: Number(principalTarget.toFixed(2)),
       fcTargetJuta: Number(fcTarget.toFixed(2)),
-      fcBaseline25Juta: Number(fcBase25.toFixed(2)),
+      byAssetJuta: {
+        cash: Number(assetTracker.cash.toFixed(2)),
+        obligasi: Number(assetTracker.obligasi.toFixed(2)),
+        properti: Number(assetTracker.properti.toFixed(2)),
+        saham: Number(assetTracker.saham.toFixed(2)),
+        kripto: Number(assetTracker.kripto.toFixed(2)),
+      },
     });
-    fcCurrent = fcCurrent * (1 + r) + sCurrent * annualIncomeJuta;
-    fcTarget = fcTarget * (1 + r) + sTarget * annualIncomeJuta;
-    fcBase25 = fcBase25 * (1 + r) + sBase25 * annualIncomeJuta;
+
+    fcCurrent = fcCurrent * (1 + rSelected) + annualSavingCurrent;
+    fcTarget = fcTarget * (1 + rSelected) + sTarget * annualIncomeJuta;
+
+    for (const rung of ASSET_RUNG_IDS) {
+      const rungR = clampNumber(input.assetReturnsPct[rung] ?? DEFAULT_ASSET_RETURNS_PCT[rung], 0, 50) / 100;
+      assetTracker[rung] = assetTracker[rung] * (1 + rungR) + annualSavingCurrent;
+    }
   }
 
   const currentCrossover = findCrossover(
@@ -263,19 +368,66 @@ export function simulateExitBoard(
   const target80Crossover = findCrossover(
     points.map((p) => ({ age: p.age, hc: p.hcJuta, fc: p.fcTargetJuta })),
   );
-  const baseline25Crossover = findCrossover(
-    points.map((p) => ({ age: p.age, hc: p.hcJuta, fc: p.fcBaseline25Juta })),
+
+  const assetCrossovers = {} as Record<AssetRungId, CrossoverPoint>;
+  for (const rung of ASSET_RUNG_IDS) {
+    assetCrossovers[rung] = findCrossover(
+      points.map((p) => ({ age: p.age, hc: p.hcJuta, fc: p.byAssetJuta[rung] })),
+    );
+  }
+
+  const fallbackAge = Math.min(endAge, Math.max(startAge + 5, 65));
+  const primaryEvalAge = currentCrossover.displayAge ?? fallbackAge;
+  const target80EvalAge = target80Crossover.displayAge ?? fallbackAge;
+
+  const primarySnapshot = buildSnapshotAtAge(
+    points,
+    primaryEvalAge,
+    currentCrossover.displayAge !== null,
+    annualReturnPct,
+    false,
   );
+  const target80Snapshot = buildSnapshotAtAge(
+    points,
+    target80EvalAge,
+    target80Crossover.displayAge !== null,
+    annualReturnPct,
+    true,
+  );
+
+  // Build 4 progressive wealth milestones
+  const earlyAge = Math.min(endAge, startAge + 5);
+  const midAge = Math.min(endAge, startAge + 10);
+  const crossOrTwentyAge = currentCrossover.displayAge ?? Math.min(endAge, startAge + 20);
+  const retireAge = Math.min(endAge, Math.max(crossOrTwentyAge + 5, 60));
+
+  const milestoneSpecs: { id: ExitBoardMilestone["id"]; age: number }[] = [
+    { id: "early", age: earlyAge },
+    { id: "mid", age: midAge },
+    { id: "crossover", age: crossOrTwentyAge },
+    { id: "retirement", age: retireAge },
+  ];
+
+  const milestones: ExitBoardMilestone[] = milestoneSpecs.map(({ id, age }) => {
+    const pt = points.find((p) => p.age === age) ?? points[points.length - 1];
+    const principal = Number(pt.principalCurrentJuta.toFixed(1));
+    const total = Number(pt.fcCurrentJuta.toFixed(1));
+    const gain = Math.max(0, Number((total - principal).toFixed(1)));
+    const gainPct = principal > 0 ? Math.round((gain / principal) * 100) : 0;
+    const profitSharePct = total > 0 ? Math.round((gain / total) * 100) : 0;
+    return {
+      id,
+      age: pt.age,
+      yearsElapsed: pt.yearsElapsed,
+      principalJuta: principal,
+      gainJuta: gain,
+      totalJuta: total,
+      gainPct,
+      profitSharePct,
+    };
+  });
 
   const age65Point = points.find((p) => p.age === 65) ?? points[points.length - 1];
-  const hcStart = points[0]?.hcJuta ?? annualIncomeJuta * 20;
-  const maxRef = Math.max(
-    hcStart * 1.32,
-    (currentCrossover.valueJuta ?? 0) * 1.45,
-    (target80Crossover.valueJuta ?? 0) * 1.45,
-    annualIncomeJuta * 10,
-  );
-
   const monthlySavingJuta = Number(((monthlyIncomeJuta * savingRatePct) / 100).toFixed(2));
   const monthlySpendingCapCurrentJuta = Number((monthlyIncomeJuta - monthlySavingJuta).toFixed(2));
   const monthlySpendingCapTarget80Juta = Number((monthlyIncomeJuta * (1 - sTarget)).toFixed(2));
@@ -294,20 +446,72 @@ export function simulateExitBoard(
     points,
     currentCrossover,
     target80Crossover,
-    baseline25Crossover,
+    assetCrossovers,
+    primarySnapshot,
+    target80Snapshot,
+    snowballAge,
+    milestones,
     fcAt65CurrentJuta: age65Point ? Number(age65Point.fcCurrentJuta.toFixed(1)) : 0,
     fcAt65Target80Juta: age65Point ? Number(age65Point.fcTargetJuta.toFixed(1)) : 0,
-    maxChartValueJuta: Number(maxRef.toFixed(1)),
   };
+}
+
+export function resolveComparisonEvalAge(
+  sim: ExitBoardSimulationResult,
+  horizonMode: ComparisonHorizonMode,
+): number {
+  if (horizonMode === "10y") {
+    return Math.min(sim.endAge, sim.startAge + 10);
+  }
+  if (horizonMode === "20y") {
+    return Math.min(sim.endAge, sim.startAge + 20);
+  }
+  if (horizonMode === "crossover") {
+    return sim.currentCrossover.displayAge ?? Math.min(sim.endAge, sim.startAge + 20);
+  }
+  return Math.min(sim.endAge, Math.max(sim.startAge + 5, 60));
+}
+
+export function getAssetComparisonRows(
+  sim: ExitBoardSimulationResult,
+  assetReturnsPct: Record<AssetRungId, number>,
+  horizonMode: ComparisonHorizonMode,
+): AssetComparisonItem[] {
+  const evalAge = resolveComparisonEvalAge(sim, horizonMode);
+  const pt = sim.points.find((p) => p.age === evalAge) ?? sim.points[sim.points.length - 1];
+  const principal = Number(pt.principalCurrentJuta.toFixed(1));
+
+  return ASSET_RUNG_IDS.map((id) => {
+    const total = Number(pt.byAssetJuta[id].toFixed(1));
+    const gain = Math.max(0, Number((total - principal).toFixed(1)));
+    const gainPct = principal > 0 ? Math.round((gain / principal) * 100) : 0;
+    const multiple = principal > 0 ? Number((total / principal).toFixed(1)) : 1;
+    return {
+      id,
+      returnPct: assetReturnsPct[id] ?? DEFAULT_ASSET_RETURNS_PCT[id],
+      crossoverAge: sim.assetCrossovers[id].displayAge,
+      evalAge: pt.age,
+      evalYears: pt.yearsElapsed,
+      principalJuta: principal,
+      gainJuta: gain,
+      totalJuta: total,
+      gainPct,
+      multiple,
+    };
+  });
 }
 
 export function formatRupiahJuta(juta: number, locale: AppLocale = "id"): string {
   const safe = Number.isFinite(juta) ? Math.max(0, juta) : 0;
   if (safe >= 1000) {
     const miliar = safe / 1000;
-    const formatted = miliar >= 100
-      ? Math.round(miliar).toLocaleString(locale === "id" ? "id-ID" : "en-US")
-      : Number(miliar.toFixed(1)).toLocaleString(locale === "id" ? "id-ID" : "en-US");
+    const formatted =
+      miliar >= 100
+        ? Math.round(miliar).toLocaleString(locale === "id" ? "id-ID" : "en-US")
+        : Number(miliar.toFixed(2)).toLocaleString(locale === "id" ? "id-ID" : "en-US", {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2,
+          });
     return locale === "id" ? `Rp${formatted} M` : `Rp${formatted}B`;
   }
   const rounded = safe % 1 === 0 ? Math.round(safe) : Number(safe.toFixed(1));
@@ -318,149 +522,18 @@ export function formatRupiahJuta(juta: number, locale: AppLocale = "id"): string
 export function getAssetRungMeta(locale: AppLocale) {
   if (locale === "en") {
     return [
-      { id: "cash" as const, label: "Cash" },
-      { id: "obligasi" as const, label: "Bonds" },
-      { id: "properti" as const, label: "Property" },
-      { id: "saham" as const, label: "Stocks" },
-      { id: "kripto" as const, label: "Crypto" },
+      { id: "cash" as const, label: "Cash / Deposit", short: "Cash", color: "#94a89b" },
+      { id: "obligasi" as const, label: "Bonds (Obligasi)", short: "Bonds", color: "#7db4dc" },
+      { id: "properti" as const, label: "Property", short: "Property", color: "#5ec4b6" },
+      { id: "saham" as const, label: "Stocks (Saham)", short: "Stocks", color: "#7ce09c" },
+      { id: "kripto" as const, label: "Crypto", short: "Crypto", color: "#edd377" },
     ];
   }
   return [
-    { id: "cash" as const, label: "Cash" },
-    { id: "obligasi" as const, label: "Obligasi" },
-    { id: "properti" as const, label: "Properti" },
-    { id: "saham" as const, label: "Saham" },
-    { id: "kripto" as const, label: "Kripto" },
-  ];
-}
-
-export function getExitBoardSteps(
-  locale: AppLocale,
-  startAge: number,
-  monthlyIncomeJuta: number,
-): ExitBoardStepCopy[] {
-  const incText = formatRupiahJuta(monthlyIncomeJuta, locale);
-  const save25Text = formatRupiahJuta(monthlyIncomeJuta * 0.25, locale);
-  const save80Text = formatRupiahJuta(monthlyIncomeJuta * 0.8, locale);
-  const cap80Text = formatRupiahJuta(monthlyIncomeJuta * 0.2, locale);
-
-  if (locale === "en") {
-    return [
-      {
-        step: 1,
-        title: "Age & Capital Axes",
-        body: `Horizontal axis: productive age (${startAge}–${MAX_WORKING_AGE}). Vertical axis: discounted human capital vs. compounded financial capital.`,
-        keyLabel: "horizon",
-        keyValue: `${startAge} → ${MAX_WORKING_AGE} yrs`,
-      },
-      {
-        step: 2,
-        title: "Human Capital (HC)",
-        body: "Present value of remaining future earning capacity (discount rate d = 4%/yr). Declines naturally to 0 near age 74. Core driver: skill.",
-        keyLabel: "formula",
-        keyValue: "HC → 0 (±74)",
-      },
-      {
-        step: 3,
-        title: "Financial Capital (FC)",
-        body: "Invested capital compounded annually: FC(t+1) = FC(t)×(1+r) + S×Y. Starts near zero and curves upward exponentially. HC ≠ FC.",
-        keyLabel: "formula",
-        keyValue: "FC(t)×(1+r) + S×Y",
-      },
-      {
-        step: 4,
-        title: "Crossover Point (FC ≥ HC)",
-        body: "Age where accumulated FC surpasses remaining HC. Standard baseline crosses near 65; high saving rate + return pulls crossover into the 30s.",
-        keyLabel: "target shift",
-        keyValue: "65 → 30s",
-      },
-      {
-        step: 5,
-        title: "Saving Rate (S)",
-        body: `S = savings ÷ monthly income. On ${incText}/mo: S 25% saves ${save25Text}/mo; S 80% target saves ${save80Text}/mo.`,
-        keyLabel: "saving rate",
-        keyValue: "25% → 80%",
-      },
-      {
-        step: 6,
-        title: "Spending Cap",
-        body: `Replaces 50/30/20 budgeting with a fixed ceiling: Spending Cap = Income × (1 − S). At ${incText} and S 80%, cap = ${cap80Text}/mo.`,
-        keyLabel: "ceiling",
-        keyValue: `Income × (1 − S)`,
-      },
-      {
-        step: 7,
-        title: "Risk–Return Ladder",
-        body: "Cash (3%) → Bonds (6%) → Property (8%) → Stocks (10%) → Crypto (18%). Small capital compounds faster in 1 concentrated rung.",
-        keyLabel: "allocation",
-        keyValue: "1 Core Rung",
-      },
-      {
-        step: 8,
-        title: "HC Skill vs. FC Reserve",
-        body: "Salaried income = steady HC cashflow feeding FC. Active trading = HC skill execution; keep learning/trading risk ring-fenced from long-term FC.",
-        keyLabel: "separation",
-        keyValue: "Skill (HC) ≠ FC",
-      },
-    ];
-  }
-
-  return [
-    {
-      step: 1,
-      title: "Sumbu Usia & Nilai Modal",
-      body: `Sumbu horizontal: rentang usia produktif (${startAge}–${MAX_WORKING_AGE} thn). Sumbu vertikal: nilai sekarang HC vs akumulasi majemuk FC.`,
-      keyLabel: "rentang",
-      keyValue: `${startAge} → ${MAX_WORKING_AGE} thn`,
-    },
-    {
-      step: 2,
-      title: "Human Capital (HC)",
-      body: "Nilai sekarang dari sisa kapasitas penghasilan masa depan (diskon d = 4%/thn). Menurun alami menuju 0 di usia ±74. Faktor utama: skill.",
-      keyLabel: "rumus",
-      keyValue: "HC → 0 (±74)",
-    },
-    {
-      step: 3,
-      title: "Financial Capital (FC)",
-      body: "Akumulasi modal yang digulung tiap tahun: FC(t+1) = FC(t)×(1+r) + S×Y. Mulai dari kecil lalu melengkung eksponensial. HC ≠ FC.",
-      keyLabel: "rumus",
-      keyValue: "FC(t)×(1+r) + S×Y",
-    },
-    {
-      step: 4,
-      title: "Titik Silang (FC ≥ HC)",
-      body: "Usia ketika kurva FC melampaui kurva HC. Baseline rata-rata di usia ±65; kenaikan S dan r menarik titik silang maju ke usia 30-an.",
-      keyLabel: "target",
-      keyValue: "65 → 30-an",
-    },
-    {
-      step: 5,
-      title: "Saving Rate (S)",
-      body: `S = tabungan ÷ total income. Pada ${incText}/bln: S 25% = ${save25Text}/bln; target S 80% = ${save80Text}/bln.`,
-      keyLabel: "rasio simpan",
-      keyValue: "25% → 80%",
-    },
-    {
-      step: 6,
-      title: "Spending Cap",
-      body: `Mengganti pola 50/30/20 dengan batas pengeluaran: Spending Cap = Income × (1 − S). Pada ${incText} & S 80%, cap = ${cap80Text}/bln.`,
-      keyLabel: "batas belanja",
-      keyValue: "Income × (1 − S)",
-    },
-    {
-      step: 7,
-      title: "Tangga Risk–Return",
-      body: "Cash (3%) → Obligasi (6%) → Properti (8%) → Saham (10%) → Kripto (18%). Modal kecil difokuskan pada 1 posisi utama yang dikuasai.",
-      keyLabel: "alokasi",
-      keyValue: "1 Posisi Utama",
-    },
-    {
-      step: 8,
-      title: "Pemisahan Skill HC & Modal FC",
-      body: "Gaji tetap = arus kas HC stabil pengisi FC. Trading aktif = eksekusi skill (HC); pisahkan modal latihan trading dari tabungan FC jangka panjang.",
-      keyLabel: "struktur",
-      keyValue: "Skill (HC) ≠ FC",
-    },
+    { id: "cash" as const, label: "Cash / Deposito", short: "Cash", color: "#94a89b" },
+    { id: "obligasi" as const, label: "Obligasi / SBN", short: "Obligasi", color: "#7db4dc" },
+    { id: "properti" as const, label: "Properti", short: "Properti", color: "#5ec4b6" },
+    { id: "saham" as const, label: "Saham", short: "Saham", color: "#7ce09c" },
+    { id: "kripto" as const, label: "Kripto", short: "Kripto", color: "#edd377" },
   ];
 }

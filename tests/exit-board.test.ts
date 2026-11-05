@@ -6,7 +6,7 @@ import {
   DEFAULT_EXIT_BOARD_STATE,
   EXIT_BOARD_STORAGE_KEY,
   formatRupiahJuta,
-  getExitBoardSteps,
+  getAssetComparisonRows,
   loadExitBoardState,
   MAX_WORKING_AGE,
   normalizeExitBoardState,
@@ -30,6 +30,14 @@ test("simulateExitBoard matches chalkboard baseline math (Rp20 jt, S=25% vs 80%,
     assert.ok(result.points[i].hcJuta < result.points[i - 1].hcJuta);
     assert.ok(result.points[i].fcCurrentJuta > result.points[i - 1].fcCurrentJuta);
     assert.ok(result.points[i].fcTargetJuta > result.points[i].fcCurrentJuta);
+    // Out-of-pocket principal + pure compounding gain equals total FC
+    assert.ok(
+      Math.abs(
+        result.points[i].principalCurrentJuta +
+          result.points[i].gainCurrentJuta -
+          result.points[i].fcCurrentJuta,
+      ) < 1e-6,
+    );
   }
 
   // Target S=80% pulls crossover into early 30s (~33), significantly earlier than S=25% (~42)
@@ -37,24 +45,49 @@ test("simulateExitBoard matches chalkboard baseline math (Rp20 jt, S=25% vs 80%,
   assert.ok(result.currentCrossover.displayAge !== null);
   assert.ok(result.currentCrossover.displayAge >= 41 && result.currentCrossover.displayAge <= 44);
   assert.ok(result.currentCrossover.displayAge - result.target80Crossover.displayAge >= 8);
+
+  // Advisor snapshot separates out-of-pocket principal vs compounding profit
+  assert.equal(result.primarySnapshot.isCrossover, true);
+  assert.equal(result.primarySnapshot.principalJuta, 22 * 60); // Rp5 jt/mo * 12 * 22 yrs = 1320 jt
+  assert.ok(result.primarySnapshot.gainJuta > result.primarySnapshot.principalJuta * 2);
+  assert.ok(result.primarySnapshot.gainPct > 200);
+  assert.ok(result.primarySnapshot.multiple >= 3);
+
+  // Snowball inflection age occurs when annual portfolio yield exceeds annual savings
+  assert.ok(result.snowballAge !== null && result.snowballAge >= 26 && result.snowballAge <= 32);
+  assert.equal(result.milestones.length, 4);
 });
 
-test("simulateExitBoard pulls crossover earlier as user climbs the 5-rung asset ladder", () => {
-  const ages: number[] = [];
-  for (const rung of ASSET_RUNG_IDS) {
-    const sim = simulateExitBoard({
-      ...DEFAULT_EXIT_BOARD_STATE,
-      selectedAsset: rung,
-    });
-    assert.ok(sim.currentCrossover.exactAge !== null, `expected crossover for ${rung}`);
-    ages.push(sim.currentCrossover.exactAge);
+test("simulateExitBoard pulls crossover earlier and increases wealth across all 5 asset rungs", () => {
+  const sim = simulateExitBoard(DEFAULT_EXIT_BOARD_STATE);
+  const rows20 = getAssetComparisonRows(sim, DEFAULT_ASSET_RETURNS_PCT, "20y");
+
+  assert.equal(rows20.length, 5);
+  // Every asset row at 20y shares the exact same out-of-pocket principal (Rp1.200 jt)
+  for (const row of rows20) {
+    assert.equal(row.evalYears, 20);
+    assert.equal(row.principalJuta, 1200);
+    assert.ok(row.crossoverAge !== null);
   }
 
-  for (let i = 1; i < ages.length; i++) {
+  for (let i = 1; i < rows20.length; i++) {
     assert.ok(
-      ages[i] < ages[i - 1],
-      `expected higher rung ${ASSET_RUNG_IDS[i]} (${ages[i]}) to cross earlier than ${ASSET_RUNG_IDS[i - 1]} (${ages[i - 1]})`,
+      rows20[i].totalJuta > rows20[i - 1].totalJuta,
+      `expected ${rows20[i].id} total (${rows20[i].totalJuta}) > ${rows20[i - 1].id} (${rows20[i - 1].totalJuta})`,
     );
+    assert.ok(
+      rows20[i].gainJuta > rows20[i - 1].gainJuta,
+      `expected ${rows20[i].id} gain > ${rows20[i - 1].id}`,
+    );
+    assert.ok(
+      (rows20[i].crossoverAge ?? 99) < (rows20[i - 1].crossoverAge ?? 0),
+      `expected ${rows20[i].id} to cross earlier than ${rows20[i - 1].id}`,
+    );
+  }
+
+  for (const mode of ["10y", "20y", "crossover", "age60"] as const) {
+    const modeRows = getAssetComparisonRows(sim, DEFAULT_ASSET_RETURNS_PCT, mode);
+    assert.equal(modeRows.length, ASSET_RUNG_IDS.length);
   }
 });
 
@@ -79,19 +112,19 @@ test("simulateExitBoard honors custom editable return % and starting FC savings"
 
 test("normalizeExitBoardState and storage helpers clamp invalid values and survive corrupt JSON", () => {
   const clamped = normalizeExitBoardState({
-    step: 99,
     localeOverride: "id",
     monthlyIncomeJuta: -50,
     savingRatePct: 999,
     startAge: 5,
     selectedAsset: "unknown",
+    horizonMode: "invalid",
   });
-  assert.equal(clamped.step, 8);
   assert.equal(clamped.localeOverride, "id");
   assert.equal(clamped.monthlyIncomeJuta, 1);
   assert.equal(clamped.savingRatePct, 90);
   assert.equal(clamped.startAge, 18);
   assert.equal(clamped.selectedAsset, "saham");
+  assert.equal(clamped.horizonMode, "20y");
 
   const mem = new Map<string, string>();
   const storage = {
@@ -101,29 +134,21 @@ test("normalizeExitBoardState and storage helpers clamp invalid values and survi
     },
   };
 
-  saveExitBoardState(storage, { ...DEFAULT_EXIT_BOARD_STATE, step: 6, localeOverride: "id", savingRatePct: 80 });
+  saveExitBoardState(storage, {
+    ...DEFAULT_EXIT_BOARD_STATE,
+    localeOverride: "id",
+    savingRatePct: 80,
+    horizonMode: "crossover",
+  });
   const loaded = loadExitBoardState(storage);
-  assert.equal(loaded.step, 6);
   assert.equal(loaded.localeOverride, "id");
   assert.equal(loaded.savingRatePct, 80);
+  assert.equal(loaded.horizonMode, "crossover");
 
   mem.set(EXIT_BOARD_STORAGE_KEY, "{broken-json");
   const fallback = loadExitBoardState(storage);
   assert.equal(fallback.monthlyIncomeJuta, 20);
   assert.equal(fallback.savingRatePct, 25);
-});
-
-test("getExitBoardSteps provides 8 concise technical steps in Indonesian and English", () => {
-  const idSteps = getExitBoardSteps("id", 22, 30);
-  const enSteps = getExitBoardSteps("en", 22, 30);
-
-  assert.equal(idSteps.length, 8);
-  assert.equal(enSteps.length, 8);
-
-  assert.match(idSteps[0].keyValue, /22/);
-  assert.match(idSteps[5].body, /Rp6 jt/); // 20% of Rp30 jt spending cap
-  assert.match(enSteps[3].title, /Crossover/i);
-  assert.match(idSteps[7].keyValue, /Skill \(HC\)/);
 
   assert.equal(formatRupiahJuta(20, "id"), "Rp20 jt");
   assert.equal(formatRupiahJuta(2500, "id"), "Rp2,5 M");
