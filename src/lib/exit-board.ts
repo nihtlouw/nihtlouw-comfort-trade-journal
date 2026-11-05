@@ -9,8 +9,7 @@ export const BASELINE_SAVING_RATE_PCT = 25;
 export const ASSET_RUNG_IDS = ["cash", "obligasi", "properti", "saham", "kripto"] as const;
 export type AssetRungId = (typeof ASSET_RUNG_IDS)[number];
 
-export type ExitBoardTone = "kamu" | "lugua";
-export type ExitBoardVoiceMode = "id_kamu" | "id_lugua" | "en";
+export type ExitBoardLocaleOverride = AppLocale | null;
 
 export const DEFAULT_ASSET_RETURNS_PCT: Record<AssetRungId, number> = {
   cash: 3,
@@ -22,8 +21,7 @@ export const DEFAULT_ASSET_RETURNS_PCT: Record<AssetRungId, number> = {
 
 export type ExitBoardState = {
   step: number;
-  tone: ExitBoardTone;
-  voiceMode?: ExitBoardVoiceMode | null;
+  localeOverride?: ExitBoardLocaleOverride;
   monthlyIncomeJuta: number;
   initialFcJuta: number;
   savingRatePct: number;
@@ -34,8 +32,7 @@ export type ExitBoardState = {
 
 export const DEFAULT_EXIT_BOARD_STATE: ExitBoardState = {
   step: 4,
-  tone: "kamu",
-  voiceMode: null,
+  localeOverride: null,
   monthlyIncomeJuta: 20,
   initialFcJuta: 0,
   savingRatePct: 25,
@@ -101,13 +98,15 @@ export function normalizeExitBoardState(raw: unknown): ExitBoardState {
       assetReturnsPct: { ...DEFAULT_ASSET_RETURNS_PCT },
     };
   }
-  const obj = raw as Partial<ExitBoardState>;
+  const obj = raw as Partial<ExitBoardState> & { voiceMode?: string };
   const step = Math.round(clampNumber(Number(obj.step ?? DEFAULT_EXIT_BOARD_STATE.step), 1, 8));
-  const tone: ExitBoardTone = obj.tone === "lugua" ? "lugua" : "kamu";
-  const voiceMode: ExitBoardVoiceMode | null =
-    obj.voiceMode === "id_kamu" || obj.voiceMode === "id_lugua" || obj.voiceMode === "en"
-      ? obj.voiceMode
-      : null;
+  let localeOverride: ExitBoardLocaleOverride =
+    obj.localeOverride === "id" || obj.localeOverride === "en" ? obj.localeOverride : null;
+  if (!localeOverride && typeof obj.voiceMode === "string") {
+    if (obj.voiceMode === "en") localeOverride = "en";
+    else if (obj.voiceMode.startsWith("id")) localeOverride = "id";
+  }
+
   const monthlyIncomeJuta = Number(
     clampNumber(Number(obj.monthlyIncomeJuta ?? DEFAULT_EXIT_BOARD_STATE.monthlyIncomeJuta), 1, 500).toFixed(1),
   );
@@ -138,8 +137,7 @@ export function normalizeExitBoardState(raw: unknown): ExitBoardState {
 
   return {
     step,
-    tone,
-    voiceMode,
+    localeOverride,
     monthlyIncomeJuta,
     initialFcJuta,
     savingRatePct,
@@ -317,154 +315,92 @@ export function formatRupiahJuta(juta: number, locale: AppLocale = "id"): string
   return `Rp${formatted} jt`;
 }
 
-export function getAssetRungMeta(locale: AppLocale, tone: ExitBoardTone) {
+export function getAssetRungMeta(locale: AppLocale) {
   if (locale === "en") {
     return [
-      { id: "cash" as const, label: "Cash", riskNote: "Lowest volatility · purchasing power erodes slowly" },
-      { id: "obligasi" as const, label: "Bonds", riskNote: "Steady coupon · moderate capital preservation" },
-      { id: "properti" as const, label: "Property", riskNote: "Tangible asset · illiquid for small starting capital" },
-      { id: "saham" as const, label: "Stocks", riskNote: "Productive equity · strong long-term compounding" },
-      { id: "kripto" as const, label: "Crypto", riskNote: "Highest volatility · steep swings up and down" },
+      { id: "cash" as const, label: "Cash" },
+      { id: "obligasi" as const, label: "Bonds" },
+      { id: "properti" as const, label: "Property" },
+      { id: "saham" as const, label: "Stocks" },
+      { id: "kripto" as const, label: "Crypto" },
     ];
   }
-  const pronoun = tone === "lugua" ? "lu" : "kamu";
   return [
-    { id: "cash" as const, label: "cash", riskNote: `Paling stabil, tapi daya beli uang ${pronoun} pelan-pelan tergerus inflasi` },
-    { id: "obligasi" as const, label: "obligasi", riskNote: "Imbal hasil kupon terukur, cocok untuk menjaga nilai" },
-    { id: "properti" as const, label: "properti", riskNote: "Aset fisik berwujud, kurang likuid saat modal awal masih kecil" },
-    { id: "saham" as const, label: "saham", riskNote: "Kepemilikan bisnis produktif dengan gulungan jangka panjang kuat" },
-    { id: "kripto" as const, label: "kripto", riskNote: "Paling tinggi di tangga risiko-imbal hasil, fluktuasi tajam" },
+    { id: "cash" as const, label: "Cash" },
+    { id: "obligasi" as const, label: "Obligasi" },
+    { id: "properti" as const, label: "Properti" },
+    { id: "saham" as const, label: "Saham" },
+    { id: "kripto" as const, label: "Kripto" },
   ];
 }
 
 export function getExitBoardSteps(
   locale: AppLocale,
-  tone: ExitBoardTone,
   startAge: number,
   monthlyIncomeJuta: number,
 ): ExitBoardStepCopy[] {
   const incText = formatRupiahJuta(monthlyIncomeJuta, locale);
   const save25Text = formatRupiahJuta(monthlyIncomeJuta * 0.25, locale);
+  const save80Text = formatRupiahJuta(monthlyIncomeJuta * 0.8, locale);
   const cap80Text = formatRupiahJuta(monthlyIncomeJuta * 0.2, locale);
 
   if (locale === "en") {
     return [
       {
         step: 1,
-        title: "A blank board",
-        body: `The horizontal line tracks your age starting at ${startAge}. Above it, we draw two curves that decide when you no longer have to trade hours for survival.`,
-        keyLabel: "key anchor",
-        keyValue: `age ${startAge}`,
+        title: "Age & Capital Axes",
+        body: `Horizontal axis: productive age (${startAge}–${MAX_WORKING_AGE}). Vertical axis: discounted human capital vs. compounded financial capital.`,
+        keyLabel: "horizon",
+        keyValue: `${startAge} → ${MAX_WORKING_AGE} yrs`,
       },
       {
         step: 2,
-        title: "Human capital",
-        body: "Your ability to work, energy, remaining time, and earning capacity decline toward roughly age 74. Everything on this curve rests on one word: skill.",
-        keyLabel: "key anchor",
-        keyValue: "age ±74",
+        title: "Human Capital (HC)",
+        body: "Present value of remaining future earning capacity (discount rate d = 4%/yr). Declines naturally to 0 near age 74. Core driver: skill.",
+        keyLabel: "formula",
+        keyValue: "HC → 0 (±74)",
       },
       {
         step: 3,
-        title: "Financial capital",
-        body: "The capital you keep and compound across life. It starts tiny at the bottom-left and bends upward over decades. Human capital is not financial capital.",
-        keyLabel: "key anchor",
-        keyValue: "FC starts small",
+        title: "Financial Capital (FC)",
+        body: "Invested capital compounded annually: FC(t+1) = FC(t)×(1+r) + S×Y. Starts near zero and curves upward exponentially. HC ≠ FC.",
+        keyLabel: "formula",
+        keyValue: "FC(t)×(1+r) + S×Y",
       },
       {
         step: 4,
-        title: "The crossover point",
-        body: "When financial capital crosses human capital, your invested assets can carry your living costs. Average people cross near 65. The real question: how do you pull it back into your 30s?",
-        keyLabel: "key anchor",
+        title: "Crossover Point (FC ≥ HC)",
+        body: "Age where accumulated FC surpasses remaining HC. Standard baseline crosses near 65; high saving rate + return pulls crossover into the 30s.",
+        keyLabel: "target shift",
         keyValue: "65 → 30s",
       },
       {
         step: 5,
-        title: "Saving rate (S)",
-        body: `Saving rate S = savings ÷ total income. On ${incText}/month, saving ${save25Text} is 25%. Pulling the crossover forward comes from pushing S toward an aggressive 80% target.`,
-        keyLabel: "key anchor",
+        title: "Saving Rate (S)",
+        body: `S = savings ÷ monthly income. On ${incText}/mo: S 25% saves ${save25Text}/mo; S 80% target saves ${save80Text}/mo.`,
+        keyLabel: "saving rate",
         keyValue: "25% → 80%",
       },
       {
         step: 6,
-        title: "Spending cap",
-        body: `Replace loose 50/30/20 habits with one clean ceiling: Spending Cap = Income × (1 − S). At ${incText} income and 80% saving rate, monthly living stays capped at ${cap80Text}.`,
-        keyLabel: "key anchor",
-        keyValue: "income × (1 − S)",
+        title: "Spending Cap",
+        body: `Replaces 50/30/20 budgeting with a fixed ceiling: Spending Cap = Income × (1 − S). At ${incText} and S 80%, cap = ${cap80Text}/mo.`,
+        keyLabel: "ceiling",
+        keyValue: `Income × (1 − S)`,
       },
       {
         step: 7,
-        title: "Risk-return ladder",
-        body: "From bottom to top: cash, bonds, property, stocks, crypto. While capital is still small, scattering across five baskets dilutes growth—focus conviction on one primary rung you truly study.",
-        keyLabel: "key anchor",
-        keyValue: "one core rung",
+        title: "Risk–Return Ladder",
+        body: "Cash (3%) → Bonds (6%) → Property (8%) → Stocks (10%) → Crypto (18%). Small capital compounds faster in 1 concentrated rung.",
+        keyLabel: "allocation",
+        keyValue: "1 Core Rung",
       },
       {
         step: 8,
-        title: "Three anchors to simulate",
-        body: "Test your own numbers in the simulator below. Watch how three levers—your Saving Rate, your Spending Cap, and your chosen Asset Rung—shift your crossover age in real time.",
-        keyLabel: "key anchor",
-        keyValue: "S% · Cap · Age",
-      },
-    ];
-  }
-
-  if (tone === "lugua") {
-    return [
-      {
-        step: 1,
-        title: "Papan tulis kosong",
-        body: `Garis mendatar di bawah itu umur lu, mulai dari ${startAge}. Di atas garis ini gua bakal gambar dua kurva yang nentuin kapan lu berhenti kerja demi bertahan hidup.`,
-        keyLabel: "angka kunci",
-        keyValue: `umur ${startAge}`,
-      },
-      {
-        step: 2,
-        title: "Human capital",
-        body: "Kapasitas kerja, tenaga, sisa waktu produktif, dan income lu pelan-pelan turun sampai sekitar umur 74. Inti dari kurva ini cuma satu kata: skill.",
-        keyLabel: "angka kunci",
-        keyValue: "±74 tahun",
-      },
-      {
-        step: 3,
-        title: "Financial capital",
-        body: "Uang yang beneran lu kumpulin dan gulung sepanjang hidup. Awalnya kecil banget di pojok bawah, lalu melengkung naik. Ingat: skill kerja itu beda sama modal uang.",
-        keyLabel: "angka kunci",
-        keyValue: "FC mulai kecil",
-      },
-      {
-        step: 4,
-        title: "Titik silang",
-        body: "Begitu garis financial capital nyalip human capital, aset lu udah sanggup nutup biaya hidup. Rata-rata orang baru ketemu di umur 65. Pertanyaannya: gimana narik titik ini mundur ke 30-an?",
-        keyLabel: "angka kunci",
-        keyValue: "65 → 30-an",
-      },
-      {
-        step: 5,
-        title: "Saving rate",
-        body: `Rumusnya S = tabungan ÷ total income. Dari ${incText} kalau lu sisihin ${save25Text}, S lu baru 25%. Buat narik titik silang jauh lebih cepat, target di papan tulis ini adalah S 80%.`,
-        keyLabel: "angka kunci",
-        keyValue: "25% → 80%",
-      },
-      {
-        step: 6,
-        title: "Spending cap",
-        body: `Tinggalin pola bagi-bagi 50/30/20, ganti pakai satu batas tegas: Batas Belanja = Income × (1 − S). Kalau income ${incText} dan target S 80%, hidup lu dikunci di ${cap80Text}/bulan.`,
-        keyLabel: "angka kunci",
-        keyValue: "income × (1 − S)",
-      },
-      {
-        step: 7,
-        title: "Tangga risk-return",
-        body: "Urutannya dari bawah ke atas: cash, obligasi, properti, saham, kripto. Waktu modal masih kecil, jangan dipecah ke mana-mana—fokus satu posisi utama di aset yang beneran lu pahami.",
-        keyLabel: "angka kunci",
-        keyValue: "satu posisi utama",
-      },
-      {
-        step: 8,
-        title: "Tiga pegangan simulasi",
-        body: "Sekarang geser sendiri angka lu di bawah. Lihat langsung gimana tiga tuas ini—Saving Rate, Batas Belanja, dan Tangga Aset—ngubah umur titik silang lu detik ini juga.",
-        keyLabel: "angka kunci",
-        keyValue: "S% · Cap · Umur",
+        title: "HC Skill vs. FC Reserve",
+        body: "Salaried income = steady HC cashflow feeding FC. Active trading = HC skill execution; keep learning/trading risk ring-fenced from long-term FC.",
+        keyLabel: "separation",
+        keyValue: "Skill (HC) ≠ FC",
       },
     ];
   }
@@ -472,59 +408,59 @@ export function getExitBoardSteps(
   return [
     {
       step: 1,
-      title: "Papan tulis kosong",
-      body: `Garis mendatar di bawah adalah umurmu, dimulai dari ${startAge}. Di atasnya kita menggambar dua kurva yang menentukan kapan hidupmu tidak lagi bergantung pada menukar jam kerja.`,
-      keyLabel: "angka kunci",
-      keyValue: `umur ${startAge}`,
+      title: "Sumbu Usia & Nilai Modal",
+      body: `Sumbu horizontal: rentang usia produktif (${startAge}–${MAX_WORKING_AGE} thn). Sumbu vertikal: nilai sekarang HC vs akumulasi majemuk FC.`,
+      keyLabel: "rentang",
+      keyValue: `${startAge} → ${MAX_WORKING_AGE} thn`,
     },
     {
       step: 2,
-      title: "Human capital",
-      body: "Kemampuan kerja, energi, sisa waktu produktif, dan kapasitas penghasilanmu menurun alami hingga sekitar umur 74. Inti dari kurva ini hanya satu kata: skill.",
-      keyLabel: "angka kunci",
-      keyValue: "±74 tahun",
+      title: "Human Capital (HC)",
+      body: "Nilai sekarang dari sisa kapasitas penghasilan masa depan (diskon d = 4%/thn). Menurun alami menuju 0 di usia ±74. Faktor utama: skill.",
+      keyLabel: "rumus",
+      keyValue: "HC → 0 (±74)",
     },
     {
       step: 3,
-      title: "Financial capital",
-      body: "Uang yang benar-benar kamu sisihkan dan gulung sepanjang hidup. Mulainya kecil di kiri bawah, lalu tumbuh melengkung naik. Human capital tidak sama dengan financial capital.",
-      keyLabel: "angka kunci",
-      keyValue: "FC mulai kecil",
+      title: "Financial Capital (FC)",
+      body: "Akumulasi modal yang digulung tiap tahun: FC(t+1) = FC(t)×(1+r) + S×Y. Mulai dari kecil lalu melengkung eksponensial. HC ≠ FC.",
+      keyLabel: "rumus",
+      keyValue: "FC(t)×(1+r) + S×Y",
     },
     {
       step: 4,
-      title: "Titik silang",
-      body: "Saat kurva financial capital bertemu human capital, uangmu sudah sanggup menanggung biaya hidup. Rata-rata orang bertemu di umur sekitar 65. Pertanyaannya: bagaimana menariknya mundur ke 30-an?",
-      keyLabel: "angka kunci",
+      title: "Titik Silang (FC ≥ HC)",
+      body: "Usia ketika kurva FC melampaui kurva HC. Baseline rata-rata di usia ±65; kenaikan S dan r menarik titik silang maju ke usia 30-an.",
+      keyLabel: "target",
       keyValue: "65 → 30-an",
     },
     {
       step: 5,
-      title: "Saving rate",
-      body: `Rumusnya S = tabungan ÷ total income. Dari ${incText}, menabung ${save25Text} berarti S = 25%. Untuk menarik titik silang jauh lebih maju, target percepatan di papan tulis ini adalah 80%.`,
-      keyLabel: "angka kunci",
+      title: "Saving Rate (S)",
+      body: `S = tabungan ÷ total income. Pada ${incText}/bln: S 25% = ${save25Text}/bln; target S 80% = ${save80Text}/bln.`,
+      keyLabel: "rasio simpan",
       keyValue: "25% → 80%",
     },
     {
       step: 6,
-      title: "Spending cap",
-      body: `Ganti kebiasaan 50/30/20 dengan satu pagar sederhana: Batas Belanja = Income × (1 − S). Dengan income ${incText} dan target S 80%, batas belanjamu terjaga di ${cap80Text}/bulan.`,
-      keyLabel: "angka kunci",
-      keyValue: "income × (1 − S)",
+      title: "Spending Cap",
+      body: `Mengganti pola 50/30/20 dengan batas pengeluaran: Spending Cap = Income × (1 − S). Pada ${incText} & S 80%, cap = ${cap80Text}/bln.`,
+      keyLabel: "batas belanja",
+      keyValue: "Income × (1 − S)",
     },
     {
       step: 7,
-      title: "Tangga risk-return",
-      body: "Dari paling bawah ke atas: cash, obligasi, properti, saham, kripto. Saat modal masih kecil, memecah uang ke terlalu banyak tempat memperlambat laju—fokus pada satu posisi utama yang kamu kuasai.",
-      keyLabel: "angka kunci",
-      keyValue: "satu posisi utama",
+      title: "Tangga Risk–Return",
+      body: "Cash (3%) → Obligasi (6%) → Properti (8%) → Saham (10%) → Kripto (18%). Modal kecil difokuskan pada 1 posisi utama yang dikuasai.",
+      keyLabel: "alokasi",
+      keyValue: "1 Posisi Utama",
     },
     {
       step: 8,
-      title: "Tiga pegangan simulasi",
-      body: "Silakan uji angkamu sendiri pada simulator di bawah. Amati bagaimana Saving Rate, Batas Belanja, dan pilihan Tangga Aset menggeser umur titik silangmu secara langsung.",
-      keyLabel: "angka kunci",
-      keyValue: "S% · Cap · Umur",
+      title: "Pemisahan Skill HC & Modal FC",
+      body: "Gaji tetap = arus kas HC stabil pengisi FC. Trading aktif = eksekusi skill (HC); pisahkan modal latihan trading dari tabungan FC jangka panjang.",
+      keyLabel: "struktur",
+      keyValue: "Skill (HC) ≠ FC",
     },
   ];
 }

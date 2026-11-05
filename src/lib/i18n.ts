@@ -176,7 +176,7 @@ export const UI_COPY = {
       Playbook: { nav: "Playbook", title: "Playbook", subtitle: "Build checklists for each stage of a trade." },
       Mindset: { nav: "Mindset", title: "Mindset", subtitle: "Check in and reflect on your trading." },
       Patience: { nav: "Patience", title: "Patience", subtitle: "Pause emotional urges, protect profit peaks, and let steady compounding work." },
-      "Exit board": { nav: "Exit board", title: "Exit chalkboard", subtitle: "Step through the HC vs. FC chalkboard and simulate your own numbers." },
+      "Exit board": { nav: "Exit board", title: "Exit board", subtitle: "HC vs. FC crossover, saving rate, and spending cap simulator." },
       Goals: { nav: "Goals", title: "Goals", subtitle: "Track the habits you want to build." },
     },
 
@@ -1095,7 +1095,7 @@ export const UI_COPY = {
       Playbook: { nav: "Playbook", title: "Playbook", subtitle: "Susun daftar aturan untuk setiap tahap trading." },
       Mindset: { nav: "Mindset", title: "Mindset", subtitle: "Cek kondisi diri dan refleksikan keputusan tradingmu." },
       Patience: { nav: "Patience", title: "Patience", subtitle: "Jeda dorongan emosional, jaga puncak profit, dan biarkan efek gulung bekerja tenang." },
-      "Exit board": { nav: "Papan tulis", title: "Papan tulis", subtitle: "Materi papan tulis HC vs FC dan simulator mandiri untuk gambaran besar keuanganmu." },
+      "Exit board": { nav: "Papan tulis", title: "Papan tulis", subtitle: "Simulasi HC vs FC, saving rate, spending cap, dan titik silang." },
       Goals: { nav: "Target kebiasaan", title: "Target kebiasaan", subtitle: "Pantau kebiasaan disiplin yang ingin kamu bangun." },
     },
 

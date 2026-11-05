@@ -80,14 +80,14 @@ test("simulateExitBoard honors custom editable return % and starting FC savings"
 test("normalizeExitBoardState and storage helpers clamp invalid values and survive corrupt JSON", () => {
   const clamped = normalizeExitBoardState({
     step: 99,
-    tone: "lugua",
+    localeOverride: "id",
     monthlyIncomeJuta: -50,
     savingRatePct: 999,
     startAge: 5,
     selectedAsset: "unknown",
   });
   assert.equal(clamped.step, 8);
-  assert.equal(clamped.tone, "lugua");
+  assert.equal(clamped.localeOverride, "id");
   assert.equal(clamped.monthlyIncomeJuta, 1);
   assert.equal(clamped.savingRatePct, 90);
   assert.equal(clamped.startAge, 18);
@@ -101,10 +101,10 @@ test("normalizeExitBoardState and storage helpers clamp invalid values and survi
     },
   };
 
-  saveExitBoardState(storage, { ...DEFAULT_EXIT_BOARD_STATE, step: 6, tone: "lugua", savingRatePct: 80 });
+  saveExitBoardState(storage, { ...DEFAULT_EXIT_BOARD_STATE, step: 6, localeOverride: "id", savingRatePct: 80 });
   const loaded = loadExitBoardState(storage);
   assert.equal(loaded.step, 6);
-  assert.equal(loaded.tone, "lugua");
+  assert.equal(loaded.localeOverride, "id");
   assert.equal(loaded.savingRatePct, 80);
 
   mem.set(EXIT_BOARD_STORAGE_KEY, "{broken-json");
@@ -113,19 +113,17 @@ test("normalizeExitBoardState and storage helpers clamp invalid values and survi
   assert.equal(fallback.savingRatePct, 25);
 });
 
-test("getExitBoardSteps provides 8 progressive lessons in Kamu, Lu-Gua, and English", () => {
-  const kamu = getExitBoardSteps("id", "kamu", 22, 30);
-  const lugua = getExitBoardSteps("id", "lugua", 22, 30);
-  const en = getExitBoardSteps("en", "kamu", 22, 30);
+test("getExitBoardSteps provides 8 concise technical steps in Indonesian and English", () => {
+  const idSteps = getExitBoardSteps("id", 22, 30);
+  const enSteps = getExitBoardSteps("en", 22, 30);
 
-  assert.equal(kamu.length, 8);
-  assert.equal(lugua.length, 8);
-  assert.equal(en.length, 8);
+  assert.equal(idSteps.length, 8);
+  assert.equal(enSteps.length, 8);
 
-  assert.match(kamu[0].keyValue, /22/);
-  assert.match(kamu[5].body, /Rp6 jt/); // 20% of Rp30 jt spending cap
-  assert.match(lugua[0].body, /\blu\b/i);
-  assert.match(en[3].title, /crossover/i);
+  assert.match(idSteps[0].keyValue, /22/);
+  assert.match(idSteps[5].body, /Rp6 jt/); // 20% of Rp30 jt spending cap
+  assert.match(enSteps[3].title, /Crossover/i);
+  assert.match(idSteps[7].keyValue, /Skill \(HC\)/);
 
   assert.equal(formatRupiahJuta(20, "id"), "Rp20 jt");
   assert.equal(formatRupiahJuta(2500, "id"), "Rp2,5 M");
