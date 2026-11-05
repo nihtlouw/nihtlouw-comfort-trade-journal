@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { ArrowDown, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
+import { useEffect, useId, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 import {
   BASELINE_SAVING_RATE_PCT,
   DEFAULT_ASSET_RETURNS_PCT,
@@ -16,143 +16,112 @@ import {
   TARGET_SAVING_RATE_PCT,
   type AssetRungId,
   type ExitBoardState,
-  type ExitBoardTone,
-  type ExitBoardVoiceMode,
 } from "@/lib/exit-board";
 import type { AppLocale } from "@/lib/types";
 
-type VoiceMode = ExitBoardVoiceMode;
-
 const UI_STRINGS = {
   id: {
-    eyebrow: "papan tulis jalan keluar",
-    heroTitle: "Satu gambar besar untuk uangmu",
-    heroSub: "Ikuti materi papan tulisnya langkah demi langkah, lalu simulasikan angkamu sendiri di bawah.",
-    voiceGroupAria: "Pilihan bahasa dan nada sapaan materi",
-    boardTitle: "human capital dan financial capital",
-    legendHc: "HC: kapasitas kerja",
-    legendFcCurrent: (s: number) => `FC dengan S ${s}%`,
-    legendFcTarget: "FC dengan S 80%",
-    axisMoney: "nilai uang",
-    axisPullBack: "tarik mundur titik silang",
-    hoverHint: "Arahkan atau sentuh grafik untuk melihat nilai per umur",
+    langGroupAria: "Bahasa materi HC vs FC",
+    boardTitle: "HC vs FC",
+    legendHc: "HC (Skill)",
+    legendFcCurrent: (s: number) => `FC (S ${s}%)`,
+    legendFcTarget: "FC (S 80%)",
+    axisMoney: "Modal",
+    axisPullBack: "65 → 30-an",
+    idleFormula: "HC (d = 4%/thn)  ·  FC(t+1) = FC(t)×(1+r) + S×Y",
     hoverReadout: (age: number, hc: string, fcCur: string, fc80: string, s: number) =>
-      `Umur ${age} · HC ${hc} · FC (S ${s}%) ${fcCur} · FC (S 80%) ${fc80}`,
-    stepCounter: (step: number) => `langkah ${step} dari 8`,
-    stepDotAria: (step: number) => `Buka langkah ${step} dari 8`,
-    replayStart: "ulang dari awal",
-    prevBtn: "sebelumnya",
-    nextBtn: "berikutnya",
-    focusSimBtn: "atur angkamu",
-    skipBtn: "lewati narasi",
-    simTitle: "Atur angkamu",
-    resetDefault: "Contoh awal",
-    incomeLabel: "total income per bulan",
-    incomeInputAria: "Nominal income per bulan dalam juta Rupiah",
-    savingRateLabel: (s: number, saveText: string, incText: string) =>
-      `saving rate (S) · S = ${saveText} ÷ ${incText} = ${s}%`,
-    preset25: "25% contoh papan tulis",
-    preset80: "80% target",
-    startAgeLabel: "umur mulai",
-    ageYears: (age: number) => `${age} tahun`,
-    initialFcLabel: "modal FC awal (opsional)",
-    assetLadderLabel: "posisi di tangga aset",
-    returnPrefix: "return asumsi",
-    returnSuffix: "% per tahun, bisa diubah langsung",
-    returnReset: "reset %",
-    returnInputAria: "Persentase asumsi return tahunan",
-    resCurrentLabel: "titik silang saat ini",
-    resCurrentAge: (age: number | null) => (age !== null ? `umur ${age}` : `belum tercapai s/d ${MAX_WORKING_AGE}`),
-    resCurrentSub: (s: number, saveText: string, asset: string, r: number) =>
-      `dengan S ${s}% (${saveText}/bln) di ${asset} ${r}%/thn`,
-    resTargetLabel: "titik silang dengan target",
+      `Usia ${age} · HC ${hc} · FC (${s}%) ${fcCur} · FC (80%) ${fc80}`,
+    stepCounter: (step: number) => `${step} / 8`,
+    stepDotAria: (step: number) => `Langkah ${step} dari 8`,
+    replayAria: "Ulang ke langkah 1",
+    prevBtn: "Sebelumnya",
+    nextBtn: "Berikutnya",
+    simTitle: "Parameter Simulasi",
+    resetDefault: "Reset",
+    incomeLabel: "Income / bulan",
+    incomeInputAria: "Income per bulan dalam juta Rupiah",
+    savingRateLabel: (saveText: string, incText: string) =>
+      `Saving rate (S = ${saveText} ÷ ${incText})`,
+    preset25: "S 25%",
+    preset80: "S 80%",
+    startAgeLabel: "Usia mulai",
+    ageYears: (age: number) => `${age} thn`,
+    initialFcLabel: "Modal FC awal",
+    assetLadderLabel: "Tangga aset",
+    returnPrefix: "Return (r):",
+    returnSuffix: "% / thn",
+    returnReset: "reset",
+    returnInputAria: "Asumsi return tahunan (%)",
+    resCurrentLabel: (s: number) => `Titik silang (S ${s}%)`,
+    resAgeValue: (age: number | null) => (age !== null ? `Usia ${age}` : `> ${MAX_WORKING_AGE} thn`),
+    resCurrentSub: (saveText: string, asset: string, r: number) =>
+      `${saveText}/bln · ${asset} (${r}%/thn)`,
+    resTargetLabel: "Titik silang target (S 80%)",
     resTargetSub: (asset: string, r: number, savedYears: number | null) =>
       savedYears !== null && savedYears > 0
-        ? `dengan S 80% di ${asset} ${r}%/thn · maju ${savedYears} tahun`
-        : `dengan S 80% di ${asset} ${r}%/thn`,
-    resCapLabel: (s: number) => (s === 80 ? "batas belanja di 80%" : `batas belanja di 80% (vs S ${s}%)`),
-    resCapSub: (incText: string, s: number, curCapText: string) =>
+        ? `Maju ${savedYears} thn · ${asset} (${r}%/thn)`
+        : `${asset} (${r}%/thn)`,
+    resCapLabel: (s: number) => `Spending cap (S ${s}%)`,
+    resCapSub: (s: number, cap80Text: string, fc65Text: string) =>
       s === 80
-        ? `per bulan, dari income ${incText}`
-        : `target 80% dari ${incText} · pada S ${s}% saat ini: ${curCapText}/bln`,
-    contextSalaryTag: "KONTEKS GAJI TETAP",
-    contextSalaryTitle: "Gaji bulanan stabil = HC tenang",
-    contextSalaryBody:
-      "Saat penghasilan bulanan stabil, human capital berperan seperti arus kas tetap sehingga porsi tabungan FC dapat difokuskan pada tangga aset bertumbuh jangka panjang.",
-    contextTraderTag: "KONTEKS TRADER AKTIF",
-    contextTraderTitle: "Trading aktif = melatih skill (HC)",
-    contextTraderBody:
-      "Kemampuan trading harian adalah bagian dari human capital (skill). Pisahkan tabungan financial capital jangka panjangmu agar tidak ikut terpakai saat melatih eksekusi.",
-    chalkSpendBadge: (cap80: string) => `Batas belanja S 80%: ${cap80}/bln`,
-    chalkRungBadge: (asset: string, r: number) => `Tangga aktif: ${asset} (${r}%/thn)`,
+        ? `Income × (1 − S) · FC usia 65: ${fc65Text}`
+        : `Target S 80%: ${cap80Text}/bln · FC usia 65: ${fc65Text}`,
+    chalkSpendBadge: (cap80: string) => `Cap S 80%: ${cap80}/bln`,
+    chalkRungBadge: (asset: string, r: number) => `${asset}: r = ${r}%/thn`,
   },
   en: {
-    eyebrow: "exit chalkboard",
-    heroTitle: "One big picture for your money",
-    heroSub: "Step through the 8 chalkboard lessons at your own pace, then simulate your numbers below.",
-    voiceGroupAria: "Lesson language and voice style",
-    boardTitle: "human capital and financial capital",
-    legendHc: "HC: earning capacity",
-    legendFcCurrent: (s: number) => `FC at S ${s}%`,
-    legendFcTarget: "FC at S 80%",
-    axisMoney: "money value",
-    axisPullBack: "pull crossover earlier",
-    hoverHint: "Hover or tap along the board to inspect values by age",
+    langGroupAria: "HC vs. FC module language",
+    boardTitle: "HC vs. FC",
+    legendHc: "HC (Skill)",
+    legendFcCurrent: (s: number) => `FC (S ${s}%)`,
+    legendFcTarget: "FC (S 80%)",
+    axisMoney: "Capital",
+    axisPullBack: "65 → 30s",
+    idleFormula: "HC (d = 4%/yr)  ·  FC(t+1) = FC(t)×(1+r) + S×Y",
     hoverReadout: (age: number, hc: string, fcCur: string, fc80: string, s: number) =>
-      `Age ${age} · HC ${hc} · FC (S ${s}%) ${fcCur} · FC (S 80%) ${fc80}`,
-    stepCounter: (step: number) => `step ${step} of 8`,
-    stepDotAria: (step: number) => `Go to step ${step} of 8`,
-    replayStart: "replay from step 1",
-    prevBtn: "previous",
-    nextBtn: "next",
-    focusSimBtn: "simulate below",
-    skipBtn: "skip to simulator",
-    simTitle: "Simulate your numbers",
-    resetDefault: "Reset example",
-    incomeLabel: "monthly total income",
+      `Age ${age} · HC ${hc} · FC (${s}%) ${fcCur} · FC (80%) ${fc80}`,
+    stepCounter: (step: number) => `${step} / 8`,
+    stepDotAria: (step: number) => `Step ${step} of 8`,
+    replayAria: "Reset to step 1",
+    prevBtn: "Prev",
+    nextBtn: "Next",
+    simTitle: "Simulation Parameters",
+    resetDefault: "Reset",
+    incomeLabel: "Monthly income",
     incomeInputAria: "Monthly income in million Rupiah",
-    savingRateLabel: (s: number, saveText: string, incText: string) =>
-      `saving rate (S) · S = ${saveText} ÷ ${incText} = ${s}%`,
-    preset25: "25% board example",
-    preset80: "80% target",
-    startAgeLabel: "starting age",
-    ageYears: (age: number) => `age ${age}`,
-    initialFcLabel: "starting FC savings (optional)",
-    assetLadderLabel: "position on the asset ladder",
-    returnPrefix: "assumed return",
-    returnSuffix: "% per year, editable right here",
-    returnReset: "reset %",
-    returnInputAria: "Assumed annual return percentage",
-    resCurrentLabel: "current crossover point",
-    resCurrentAge: (age: number | null) => (age !== null ? `age ${age}` : `beyond age ${MAX_WORKING_AGE}`),
-    resCurrentSub: (s: number, saveText: string, asset: string, r: number) =>
-      `at S ${s}% (${saveText}/mo) in ${asset} (${r}%/yr)`,
-    resTargetLabel: "crossover with 80% target",
+    savingRateLabel: (saveText: string, incText: string) =>
+      `Saving rate (S = ${saveText} ÷ ${incText})`,
+    preset25: "S 25%",
+    preset80: "S 80%",
+    startAgeLabel: "Start age",
+    ageYears: (age: number) => `${age} yrs`,
+    initialFcLabel: "Initial FC",
+    assetLadderLabel: "Asset ladder",
+    returnPrefix: "Return (r):",
+    returnSuffix: "% / yr",
+    returnReset: "reset",
+    returnInputAria: "Assumed annual return (%)",
+    resCurrentLabel: (s: number) => `Crossover (S ${s}%)`,
+    resAgeValue: (age: number | null) => (age !== null ? `Age ${age}` : `> ${MAX_WORKING_AGE} yrs`),
+    resCurrentSub: (saveText: string, asset: string, r: number) =>
+      `${saveText}/mo · ${asset} (${r}%/yr)`,
+    resTargetLabel: "Target crossover (S 80%)",
     resTargetSub: (asset: string, r: number, savedYears: number | null) =>
       savedYears !== null && savedYears > 0
-        ? `at S 80% in ${asset} (${r}%/yr) · ${savedYears} yrs earlier`
-        : `at S 80% in ${asset} (${r}%/yr)`,
-    resCapLabel: (s: number) => (s === 80 ? "spending cap at 80%" : `spending cap at 80% (vs S ${s}%)`),
-    resCapSub: (incText: string, s: number, curCapText: string) =>
+        ? `${savedYears} yrs earlier · ${asset} (${r}%/yr)`
+        : `${asset} (${r}%/yr)`,
+    resCapLabel: (s: number) => `Spending cap (S ${s}%)`,
+    resCapSub: (s: number, cap80Text: string, fc65Text: string) =>
       s === 80
-        ? `per month, from ${incText} income`
-        : `target 80% on ${incText} · at current S ${s}%: ${curCapText}/mo`,
-    contextSalaryTag: "SALARIED CONTEXT",
-    contextSalaryTitle: "Steady paycheck = calm HC base",
-    contextSalaryBody:
-      "When monthly salary is predictable, your human capital acts like a bond-like cashflow—allowing long-term financial capital savings to compound up the asset ladder.",
-    contextTraderTag: "ACTIVE TRADER CONTEXT",
-    contextTraderTitle: "Active trading = training HC skill",
-    contextTraderBody:
-      "Day-to-day trading is human capital (skill execution). Keep long-term financial capital ring-fenced separately so learning drawdowns never touch your compounding nest egg.",
-    chalkSpendBadge: (cap80: string) => `80% Spending Cap: ${cap80}/mo`,
-    chalkRungBadge: (asset: string, r: number) => `Active rung: ${asset} (${r}%/yr)`,
+        ? `Income × (1 − S) · FC at 65: ${fc65Text}`
+        : `S 80% cap: ${cap80Text}/mo · FC at 65: ${fc65Text}`,
+    chalkSpendBadge: (cap80: string) => `S 80% Cap: ${cap80}/mo`,
+    chalkRungBadge: (asset: string, r: number) => `${asset}: r = ${r}%/yr`,
   },
 } as const;
 
 export function ExitBoardView({ locale }: { locale: AppLocale }) {
   const simHeadingId = useId();
-  const simSectionRef = useRef<HTMLElement | null>(null);
 
   const [state, setState] = useState<ExitBoardState>(() => ({
     ...DEFAULT_EXIT_BOARD_STATE,
@@ -175,22 +144,16 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
     saveExitBoardState(window.localStorage, state);
   }, [hydrated, state]);
 
-  const activeVoice: VoiceMode =
-    state.voiceMode ?? (locale === "id" ? (state.tone === "lugua" ? "id_lugua" : "id_kamu") : "en");
-  const effectiveLocale: AppLocale = activeVoice === "en" ? "en" : "id";
-  const effectiveTone: ExitBoardTone = activeVoice === "id_lugua" ? "lugua" : "kamu";
+  const effectiveLocale: AppLocale = state.localeOverride ?? locale;
   const t = UI_STRINGS[effectiveLocale];
 
   const sim = useMemo(() => simulateExitBoard(state), [state]);
   const steps = useMemo(
-    () => getExitBoardSteps(effectiveLocale, effectiveTone, sim.startAge, sim.monthlyIncomeJuta),
-    [effectiveLocale, effectiveTone, sim.monthlyIncomeJuta, sim.startAge],
+    () => getExitBoardSteps(effectiveLocale, sim.startAge, sim.monthlyIncomeJuta),
+    [effectiveLocale, sim.monthlyIncomeJuta, sim.startAge],
   );
   const currentStepCopy = steps[state.step - 1] ?? steps[3];
-  const assetRungs = useMemo(
-    () => getAssetRungMeta(effectiveLocale, effectiveTone),
-    [effectiveLocale, effectiveTone],
-  );
+  const assetRungs = useMemo(() => getAssetRungMeta(effectiveLocale), [effectiveLocale]);
   const activeRungMeta = assetRungs.find((item) => item.id === state.selectedAsset) ?? assetRungs[3];
 
   function updateSimField(patch: Partial<ExitBoardState>, revealCurves = true) {
@@ -201,20 +164,11 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
     }));
   }
 
-  function selectVoice(next: VoiceMode) {
-    setState((prev) => ({
-      ...prev,
-      voiceMode: next,
-      tone: next === "id_lugua" ? "lugua" : next === "id_kamu" ? "kamu" : prev.tone,
-    }));
-  }
-
   function resetToExample() {
     setHoverAge(null);
     setState((prev) => ({
       ...DEFAULT_EXIT_BOARD_STATE,
-      tone: prev.tone,
-      voiceMode: prev.voiceMode,
+      localeOverride: prev.localeOverride,
       step: Math.max(4, prev.step),
       assetReturnsPct: { ...DEFAULT_ASSET_RETURNS_PCT },
     }));
@@ -330,46 +284,12 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
   const saveFormatted = formatRupiahJuta(sim.monthlySavingJuta, effectiveLocale);
   const cap80Formatted = formatRupiahJuta(sim.monthlySpendingCapTarget80Juta, effectiveLocale);
   const capCurFormatted = formatRupiahJuta(sim.monthlySpendingCapCurrentJuta, effectiveLocale);
+  const fc65Formatted = formatRupiahJuta(sim.fcAt65CurrentJuta, effectiveLocale);
   const defaultRungReturn = DEFAULT_ASSET_RETURNS_PCT[state.selectedAsset];
 
   return (
     <div className="view-stack exit-board-view">
-      {/* Header Banner */}
-      <section className="card exit-hero-card">
-        <div className="exit-hero-copy">
-          <span className="exit-eyebrow">{t.eyebrow}</span>
-          <h2>{t.heroTitle}</h2>
-          <p>{t.heroSub}</p>
-        </div>
-        <div className="segment-control exit-voice-switch" role="group" aria-label={t.voiceGroupAria}>
-          <button
-            type="button"
-            className={activeVoice === "id_kamu" ? "selected" : ""}
-            aria-pressed={activeVoice === "id_kamu"}
-            onClick={() => selectVoice("id_kamu")}
-          >
-            Nada: Kamu
-          </button>
-          <button
-            type="button"
-            className={activeVoice === "id_lugua" ? "selected" : ""}
-            aria-pressed={activeVoice === "id_lugua"}
-            onClick={() => selectVoice("id_lugua")}
-          >
-            Nada: Lu–Gua
-          </button>
-          <button
-            type="button"
-            className={activeVoice === "en" ? "selected" : ""}
-            aria-pressed={activeVoice === "en"}
-            onClick={() => selectVoice("en")}
-          >
-            English
-          </button>
-        </div>
-      </section>
-
-      {/* Chalkboard + 8-Step Progressive Narrative */}
+      {/* Row 1: Chalkboard + Concise Technical Step Panel */}
       <div className="exit-board-split">
         <section className="exit-chalkboard" aria-label={t.boardTitle}>
           <div className="exit-chalk-head">
@@ -401,7 +321,7 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
               viewBox="0 0 560 244"
               className="exit-chalk-svg"
               role="img"
-              aria-label={`${t.boardTitle}: ${t.resCurrentLabel} ${t.resCurrentAge(sim.currentCrossover.displayAge)}, ${t.resTargetLabel} ${t.resCurrentAge(sim.target80Crossover.displayAge)}`}
+              aria-label={`${t.boardTitle}: ${t.resCurrentLabel(sim.savingRatePct)} ${t.resAgeValue(sim.currentCrossover.displayAge)}, ${t.resTargetLabel} ${t.resAgeValue(sim.target80Crossover.displayAge)}`}
               onMouseMove={(e) => handlePointerAge(e.clientX, e.currentTarget.getBoundingClientRect())}
               onMouseLeave={() => setHoverAge(null)}
               onClick={(e) => handlePointerAge(e.clientX, e.currentTarget.getBoundingClientRect())}
@@ -413,7 +333,6 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
                 </linearGradient>
               </defs>
 
-              {/* Subtle horizontal chalk guides */}
               <line x1={chartLeft} y1={78} x2={chartRight} y2={78} stroke="rgba(189, 214, 195, 0.10)" strokeDasharray="3 5" />
               <line x1={chartLeft} y1={135} x2={chartRight} y2={135} stroke="rgba(189, 214, 195, 0.10)" strokeDasharray="3 5" />
 
@@ -424,12 +343,10 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
                 {t.axisMoney}
               </text>
 
-              {/* Acceleration zone between current FC and S=80% FC */}
               {showTargetCurveDistinct && accelAreaPath && (
                 <path d={accelAreaPath} fill="url(#exitAccelFill)" />
               )}
 
-              {/* HC descending curve */}
               {showHcCurve && (
                 <>
                   <path
@@ -452,7 +369,6 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
                 </>
               )}
 
-              {/* FC current S% curve */}
               {showFcCurrentCurve && (
                 <>
                   <path
@@ -475,7 +391,6 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
                 </>
               )}
 
-              {/* FC target 80% curve */}
               {showTargetCurveDistinct && (
                 <path
                   d={fcTarget80Path}
@@ -488,7 +403,6 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
                 />
               )}
 
-              {/* Step 4 average 65 marker if distinct from current crossover */}
               {state.step === 4 && ref65X !== null && (sim.currentCrossover.displayAge === null || Math.abs(sim.currentCrossover.displayAge - 65) >= 4) && (
                 <g>
                   <line x1={ref65X} y1={chartBottom - 36} x2={ref65X} y2={chartBottom} stroke="rgba(237, 216, 139, 0.55)" strokeDasharray="3 3" />
@@ -501,7 +415,6 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
                 </g>
               )}
 
-              {/* Current Crossover Marker */}
               {showTargetAndCrossover && curCrossX !== null && curCrossY !== null && sim.currentCrossover.displayAge !== null && (
                 <g>
                   <line
@@ -528,7 +441,6 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
                 </g>
               )}
 
-              {/* Target 80% Crossover Marker */}
               {showTargetCurveDistinct && tgtCrossX !== null && tgtCrossY !== null && sim.target80Crossover.displayAge !== null && (
                 <g>
                   <line
@@ -550,7 +462,6 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
                 </g>
               )}
 
-              {/* Pull-back arrow */}
               {showPullArrow && pullFromX !== null && pullToX !== null && (
                 <g>
                   <line
@@ -578,25 +489,23 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
                 </g>
               )}
 
-              {/* Step 6 / Step 7 contextual chalkboard callout */}
               {state.step === 6 && (
-                <g transform="translate(310, 26)">
-                  <rect width="212" height="26" rx="7" fill="rgba(19, 34, 25, 0.84)" stroke="rgba(143, 229, 170, 0.45)" />
-                  <text x="106" y="16.5" textAnchor="middle" fill="#a9f0bf" fontSize="10" fontWeight="700">
+                <g transform="translate(332, 26)">
+                  <rect width="190" height="25" rx="7" fill="rgba(19, 34, 25, 0.84)" stroke="rgba(143, 229, 170, 0.45)" />
+                  <text x="95" y="16" textAnchor="middle" fill="#a9f0bf" fontSize="10" fontWeight="700">
                     {t.chalkSpendBadge(cap80Formatted)}
                   </text>
                 </g>
               )}
               {state.step === 7 && (
-                <g transform="translate(316, 26)">
-                  <rect width="206" height="26" rx="7" fill="rgba(19, 34, 25, 0.84)" stroke="rgba(237, 216, 139, 0.48)" />
-                  <text x="103" y="16.5" textAnchor="middle" fill="#edd88b" fontSize="10" fontWeight="700">
+                <g transform="translate(348, 26)">
+                  <rect width="174" height="25" rx="7" fill="rgba(19, 34, 25, 0.84)" stroke="rgba(237, 216, 139, 0.48)" />
+                  <text x="87" y="16" textAnchor="middle" fill="#edd88b" fontSize="10" fontWeight="700">
                     {t.chalkRungBadge(activeRungMeta.label, sim.annualReturnPct)}
                   </text>
                 </g>
               )}
 
-              {/* Hover Scrubber Hairline */}
               {hoveredPoint && (
                 <g>
                   <line
@@ -617,7 +526,6 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
                 </g>
               )}
 
-              {/* Start Age & Age 74 End Badges */}
               <g transform={`translate(${chartLeft}, 206)`}>
                 <circle r="10.5" fill="#1b2f22" stroke="#9ec7a8" strokeWidth="1.3" />
                 <text textAnchor="middle" y="3.5" fill="#ebf7ee" fontSize="9.5" fontWeight="700">
@@ -641,24 +549,46 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
                   formatRupiahJuta(hoveredPoint.fcTargetJuta, effectiveLocale),
                   sim.savingRatePct,
                 )
-              : t.hoverHint}
+              : t.idleFormula}
           </div>
         </section>
 
-        {/* Right: Step-by-Step Teacher Narrative Card */}
+        {/* Right: Technical Core Step Card (Steps 1–8) */}
         <section className="card exit-narasi-card" aria-live="polite">
           <div>
             <div className="exit-narasi-top">
-              <span>{t.stepCounter(state.step)}</span>
-              {state.step > 1 && (
-                <button
-                  type="button"
-                  className="exit-replay-link"
-                  onClick={() => setState((prev) => ({ ...prev, step: 1 }))}
-                >
-                  <RotateCcw size={12} /> {t.replayStart}
-                </button>
-              )}
+              <span className="exit-step-pill">{t.stepCounter(state.step)}</span>
+              <div className="exit-narasi-tools">
+                {state.step > 1 && (
+                  <button
+                    type="button"
+                    className="exit-replay-link"
+                    aria-label={t.replayAria}
+                    title={t.replayAria}
+                    onClick={() => setState((prev) => ({ ...prev, step: 1 }))}
+                  >
+                    <RotateCcw size={13} />
+                  </button>
+                )}
+                <div className="segment-control exit-lang-mini" role="group" aria-label={t.langGroupAria}>
+                  <button
+                    type="button"
+                    className={effectiveLocale === "id" ? "selected" : ""}
+                    aria-pressed={effectiveLocale === "id"}
+                    onClick={() => setState((prev) => ({ ...prev, localeOverride: "id" }))}
+                  >
+                    ID
+                  </button>
+                  <button
+                    type="button"
+                    className={effectiveLocale === "en" ? "selected" : ""}
+                    aria-pressed={effectiveLocale === "en"}
+                    onClick={() => setState((prev) => ({ ...prev, localeOverride: "en" }))}
+                  >
+                    EN
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="exit-step-dots" role="tablist" aria-label={t.stepCounter(state.step)}>
@@ -699,40 +629,21 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
                 <ChevronLeft size={15} /> {t.prevBtn}
               </button>
 
-              {state.step < 8 ? (
-                <button
-                  type="button"
-                  className="button-primary exit-nav-btn"
-                  onClick={() => setState((prev) => ({ ...prev, step: Math.min(8, prev.step + 1) }))}
-                >
-                  {t.nextBtn} <ChevronRight size={15} />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="button-primary exit-nav-btn"
-                  onClick={() => simSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                >
-                  {t.focusSimBtn} <ArrowDown size={15} />
-                </button>
-              )}
-
-              {state.step < 8 && (
-                <button
-                  type="button"
-                  className="exit-skip-link"
-                  onClick={() => setState((prev) => ({ ...prev, step: 8 }))}
-                >
-                  {t.skipBtn}
-                </button>
-              )}
+              <button
+                type="button"
+                className="button-primary exit-nav-btn"
+                disabled={state.step >= 8}
+                onClick={() => setState((prev) => ({ ...prev, step: Math.min(8, prev.step + 1) }))}
+              >
+                {t.nextBtn} <ChevronRight size={15} />
+              </button>
             </div>
           </div>
         </section>
       </div>
 
-      {/* Standalone Simulator ("Atur angkamu") */}
-      <section ref={simSectionRef} className="card exit-sim-card" aria-labelledby={simHeadingId}>
+      {/* Row 2: Technical Simulator */}
+      <section className="card exit-sim-card" aria-labelledby={simHeadingId}>
         <div className="exit-sim-grid">
           <div className="exit-sim-controls">
             <div className="exit-sim-head">
@@ -781,7 +692,7 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
             <div className="exit-control-block">
               <div className="exit-control-label-row">
                 <label htmlFor="exit-saving-range">
-                  {t.savingRateLabel(sim.savingRatePct, saveFormatted, incFormatted)}
+                  {t.savingRateLabel(saveFormatted, incFormatted)}
                 </label>
                 <strong>{sim.savingRatePct}%</strong>
               </div>
@@ -815,7 +726,7 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
               </div>
             </div>
 
-            {/* 3. Starting Age & Optional Initial FC */}
+            {/* 3. Starting Age & Initial FC */}
             <div className="exit-dual-sliders">
               <div className="exit-control-block">
                 <div className="exit-control-label-row">
@@ -912,45 +823,32 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
                   </button>
                 )}
               </div>
-              <p className="exit-rung-note">{activeRungMeta.riskNote}</p>
             </div>
           </div>
 
-          {/* Right: 3 Live Simulation Output Cards */}
+          {/* Right: 3 Technical KPI Output Cards */}
           <div className="exit-sim-results">
             <div className="exit-res-card">
-              <small>{t.resCurrentLabel}</small>
-              <strong>{t.resCurrentAge(sim.currentCrossover.displayAge)}</strong>
+              <small>{t.resCurrentLabel(sim.savingRatePct)}</small>
+              <strong>{t.resAgeValue(sim.currentCrossover.displayAge)}</strong>
               <span>
-                {t.resCurrentSub(sim.savingRatePct, saveFormatted, activeRungMeta.label, sim.annualReturnPct)}
+                {t.resCurrentSub(saveFormatted, activeRungMeta.label, sim.annualReturnPct)}
               </span>
             </div>
 
             <div className="exit-res-card highlight">
               <small>{t.resTargetLabel}</small>
-              <strong>{t.resCurrentAge(sim.target80Crossover.displayAge)}</strong>
+              <strong>{t.resAgeValue(sim.target80Crossover.displayAge)}</strong>
               <span>{t.resTargetSub(activeRungMeta.label, sim.annualReturnPct, savedYears)}</span>
             </div>
 
             <div className="exit-res-card">
               <small>{t.resCapLabel(sim.savingRatePct)}</small>
-              <strong>{cap80Formatted}</strong>
-              <span>{t.resCapSub(incFormatted, sim.savingRatePct, capCurFormatted)}</span>
+              <strong>
+                {capCurFormatted}/{effectiveLocale === "en" ? "mo" : "bln"}
+              </strong>
+              <span>{t.resCapSub(sim.savingRatePct, cap80Formatted, fc65Formatted)}</span>
             </div>
-          </div>
-        </div>
-
-        {/* Two Calm Context Cards (Salaried vs Active Trader) */}
-        <div className="exit-context-strip">
-          <div className="exit-context-item">
-            <span className="exit-context-tag">{t.contextSalaryTag}</span>
-            <strong>{t.contextSalaryTitle}</strong>
-            <p>{t.contextSalaryBody}</p>
-          </div>
-          <div className="exit-context-item">
-            <span className="exit-context-tag">{t.contextTraderTag}</span>
-            <strong>{t.contextTraderTitle}</strong>
-            <p>{t.contextTraderBody}</p>
           </div>
         </div>
       </section>
