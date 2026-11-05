@@ -18,6 +18,7 @@ import {
   Moon,
   NotebookPen,
   Plus,
+  Presentation,
   Search,
   Settings2,
   Sparkles,
@@ -247,6 +248,7 @@ export function CommandPaletteModal({
       { view: "Playbook", icon: BookOpenCheck, extra: "playbook rules setup blueprints cetak biru" },
       { view: "Mindset", icon: Heart, extra: "mindset mood reflection refleksi" },
       { view: "Patience", icon: Hourglass, extra: "patience overtrade giveback sabar" },
+      { view: "Exit board", icon: Presentation, extra: "exit board papan tulis jalan keluar simulasi hc fc saving rate titik silang" },
       { view: "Goals", icon: Target, extra: "goals intentions habit target kebiasaan" },
     ];
 

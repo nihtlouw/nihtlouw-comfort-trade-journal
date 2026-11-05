@@ -159,7 +159,7 @@ export function PerformanceChart({
   const copy = UI_COPY[locale];
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const [unit, setUnit] = useState<ChartUnit>("usd");
-  const lastDrillRef = useRef<number>(0);
+  const drillCooldownRef = useRef(false);
 
   const data = useMemo(() => performanceSeries(trades, period), [trades, period]);
   const stats = getStats(trades);
@@ -232,10 +232,11 @@ export function PerformanceChart({
   const strokeGradId = `pnl-split-stroke-${uid}`;
 
   function triggerDayDrilldown(point: ChartPoint | undefined) {
-    if (!onSelectDay || !point || point.trades <= 0) return;
-    const now = Date.now();
-    if (now - lastDrillRef.current < 150) return;
-    lastDrillRef.current = now;
+    if (!onSelectDay || !point || point.trades <= 0 || drillCooldownRef.current) return;
+    drillCooldownRef.current = true;
+    window.setTimeout(() => {
+      drillCooldownRef.current = false;
+    }, 150);
     onSelectDay(point.date);
   }
 

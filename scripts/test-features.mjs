@@ -940,6 +940,41 @@ try {
   await page.locator(`.view-motion[data-view="Trade journal"]`).waitFor();
   assert.equal(await page.locator(".selected-day").count(), 1, "Clicking active day on PerformanceChart drills into Trade journal filtered to that day");
   console.log("PASS: Upgraded PerformanceChart ($ / R toggle, daily impulse bars, privacy-aware R, and day drill-down) verified.");
+
+  // Verify Standalone "Exit board" ("Papan tulis jalan keluar") 8-step material & HC vs FC simulator
+  await navigate("Exit board");
+  await page.locator(".exit-board-view").waitFor();
+  assert.equal(await page.getByLabel("Filter by trading account").count(), 0, "Exit board stays standalone without trading account filter clutter");
+  await page.locator(".exit-voice-switch").getByRole("button", { name: "Nada: Kamu", exact: true }).click();
+  assert.match(await page.locator(".exit-hero-card h2").innerText(), /Satu gambar besar untuk uangmu/);
+  assert.match(await page.locator(".exit-sim-results").innerText(), /umur 33/, "Default Rp20 jt / saham 10% computes target S=80% crossover at umur 33");
+  assert.match(await page.locator(".exit-sim-results").innerText(), /Rp4 jt/, "Default Rp20 jt computes 80% spending cap at Rp4 jt");
+
+  // Switch to Nada: Lu–Gua and verify progressive 8-step navigation + simulator persistence
+  await page.locator(".exit-voice-switch").getByRole("button", { name: "Nada: Lu–Gua", exact: true }).click();
+  await page.locator(".exit-replay-link").click();
+  assert.match(await page.locator(".exit-narasi-card h3").innerText(), /Papan tulis kosong/);
+  await page.locator(".exit-narasi-actions").getByRole("button", { name: /berikutnya/i }).click();
+  assert.match(await page.locator(".exit-narasi-card h3").innerText(), /Human capital/);
+  await page.locator(".exit-skip-link").click();
+  assert.match(await page.locator(".exit-narasi-top").innerText(), /langkah 8 dari 8/);
+  await page.locator(".exit-preset-row").getByRole("button", { name: "80% target", exact: true }).click();
+  await page.locator(".exit-asset-pills").getByRole("radio", { name: "kripto", exact: true }).click();
+
+  await page.setViewportSize({ width: 320, height: 740 });
+  const exit320Overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+  assert.equal(exit320Overflow, false, "Exit board has zero horizontal overflow at 320px Android width");
+  await page.setViewportSize({ width: 360, height: 800 });
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await navigate("Exit board");
+  await page.locator(".exit-board-view").waitFor();
+  assert.equal(
+    await page.locator(".exit-asset-pills").getByRole("radio", { name: "kripto", exact: true }).getAttribute("aria-checked"),
+    "true",
+    "Exit board simulator state persists across offline reloads in localStorage",
+  );
+  console.log("PASS: Exit board (Papan tulis HC vs FC) 8-step lessons, Kamu/Lu-Gua/EN voice switch, live simulator, and 320px layout verified.");
   console.log("PASS: Selectable Dark Mode styles (Botanical Forest & Obsidian & Linen) and cross-view workflows pass offline.");
 
   console.log("PASS: Simplified YouTube watch panel + right-side Strategy PDF & idea link mini-list work offline and persist.");

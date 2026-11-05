@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ElementType } from "react";
-import { BarChart3, BookOpenCheck, CalendarDays, CheckCircle2, ChevronDown, CircleAlert, ClipboardList, CloudDownload, Eye, EyeOff, Heart, Hourglass, LayoutDashboard, Menu, NotebookPen, Plus, Search, Settings2, Smartphone, Sparkles, Sprout, Target, X } from "lucide-react";
+import { BarChart3, BookOpenCheck, CalendarDays, CheckCircle2, ChevronDown, CircleAlert, ClipboardList, CloudDownload, Eye, EyeOff, Heart, Hourglass, LayoutDashboard, Menu, NotebookPen, Plus, Presentation, Search, Settings2, Smartphone, Sparkles, Sprout, Target, X } from "lucide-react";
 import type { AppLocale, DayJournalEntry, Intention, JournalData, JournalSettings, PlaybookRule, SavedYoutubeVideo, SetupBlueprint, StrategyLibraryItem, StrategyPdfResource, Trade, TradeAttachment, TradingAccount, WeeklyReflection } from "@/lib/types";
 import { DEFAULT_ACCOUNT, MAX_JOURNAL_IMAGE_BYTES, MAX_JOURNAL_PDF_BYTES, MAX_STRATEGY_ITEMS } from "@/lib/types";
 import { upsertDayJournal } from "@/lib/analytics";
@@ -23,6 +23,7 @@ import { parseTradeInput } from "@/lib/trade-validation";
 import { isBackupReminderDue, loadBackupReminder, recordBackupDownload, snoozeBackupReminder, writeBackupReminder, type BackupReminderState } from "@/lib/backup-reminder";
 import { WeeklyReview } from "@/components/journal-review";
 import { PatienceView } from "@/components/journal-patience";
+import { ExitBoardView } from "@/components/journal-exit-board";
 import { LocalPwaStatus } from "@/components/local-pwa";
 import { AnalyticsView, CalendarView, GoalsView, JournalView, MindsetView, Overview, PlaybookView, type JournalFilterPreset, type View } from "@/components/journal-views";
 import { BreathingModal, ImportModal, SettingsModal, TradeModal, type PendingAttachmentFile, type SettingsTab, type TradeDraft } from "@/components/journal-dialogs";
@@ -38,7 +39,7 @@ const MODAL_EXIT_MS = 420;
 const workspaceNav: { label: View; icon: ElementType }[] = [
   { label: "Overview", icon: LayoutDashboard }, { label: "Trade journal", icon: NotebookPen }, { label: "Analytics", icon: BarChart3 }, { label: "Weekly review", icon: ClipboardList }, { label: "Calendar", icon: CalendarDays }, { label: "Playbook", icon: BookOpenCheck },
 ];
-const personalNav: { label: View; icon: ElementType }[] = [{ label: "Mindset", icon: Heart }, { label: "Patience", icon: Hourglass }, { label: "Goals", icon: Target }];
+const personalNav: { label: View; icon: ElementType }[] = [{ label: "Mindset", icon: Heart }, { label: "Patience", icon: Hourglass }, { label: "Exit board", icon: Presentation }, { label: "Goals", icon: Target }];
 
 function sortTrades(trades: Trade[]) { return [...trades].sort((a, b) => b.tradeDate.localeCompare(a.tradeDate) || b.id - a.id); }
 function id() { return crypto.randomUUID(); }
@@ -687,8 +688,8 @@ export function JournalApp({
     onPeriod: setPeriod,
   };
   const title = view === "Overview" ? `${greetingText(locale)}, ${displayPersonName}` : copy.views[view].title;
-  const showTradeControls = view !== "Playbook" && view !== "Goals";
-  const showAmountsControl = view !== "Goals" && view !== "Mindset";
+  const showTradeControls = view !== "Playbook" && view !== "Goals" && view !== "Exit board";
+  const showAmountsControl = view !== "Goals" && view !== "Mindset" && view !== "Exit board";
   const activeAccountLabel =
     accountFilter === "all"
       ? copy.allAccounts
@@ -725,6 +726,7 @@ export function JournalApp({
         {view === "Playbook" && <PlaybookView settings={data.settings} trades={visibleTrades} hidden={hidden} onUpdate={(playbook: PlaybookRule[]) => void updateSettings({ playbook })} onUpdateBlueprints={(setupBlueprints: SetupBlueprint[], msg?: string) => void updateSettings({ setupBlueprints }, msg)}/>}
         {view === "Mindset" && <MindsetView settings={data.settings} trades={visibleTrades} onMood={selectMood} onSaveMoodNote={saveMoodNote} onBreath={() => openModal("breathing")} onPatience={() => navigate("Patience")} onFilterMood={(mood) => filterJournal({ mood })} onSaveReflection={(reflection: WeeklyReflection) => updateSettings({ reflections: [...(dataRef.current.settings.reflections ?? []), reflection] }, locale === "id" ? "Refleksi tersimpan." : "Reflection saved.")} onDeleteReflection={(reflectionId) => { if (window.confirm(locale === "id" ? "Hapus refleksi ini?" : "Delete this reflection?")) void updateSettings({ reflections: (dataRef.current.settings.reflections ?? []).filter((item) => item.id !== reflectionId) }, locale === "id" ? "Refleksi dihapus." : "Reflection removed."); }}/>}
         {view === "Patience" && <PatienceView trades={visibleTrades} settings={data.settings} accountFilter={accountFilter} hidden={hidden} onDay={day} onUpdateSettings={updateSettings}/>}
+        {view === "Exit board" && <ExitBoardView locale={locale}/>}
         {view === "Goals" && <GoalsView settings={data.settings} onMark={markGoal} onUndo={undoGoal} onReset={resetGoal} onDelete={deleteGoal} onAdd={addGoal}/>}
         </div>
       </div><footer className="app-footer"><span>{storage === "browser" ? copy.footerBrowser : copy.footerServer}</span></footer></main>
