@@ -57,8 +57,19 @@ export type CompoundingInput = {
   revengeDaysPer20: number;
 };
 
+export type CompoundingOutcome = "start" | "win" | "loss" | "revenge_loss";
+
 export type CompoundingPoint = {
   trade: number;
+  outcome: CompoundingOutcome;
+  patientR: number;
+  revengeR: number;
+  patientDelta: number;
+  revengeDelta: number;
+  flatDelta: number;
+  winsSoFar: number;
+  lossesSoFar: number;
+  revengeSoFar: number;
   patient: number;
   revenge: number;
   flat: number;
@@ -69,16 +80,24 @@ export type CompoundingSimulation = {
   input: CompoundingInput;
   wins: number;
   losses: number;
+  normalLosses: number;
   expectancyR: number;
   patientFinal: number;
+  patientNetProfit: number;
+  patientGrossProfit: number;
+  patientGrossLoss: number;
   patientGainPct: number;
   patientMaxDrawdownPct: number;
   revengeFinal: number;
+  revengeNetProfit: number;
+  revengeGrossProfit: number;
+  revengeGrossLoss: number;
   revengeGainPct: number;
   revengeMaxDrawdownPct: number;
   revengeEventsTriggered: number;
   impatienceCost: number;
   flatFinal: number;
+  flatNetProfit: number;
   compoundingLift: number;
   points: CompoundingPoint[];
 };
@@ -359,12 +378,32 @@ export function simulateCompoundingComparison(raw: CompoundingInput): Compoundin
 
   let flat = startingBalance;
   let revengeEventsTriggered = 0;
+  let winsSoFar = 0;
+  let lossesSoFar = 0;
+
+  let prevPatientRounded = Math.round(startingBalance * 100) / 100;
+  let prevRevengeRounded = prevPatientRounded;
+  let prevFlatRounded = prevPatientRounded;
+
+  let patientGrossProfitCents = 0;
+  let patientGrossLossCents = 0;
+  let revengeGrossProfitCents = 0;
+  let revengeGrossLossCents = 0;
 
   const points: CompoundingPoint[] = [{
     trade: 0,
-    patient: Math.round(startingBalance * 100) / 100,
-    revenge: Math.round(startingBalance * 100) / 100,
-    flat: Math.round(startingBalance * 100) / 100,
+    outcome: "start",
+    patientR: 0,
+    revengeR: 0,
+    patientDelta: 0,
+    revengeDelta: 0,
+    flatDelta: 0,
+    winsSoFar: 0,
+    lossesSoFar: 0,
+    revengeSoFar: 0,
+    patient: prevPatientRounded,
+    revenge: prevRevengeRounded,
+    flat: prevFlatRounded,
     revengeEvent: false,
   }];
 
@@ -372,10 +411,12 @@ export function simulateCompoundingComparison(raw: CompoundingInput): Compoundin
     const win = isWinSlot[i];
     const isRevenge = !win && revengeSlots.has(i);
     if (win) {
+      winsSoFar++;
       patient *= 1 + r * rewardRisk;
       revenge *= 1 + r * rewardRisk;
       flat += flatUnit * rewardRisk;
     } else {
+      lossesSoFar++;
       patient *= 1 - r;
       if (isRevenge) {
         revenge *= Math.max(0.05, 1 - 5 * r);
@@ -394,35 +435,72 @@ export function simulateCompoundingComparison(raw: CompoundingInput): Compoundin
     const rDd = revengePeak > 0 ? ((revengePeak - revenge) / revengePeak) * 100 : 0;
     if (rDd > revengeMaxDd) revengeMaxDd = rDd;
 
+    const curPatientRounded = Math.round(patient * 100) / 100;
+    const curRevengeRounded = Math.round(revenge * 100) / 100;
+    const curFlatRounded = Math.round(flat * 100) / 100;
+
+    const pDeltaCents = Math.round(curPatientRounded * 100) - Math.round(prevPatientRounded * 100);
+    const rDeltaCents = Math.round(curRevengeRounded * 100) - Math.round(prevRevengeRounded * 100);
+    const fDeltaCents = Math.round(curFlatRounded * 100) - Math.round(prevFlatRounded * 100);
+
+    if (pDeltaCents > 0) patientGrossProfitCents += pDeltaCents;
+    else if (pDeltaCents < 0) patientGrossLossCents += Math.abs(pDeltaCents);
+
+    if (rDeltaCents > 0) revengeGrossProfitCents += rDeltaCents;
+    else if (rDeltaCents < 0) revengeGrossLossCents += Math.abs(rDeltaCents);
+
+    prevPatientRounded = curPatientRounded;
+    prevRevengeRounded = curRevengeRounded;
+    prevFlatRounded = curFlatRounded;
+
     points.push({
       trade: i + 1,
-      patient: Math.round(patient * 100) / 100,
-      revenge: Math.round(revenge * 100) / 100,
-      flat: Math.round(flat * 100) / 100,
+      outcome: win ? "win" : isRevenge ? "revenge_loss" : "loss",
+      patientR: win ? rewardRisk : -1,
+      revengeR: win ? rewardRisk : isRevenge ? -5 : -1,
+      patientDelta: pDeltaCents / 100,
+      revengeDelta: rDeltaCents / 100,
+      flatDelta: fDeltaCents / 100,
+      winsSoFar,
+      lossesSoFar,
+      revengeSoFar: revengeEventsTriggered,
+      patient: curPatientRounded,
+      revenge: curRevengeRounded,
+      flat: curFlatRounded,
       revengeEvent: isRevenge,
     });
   }
 
+  const startRounded = points[0].patient;
   const p = winRate / 100;
   const expectancyR = Math.round((p * rewardRisk - (1 - p)) * 100) / 100;
   const patientFinal = Math.round(patient * 100) / 100;
   const revengeFinal = Math.round(revenge * 100) / 100;
   const flatFinal = Math.round(flat * 100) / 100;
+  const totalLosses = totalTrades - exactWins;
 
   return {
     input,
     wins: exactWins,
-    losses: totalTrades - exactWins,
+    losses: totalLosses,
+    normalLosses: Math.max(0, totalLosses - revengeEventsTriggered),
     expectancyR,
     patientFinal,
+    patientNetProfit: Math.round((patientFinal - startRounded) * 100) / 100,
+    patientGrossProfit: patientGrossProfitCents / 100,
+    patientGrossLoss: patientGrossLossCents / 100,
     patientGainPct: Math.round(((patientFinal - startingBalance) / startingBalance) * 1000) / 10,
     patientMaxDrawdownPct: Math.round(patientMaxDd * 10) / 10,
     revengeFinal,
+    revengeNetProfit: Math.round((revengeFinal - startRounded) * 100) / 100,
+    revengeGrossProfit: revengeGrossProfitCents / 100,
+    revengeGrossLoss: revengeGrossLossCents / 100,
     revengeGainPct: Math.round(((revengeFinal - startingBalance) / startingBalance) * 1000) / 10,
     revengeMaxDrawdownPct: Math.round(revengeMaxDd * 10) / 10,
     revengeEventsTriggered,
     impatienceCost: Math.round((patientFinal - revengeFinal) * 100) / 100,
     flatFinal,
+    flatNetProfit: Math.round((flatFinal - startRounded) * 100) / 100,
     compoundingLift: Math.round((patientFinal - flatFinal) * 100) / 100,
     points,
   };
