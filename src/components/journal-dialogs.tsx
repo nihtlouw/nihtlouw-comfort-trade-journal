@@ -213,9 +213,11 @@ export function TradeModal({ trade, trades, limits, hidden, accounts, playbook, 
     [setupBlueprints, form.setup],
   );
   const liveR = useMemo(() => {
-    if (!form.pnl.trim() || !form.initialRisk.trim()) return null;
-    const pnlNum = Number(form.pnl);
-    const riskNum = Number(form.initialRisk);
+    const cleanPnl = form.pnl.trim().replace(/^([+-]?\d+),(\d+)$/, "$1.$2");
+    const cleanRisk = form.initialRisk.trim().replace(/^([+-]?\d+),(\d+)$/, "$1.$2");
+    if (!cleanPnl || !cleanRisk) return null;
+    const pnlNum = Number(cleanPnl);
+    const riskNum = Number(cleanRisk);
     if (!Number.isFinite(pnlNum) || !Number.isFinite(riskNum) || riskNum <= 0) return null;
     return pnlNum / riskNum;
   }, [form.pnl, form.initialRisk]);
@@ -696,7 +698,7 @@ export function ImportModal({
 }
 
 function parseBalanceField(raw: string): { ok: true; value: number | null } | { ok: false } {
-  const trimmed = raw.trim();
+  const trimmed = raw.trim().replace(/^([+-]?\d+),(\d+)$/, "$1.$2");
   if (!trimmed) return { ok: true, value: null };
   const n = Number(trimmed);
   if (!Number.isFinite(n) || n < 0 || n > 99999999999) return { ok: false };
@@ -837,7 +839,10 @@ export function SettingsModal({
     event.preventDefault();
     setRiskError("");
     setRiskSaved(false);
-    const parse = (value: string) => (value.trim() ? Number(value) : null);
+    const parse = (value: string) => {
+      const cleaned = value.trim().replace(/^([+-]?\d+),(\d+)$/, "$1.$2");
+      return cleaned ? Number(cleaned) : null;
+    };
     const perTrade = parse(perTradeLimit);
     const dailyLoss = parse(dailyLimit);
     if ([perTrade, dailyLoss].some((value) => value !== null && (!Number.isFinite(value) || value <= 0 || value > 99999999999))) {

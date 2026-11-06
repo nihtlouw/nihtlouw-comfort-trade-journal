@@ -18,6 +18,10 @@ function sanitizeAttachments(raw: unknown): TradeAttachment[] {
   });
 }
 
+function normalizeDecimalText(raw: string): string {
+  return raw.trim().replace(/^([+-]?\d+),(\d+)$/, "$1.$2");
+}
+
 export function parseTradeInput(input: unknown) {
   if (!input || typeof input !== "object") throw new Error("Please check the trade details.");
   const body = input as Record<string, unknown>;
@@ -26,7 +30,7 @@ export function parseTradeInput(input: unknown) {
   const side = String(body.side ?? "");
   const setup = String(body.setup ?? "").trim();
   const tradeDate = String(body.tradeDate ?? "");
-  const pnlRaw = String(body.pnl ?? "").trim();
+  const pnlRaw = normalizeDecimalText(String(body.pnl ?? ""));
   const pnl = Number(pnlRaw);
   const mood = String(body.mood ?? "Calm");
   const notes = String(body.notes ?? "").trim();
@@ -38,7 +42,7 @@ export function parseTradeInput(input: unknown) {
   if (!MOODS.includes(mood as typeof MOODS[number])) throw new Error("Choose a valid feeling.");
   if (setup.length > 80 || notes.length > 5000) throw new Error("Your setup or notes are too long.");
   const numeric = (key: string) => {
-    const value = String(body[key] ?? "").trim();
+    const value = normalizeDecimalText(String(body[key] ?? ""));
     if (value && (!Number.isFinite(Number(value)) || Number(value) < 0 || Number(value) > 99999999999)) throw new Error(`${key} must be a positive number.`);
     return value;
   };

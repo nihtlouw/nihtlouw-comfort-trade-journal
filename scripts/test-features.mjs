@@ -193,6 +193,13 @@ try {
   await page.getByLabel("Show amounts").click();
   await page.getByRole("button", { name: "Use my journal stats", exact: true }).click();
   assert.match(await page.locator(".patience-preset-note").innerText(), /Applied from your visible trades/);
+  // Verify sub-$100 starting capital ($50 and $30) live-updates KPI cards & chart immediately without clamping to $100
+  await page.getByLabel("Starting capital (USD)").fill("50");
+  const cap50PatientText = await page.locator(".patience-sim-stat.patient strong").innerText();
+  await page.getByLabel("Starting capital (USD)").fill("30");
+  const cap30PatientText = await page.locator(".patience-sim-stat.patient strong").innerText();
+  assert.notEqual(cap50PatientText, cap30PatientText, "Sub-$100 starting capital ($50 vs $30) live-updates compounding simulator immediately");
+  assert.doesNotMatch(cap50PatientText, /\$147\.62/, "Starting capital $50 is no longer clamped up to $100");
   await page.getByLabel("Short note to self (optional)").fill("Stepped back to protect tomorrow.");
   await page.getByRole("button", { name: "End today’s session", exact: true }).click();
   await page.getByText("Session closed for today", { exact: true }).waitFor();
@@ -956,6 +963,13 @@ try {
   assert.match(await page.locator(".exit-advisor-kpis").innerText(), /Usia 33/, "Default Rp20 jt / Saham 10% computes target S=80% crossover at Usia 33");
   assert.match(await page.locator(".exit-advisor-kpis").innerText(), /Modal Pokok Disetor/, "Advisor KPI separates out-of-pocket principal from compounding gain");
   assert.match(await page.locator(".exit-advisor-notes-grid").innerText(), /Pesawat Dua Mesin/, "Bottom advisor card includes relatable Twin-Engine real-case analogy");
+
+  // Verify live numeric input backspacing to empty + re-typing updates KPI cards cleanly
+  const incInput = page.getByLabel("Penghasilan bulanan dalam juta Rupiah");
+  await incInput.fill("");
+  assert.equal(await incInput.inputValue(), "", "Exit board monthly income input allows clearing all digits while editing");
+  await incInput.fill("8");
+  assert.match(await page.locator(".exit-sim-controls").innerText(), /Rp2 jt\/bln/, "Typing Rp8 jt at S=25% immediately updates monthly saving to Rp2 jt/bln");
 
   // Verify horizon switching, preset + asset selection, 320px responsiveness, and reload persistence
   await page.locator(".exit-horizon-switch").getByRole("button", { name: "Titik Silang", exact: true }).click();

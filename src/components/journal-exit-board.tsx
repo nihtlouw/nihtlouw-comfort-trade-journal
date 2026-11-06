@@ -275,6 +275,8 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
   const [hydrated, setHydrated] = useState(false);
   const [hoverAge1, setHoverAge1] = useState<number | null>(null);
   const [hoverAge2, setHoverAge2] = useState<number | null>(null);
+  const [incomeDraft, setIncomeDraft] = useState<string | null>(null);
+  const [returnDraft, setReturnDraft] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -325,6 +327,8 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
   function resetToExample() {
     setHoverAge1(null);
     setHoverAge2(null);
+    setIncomeDraft(null);
+    setReturnDraft(null);
     setState((prev) => ({
       ...DEFAULT_EXIT_BOARD_STATE,
       localeOverride: prev.localeOverride,
@@ -552,17 +556,23 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
                   <span>Rp</span>
                   <input
                     type="number"
-                    min={1}
-                    max={500}
-                    step={1}
+                    inputMode="decimal"
+                    min={0.1}
+                    max={1000}
+                    step="any"
                     aria-label={t.incomeInputAria}
-                    value={state.monthlyIncomeJuta}
+                    value={incomeDraft !== null ? incomeDraft : String(state.monthlyIncomeJuta)}
                     onChange={(e) => {
-                      const val = Number(e.target.value);
+                      const raw = e.target.value;
+                      setIncomeDraft(raw);
+                      const cleaned = raw.trim().replace(/^(\d+),(\d+)$/, "$1.$2");
+                      if (!cleaned) return;
+                      const val = Number(cleaned);
                       if (Number.isFinite(val) && val > 0) {
-                        updateSimField({ monthlyIncomeJuta: Math.min(500, Math.max(1, val)) });
+                        updateSimField({ monthlyIncomeJuta: Math.min(1000, Math.max(0.1, val)) });
                       }
                     }}
+                    onBlur={() => setIncomeDraft(null)}
                   />
                   <span>jt</span>
                 </div>
@@ -571,11 +581,14 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
                 id="exit-income-range"
                 type="range"
                 className="exit-range"
-                min={2}
+                min={1}
                 max={150}
                 step={1}
-                value={Math.min(150, Math.max(2, state.monthlyIncomeJuta))}
-                onChange={(e) => updateSimField({ monthlyIncomeJuta: Number(e.target.value) })}
+                value={Math.min(150, Math.max(1, Math.round(state.monthlyIncomeJuta)))}
+                onChange={(e) => {
+                  setIncomeDraft(null);
+                  updateSimField({ monthlyIncomeJuta: Number(e.target.value) });
+                }}
               />
             </div>
 
@@ -675,7 +688,10 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
                       role="radio"
                       aria-checked={selected}
                       className={`exit-asset-pill ${selected ? "selected" : ""}`}
-                      onClick={() => updateSimField({ selectedAsset: rung.id as AssetRungId })}
+                      onClick={() => {
+                        setReturnDraft(null);
+                        updateSimField({ selectedAsset: rung.id as AssetRungId });
+                      }}
                     >
                       {rung.short}
                     </button>
@@ -687,13 +703,18 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
                 <span>{t.returnPrefix}</span>
                 <input
                   type="number"
+                  inputMode="decimal"
                   min={0}
                   max={50}
-                  step={0.5}
+                  step="any"
                   aria-label={t.returnInputAria}
-                  value={sim.annualReturnPct}
+                  value={returnDraft !== null ? returnDraft : String(sim.annualReturnPct)}
                   onChange={(e) => {
-                    const val = Number(e.target.value);
+                    const raw = e.target.value;
+                    setReturnDraft(raw);
+                    const cleaned = raw.trim().replace(/^(\d+),(\d+)$/, "$1.$2");
+                    if (!cleaned) return;
+                    const val = Number(cleaned);
                     if (Number.isFinite(val) && val >= 0) {
                       updateSimField({
                         assetReturnsPct: {
@@ -703,20 +724,22 @@ export function ExitBoardView({ locale }: { locale: AppLocale }) {
                       });
                     }
                   }}
+                  onBlur={() => setReturnDraft(null)}
                 />
                 <span>{t.returnSuffix}</span>
                 {sim.annualReturnPct !== defaultRungReturn && (
                   <button
                     type="button"
                     className="exit-inline-reset"
-                    onClick={() =>
+                    onClick={() => {
+                      setReturnDraft(null);
                       updateSimField({
                         assetReturnsPct: {
                           ...state.assetReturnsPct,
                           [state.selectedAsset]: defaultRungReturn,
                         },
-                      })
-                    }
+                      });
+                    }}
                   >
                     ({t.returnReset})
                   </button>

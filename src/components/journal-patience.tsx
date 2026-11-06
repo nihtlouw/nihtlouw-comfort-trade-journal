@@ -328,6 +328,11 @@ const copy = {
   },
 } as const;
 
+function parseSimulatorNumber(raw: string): number {
+  const cleaned = raw.trim().replace(/^([+-]?\d+),(\d+)$/, "$1.$2");
+  return cleaned === "" ? Number.NaN : Number(cleaned);
+}
+
 function accountName(accounts: TradingAccount[], id: string, locale: PatienceLocale) {
   if (id === "all") return locale === "id" ? "Semua akun" : "All accounts";
   return accounts.find((account) => account.id === id)?.name ?? (locale === "id" ? "Akun" : "Account");
@@ -403,12 +408,21 @@ export function PatienceView({
   }, [accounts, accountFilter]);
 
   // Realistic compounding simulator state
-  const [startingBalanceText, setStartingBalanceText] = useState(() =>
-    configuredCapital !== null ? String(configuredCapital) : "5000",
+  const [manualCapitalText, setManualCapitalText] = useState<string | null>(null);
+  const startingBalanceText =
+    manualCapitalText !== null
+      ? manualCapitalText
+      : configuredCapital !== null
+        ? String(configuredCapital)
+        : "5000";
+  const [lastValidStart, setLastValidStart] = useState<number>(() =>
+    configuredCapital !== null && configuredCapital > 0 ? configuredCapital : 5000,
   );
   const [riskPercent, setRiskPercent] = useState(1);
   const [winRateText, setWinRateText] = useState("50");
+  const [lastValidWinRate, setLastValidWinRate] = useState(50);
   const [rewardRiskText, setRewardRiskText] = useState("1.8");
+  const [lastValidRewardRisk, setLastValidRewardRisk] = useState(1.8);
   const [totalTrades, setTotalTrades] = useState(100);
   const [revengeDaysPer20, setRevengeDaysPer20] = useState(2);
   const [presetMessage, setPresetMessage] = useState<string | null>(null);
@@ -417,18 +431,31 @@ export function PatienceView({
   const mirror = useMemo(() => getPatienceMirror(trades, maxDailyTrades), [trades, maxDailyTrades]);
   const preset = useMemo(() => getJournalSimPreset(trades), [trades]);
 
-  const parsedStart = Number(startingBalanceText);
-  const parsedWinRate = Number(winRateText);
-  const parsedRewardRisk = Number(rewardRiskText);
+  const parsedStart = parseSimulatorNumber(startingBalanceText);
+  const parsedWinRate = parseSimulatorNumber(winRateText);
+  const parsedRewardRisk = parseSimulatorNumber(rewardRiskText);
+
+  const effectiveStart =
+    Number.isFinite(parsedStart) && parsedStart > 0
+      ? parsedStart
+      : manualCapitalText === null && configuredCapital !== null && configuredCapital > 0
+        ? configuredCapital
+        : lastValidStart;
+  const effectiveWinRate =
+    Number.isFinite(parsedWinRate) && parsedWinRate > 0 ? parsedWinRate : lastValidWinRate;
+  const effectiveRewardRisk =
+    Number.isFinite(parsedRewardRisk) && parsedRewardRisk > 0
+      ? parsedRewardRisk
+      : lastValidRewardRisk;
 
   const sim = useMemo(() => simulateCompoundingComparison({
-    startingBalance: Number.isFinite(parsedStart) && parsedStart > 0 ? parsedStart : 5000,
+    startingBalance: effectiveStart,
     riskPercent,
-    winRate: Number.isFinite(parsedWinRate) ? parsedWinRate : 50,
-    rewardRisk: Number.isFinite(parsedRewardRisk) && parsedRewardRisk > 0 ? parsedRewardRisk : 1.8,
+    winRate: effectiveWinRate,
+    rewardRisk: effectiveRewardRisk,
     totalTrades,
     revengeDaysPer20,
-  }), [parsedStart, riskPercent, parsedWinRate, parsedRewardRisk, totalTrades, revengeDaysPer20]);
+  }), [effectiveStart, riskPercent, effectiveWinRate, effectiveRewardRisk, totalTrades, revengeDaysPer20]);
 
   const drawdownRows = useMemo(
     () => getDrawdownRecoveryRows(sim.input.riskPercent, sim.input.rewardRisk),
@@ -479,15 +506,18 @@ export function PatienceView({
   }
 
   function applyJournalPreset() {
-    if (configuredCapital !== null) {
-      setStartingBalanceText(String(configuredCapital));
+    if (configuredCapital !== null && configuredCapital > 0) {
+      setManualCapitalText(null);
+      setLastValidStart(configuredCapital);
     }
     if (!preset) {
       setPresetMessage(t.journalNeedMore);
       return;
     }
     setWinRateText(String(preset.winRate));
+    setLastValidWinRate(preset.winRate);
     setRewardRiskText(String(preset.rewardRisk));
+    setLastValidRewardRisk(preset.rewardRisk);
     setPresetMessage(
       preset.source === "r_multiple"
         ? t.journalAppliedR(preset.winRate, preset.rewardRisk)
@@ -835,11 +865,24 @@ export function PatienceView({
             <input
               type="number"
               inputMode="decimal"
-              min={100}
-              max={10000000}
-              step={100}
+              min={0.01}
+              max={100000000}
+              step="any"
               value={startingBalanceText}
-              onChange={(event) => setStartingBalanceText(event.target.value)}
+              onChange={(event) => {
+                const next = event.target.value;
+                setManualCapitalText(next);
+                const val = parseSimulatorNumber(next);
+                if (Number.isFinite(val) && val > 0) {
+                  setLastValidStart(Math.min(100_000_000, Math.max(0.01, val)));
+                }
+              }}
+              onBlur={() => {
+                const val = parseSimulatorNumber(startingBalanceText);
+                if (!Number.isFinite(val) || val <= 0) {
+                  setManualCapitalText(String(effectiveStart));
+                }
+              }}
             />
           </label>
           <label>
@@ -855,11 +898,24 @@ export function PatienceView({
             <input
               type="number"
               inputMode="numeric"
-              min={20}
-              max={80}
+              min={1}
+              max={99}
               step={1}
               value={winRateText}
-              onChange={(event) => setWinRateText(event.target.value)}
+              onChange={(event) => {
+                const next = event.target.value;
+                setWinRateText(next);
+                const val = parseSimulatorNumber(next);
+                if (Number.isFinite(val) && val >= 1 && val <= 99) {
+                  setLastValidWinRate(Math.round(val));
+                }
+              }}
+              onBlur={() => {
+                const val = parseSimulatorNumber(winRateText);
+                if (!Number.isFinite(val) || val <= 0) {
+                  setWinRateText(String(effectiveWinRate));
+                }
+              }}
             />
           </label>
           <label>
@@ -867,11 +923,24 @@ export function PatienceView({
             <input
               type="number"
               inputMode="decimal"
-              min={0.8}
-              max={4}
+              min={0.1}
+              max={20}
               step={0.1}
               value={rewardRiskText}
-              onChange={(event) => setRewardRiskText(event.target.value)}
+              onChange={(event) => {
+                const next = event.target.value;
+                setRewardRiskText(next);
+                const val = parseSimulatorNumber(next);
+                if (Number.isFinite(val) && val > 0) {
+                  setLastValidRewardRisk(Math.min(20, Math.max(0.1, val)));
+                }
+              }}
+              onBlur={() => {
+                const val = parseSimulatorNumber(rewardRiskText);
+                if (!Number.isFinite(val) || val <= 0) {
+                  setRewardRiskText(String(effectiveRewardRisk));
+                }
+              }}
             />
           </label>
           <label>

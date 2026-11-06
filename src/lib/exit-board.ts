@@ -150,8 +150,12 @@ export function normalizeExitBoardState(raw: unknown): ExitBoardState {
       ? obj.horizonMode
       : "20y";
 
+  const rawInc = Number(obj.monthlyIncomeJuta ?? DEFAULT_EXIT_BOARD_STATE.monthlyIncomeJuta);
   const monthlyIncomeJuta = Number(
-    clampNumber(Number(obj.monthlyIncomeJuta ?? DEFAULT_EXIT_BOARD_STATE.monthlyIncomeJuta), 1, 500).toFixed(1),
+    (Number.isFinite(rawInc) && rawInc > 0
+      ? clampNumber(rawInc, 0.1, 1000)
+      : 1
+    ).toFixed(2),
   );
   const initialFcJuta = Number(
     clampNumber(Number(obj.initialFcJuta ?? DEFAULT_EXIT_BOARD_STATE.initialFcJuta), 0, 10000).toFixed(1),
