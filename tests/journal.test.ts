@@ -223,6 +223,42 @@ test("patience mirror detects green-to-red giveback, separates accounts, and mod
   assert.ok(sim50.patientFinal > sim50.revengeFinal && sim50.impatienceCost > 0, "revenge blowup days erode compounded equity");
   assert.ok(sim60.patientFinal > sim50.patientFinal, "higher win rate monotonically improves simulated equity");
 
+  // Sub-$100 starting capital ($50, $30, $5) scales linearly without clamping up to $100
+  const simCap50 = simulateCompoundingComparison({ startingBalance: 50, riskPercent: 1, winRate: 50, rewardRisk: 1.8, totalTrades: 100, revengeDaysPer20: 2 });
+  const simCap30 = simulateCompoundingComparison({ startingBalance: 30, riskPercent: 1, winRate: 50, rewardRisk: 1.8, totalTrades: 100, revengeDaysPer20: 2 });
+  assert.equal(simCap50.input.startingBalance, 50);
+  assert.equal(simCap50.points[0]?.patient, 50);
+  assert.ok(simCap50.patientFinal < 100 && simCap50.patientFinal > 70, "startingBalance=50 compounds from $50 (~$73.81), not clamped to $100");
+  assert.equal(simCap30.input.startingBalance, 30);
+  assert.equal(simCap30.points[0]?.patient, 30);
+  assert.ok(simCap30.patientFinal < simCap50.patientFinal, "startingBalance=30 compounds lower than startingBalance=50 (~$44.29)");
+
+  // High-winrate scalper (85% / 0.5R) and trend-follower (18% / 6R) are not clamped to 20..80 or 0.8..4
+  const simScalp = simulateCompoundingComparison({ startingBalance: 1000, riskPercent: 1, winRate: 85, rewardRisk: 0.5, totalTrades: 100, revengeDaysPer20: 0 });
+  const simTrend = simulateCompoundingComparison({ startingBalance: 1000, riskPercent: 1, winRate: 18, rewardRisk: 6, totalTrades: 100, revengeDaysPer20: 0 });
+  assert.equal(simScalp.input.winRate, 85);
+  assert.equal(simScalp.input.rewardRisk, 0.5);
+  assert.equal(simTrend.input.winRate, 18);
+  assert.equal(simTrend.input.rewardRisk, 6);
+
+  const { compactCurrency } = await import("@/lib/format");
+  assert.equal(compactCurrency(0.75, false), "$0.75");
+  assert.equal(compactCurrency(4.5, false), "$4.5");
+  assert.equal(compactCurrency(50, false), "$50");
+
+  const { parseTradeInput } = await import("@/lib/trade-validation");
+  const commaTrade = parseTradeInput({
+    symbol: "XAUUSD",
+    market: "Forex",
+    side: "Long",
+    tradeDate: "2026-10-29",
+    pnl: "12,5",
+    mood: "Calm",
+    initialRisk: "5,5",
+  });
+  assert.equal(commaTrade.pnl, "12.50");
+  assert.equal(commaTrade.initialRisk, "5.5");
+
   const dd = getDrawdownRecoveryRows(1, 2);
   assert.equal(dd.find((r) => r.lossPct === 2)?.recoveryPct, 2.04);
   assert.equal(dd.find((r) => r.lossPct === 20)?.recoveryPct, 25);

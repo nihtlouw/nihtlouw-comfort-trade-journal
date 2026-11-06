@@ -22,9 +22,14 @@ export function currency(value: number, signed = false, hidden = false) {
 }
 export function compactCurrency(value: number, hidden = false) {
   if (hidden) return "•••";
+  if (!Number.isFinite(value) || Math.abs(value) < 0.005) return "$0";
   const sign = value < 0 ? "−" : "";
   const absolute = Math.abs(value);
   if (absolute >= 1000) return `${sign}$${(absolute / 1000).toFixed(absolute >= 10000 ? 0 : 1).replace(/\.0$/, "")}k`;
+  if (absolute < 1) return `${sign}$${absolute.toFixed(2).replace(/\.?0+$/, "")}`;
+  if (absolute < 10 && Math.abs(absolute - Math.round(absolute)) >= 0.05) {
+    return `${sign}$${absolute.toFixed(1).replace(/\.0$/, "")}`;
+  }
   return `${sign}$${Math.round(absolute)}`;
 }
 export function calendarDayCurrency(value: number, hidden = false) {

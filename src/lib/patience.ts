@@ -318,10 +318,10 @@ function deterministicRanks(length: number): number[] {
 
 /** Deterministic comparison of proportional equity compounding vs. the same strategy interrupted by periodic -5R revenge sessions. */
 export function simulateCompoundingComparison(raw: CompoundingInput): CompoundingSimulation {
-  const startingBalance = Math.max(100, Math.min(10_000_000, Number.isFinite(raw.startingBalance) ? raw.startingBalance : 5000));
-  const riskPercent = Math.max(0.25, Math.min(5, Number.isFinite(raw.riskPercent) ? raw.riskPercent : 1));
-  const winRate = Math.max(20, Math.min(80, Math.round(Number.isFinite(raw.winRate) ? raw.winRate : 50)));
-  const rewardRisk = Math.max(0.8, Math.min(4, Math.round((Number.isFinite(raw.rewardRisk) ? raw.rewardRisk : 1.8) * 10) / 10));
+  const startingBalance = Math.max(0.01, Math.min(100_000_000, Number.isFinite(raw.startingBalance) && raw.startingBalance > 0 ? raw.startingBalance : 5000));
+  const riskPercent = Math.max(0.1, Math.min(20, Number.isFinite(raw.riskPercent) && raw.riskPercent > 0 ? raw.riskPercent : 1));
+  const winRate = Math.max(1, Math.min(99, Math.round(Number.isFinite(raw.winRate) ? raw.winRate : 50)));
+  const rewardRisk = Math.max(0.1, Math.min(20, Math.round((Number.isFinite(raw.rewardRisk) && raw.rewardRisk > 0 ? raw.rewardRisk : 1.8) * 100) / 100));
   const totalTrades = Math.max(20, Math.min(200, Math.round(Number.isFinite(raw.totalTrades) ? raw.totalTrades : 100)));
   const revengeDaysPer20 = Math.max(0, Math.min(4, Math.round(Number.isFinite(raw.revengeDaysPer20) ? raw.revengeDaysPer20 : 2)));
 
@@ -430,7 +430,7 @@ export function simulateCompoundingComparison(raw: CompoundingInput): Compoundin
 
 /** Exact asymmetric drawdown recovery percentages and consecutive +R winning trades required to recover. */
 export function getDrawdownRecoveryRows(riskPercent = 1, rewardRisk = 1.8): DrawdownRecoveryRow[] {
-  const perWinGain = Math.max(0.002, (Math.max(0.25, riskPercent) / 100) * Math.max(0.8, rewardRisk));
+  const perWinGain = Math.max(0.001, (Math.max(0.1, riskPercent) / 100) * Math.max(0.1, rewardRisk));
   return [2, 5, 10, 20, 35, 50].map((lossPct) => {
     const recoveryPct = Math.round((lossPct / (100 - lossPct)) * 10000) / 100;
     const winsToRecover = Math.max(1, Math.ceil(Math.log(1 / (1 - lossPct / 100)) / Math.log(1 + perWinGain)));
