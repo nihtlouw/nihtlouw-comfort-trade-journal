@@ -209,6 +209,19 @@ try {
   await navigate("Patience");
   await page.getByText("Tenangkan diri sebelum klik berikutnya.", { exact: true }).waitFor();
   await page.getByText("Sesi hari ini ditutup", { exact: true }).waitFor();
+  // Verify complete trade-by-trade simulation summary ledger (Lihat tabel ringkasan simulasi)
+  await page.locator(".patience-sim-ledger > summary").click();
+  await page.locator(".patience-ledger-totals").waitFor();
+  assert.equal(await page.locator(".patience-ledger-table tbody tr").count(), 101, "Complete simulation table renders #0 start + all 100 trades");
+  assert.match(await page.locator(".patience-ledger-totals").innerText(), /TOTAL MENANG \(WIN\)/);
+  assert.match(await page.locator(".patience-ledger-totals").innerText(), /TOTAL KALAH \(LOSS\)/);
+  assert.match(await page.locator(".patience-ledger-tfoot").innerText(), /TOTAL \(100 trade\)/);
+  await page.locator(".patience-ledger-filters").getByRole("button", { name: /^Win \(50\)$/ }).click();
+  assert.equal(await page.locator(".patience-ledger-table tbody tr").count(), 50, "Win filter isolates all 50 winning trades");
+  await page.locator(".patience-ledger-filters").getByRole("button", { name: /^Emosi −5R \(10\)$/ }).click();
+  assert.equal(await page.locator(".patience-ledger-table tbody tr").count(), 10, "Emosi -5R filter isolates all 10 revenge blowup trades");
+  await page.locator(".patience-ledger-filters").getByRole("button", { name: /^Semua \(100\)$/ }).click();
+  assert.equal(await page.locator(".patience-ledger-table tbody tr").count(), 101, "Semua filter restores all 101 ledger rows");
   await page.getByRole("button", { name: /Lihat hari/ }).first().click();
   await page.locator('.view-motion[data-view="Trade journal"]').waitFor();
   assert.match(await page.locator(".selected-day").innerText(), /Showing/);

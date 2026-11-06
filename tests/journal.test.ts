@@ -1464,6 +1464,62 @@ test("performanceSeries computes daily/cumulative R-multiples, win/loss counts, 
   assert.equal(compactRMultiple(18.3), "+18R");
 });
 
+test("simulateCompoundingComparison exposes complete trade-by-trade Win/Loss/Revenge outcomes and cent-exact P&L reconciliation", async () => {
+  const { simulateCompoundingComparison } = await import("@/lib/patience");
+
+  const sim = simulateCompoundingComparison({
+    startingBalance: 50,
+    riskPercent: 1,
+    winRate: 50,
+    rewardRisk: 1.8,
+    totalTrades: 100,
+    revengeDaysPer20: 2,
+  });
+
+  // 1) Complete #0..#100 trade ledger
+  assert.equal(sim.points.length, 101);
+  assert.equal(sim.points[0].trade, 0);
+  assert.equal(sim.points[0].outcome, "start");
+  assert.equal(sim.points[0].patientDelta, 0);
+  assert.equal(sim.points[0].revengeDelta, 0);
+
+  // 2) Case counts reconcile identically
+  const tradeRows = sim.points.slice(1);
+  const winRows = tradeRows.filter((p) => p.outcome === "win");
+  const normalLossRows = tradeRows.filter((p) => p.outcome === "loss");
+  const revengeRows = tradeRows.filter((p) => p.outcome === "revenge_loss");
+
+  assert.equal(winRows.length, sim.wins);
+  assert.equal(normalLossRows.length, sim.normalLosses);
+  assert.equal(revengeRows.length, sim.revengeEventsTriggered);
+  assert.equal(sim.wins + sim.normalLosses + sim.revengeEventsTriggered, sim.input.totalTrades);
+  assert.ok(winRows.every((p) => p.patientR === 1.8 && p.revengeR === 1.8 && p.patientDelta > 0));
+  assert.ok(normalLossRows.every((p) => p.patientR === -1 && p.revengeR === -1 && p.patientDelta < 0));
+  assert.ok(revengeRows.every((p) => p.patientR === -1 && p.revengeR === -5 && p.revengeEvent));
+
+  // 3) Every single trade row's delta reconciles penny-for-penny with consecutive balances and final totals
+  for (let i = 1; i < sim.points.length; i++) {
+    const prev = sim.points[i - 1];
+    const cur = sim.points[i];
+    assert.equal(Math.round((prev.patient + cur.patientDelta) * 100), Math.round(cur.patient * 100));
+    assert.equal(Math.round((prev.revenge + cur.revengeDelta) * 100), Math.round(cur.revenge * 100));
+    assert.equal(Math.round((prev.flat + cur.flatDelta) * 100), Math.round(cur.flat * 100));
+  }
+
+  const sumPatientCents = tradeRows.reduce((acc, p) => acc + Math.round(p.patientDelta * 100), 0);
+  const sumRevengeCents = tradeRows.reduce((acc, p) => acc + Math.round(p.revengeDelta * 100), 0);
+  assert.equal(sumPatientCents, Math.round(sim.patientNetProfit * 100));
+  assert.equal(sumRevengeCents, Math.round(sim.revengeNetProfit * 100));
+  assert.equal(
+    Math.round((sim.patientGrossProfit - sim.patientGrossLoss) * 100),
+    Math.round(sim.patientNetProfit * 100),
+  );
+  assert.equal(
+    Math.round((sim.revengeGrossProfit - sim.revengeGrossLoss) * 100),
+    Math.round(sim.revengeNetProfit * 100),
+  );
+});
+
 
 
 

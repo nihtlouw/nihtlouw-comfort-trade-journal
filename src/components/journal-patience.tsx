@@ -8,7 +8,7 @@ import {
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { compactCurrency, currency, shortDate, todayString } from "@/lib/format";
 import {
-  getDrawdownRecoveryRows, getJournalSimPreset, getPatienceMirror,
+  type CompoundingPoint, getDrawdownRecoveryRows, getJournalSimPreset, getPatienceMirror,
   getTodaySessionPulse, simulateCompoundingComparison,
 } from "@/lib/patience";
 import {
@@ -134,11 +134,43 @@ const copy = {
       `Simulated equity over ${trades} trades: patient compounding ends at ${patient} versus ${revenge} with revenge blowup days.`,
     legendPatient: "Patient % compounding",
     legendRevenge: "With −5R revenge days",
-    simTableSummary: "View simulation milestones as a table",
+    simTableSummary: "View simulation summary table",
+    simTableBadge: (n: number) => `${n} trades · Full Win & Loss`,
+    ledgerFilterLabel: "Filter simulated trades",
+    filterAll: (n: number) => `All (${n})`,
+    filterWin: (n: number) => `Win (${n})`,
+    filterLoss: (n: number) => `Loss (${n})`,
+    filterRevenge: (n: number) => `Revenge −5R (${n})`,
+    expandAllRows: (n: number) => `Show full height (${n} rows)`,
+    compactRows: "Compact scroll",
+    ledgerWinsLabel: "TOTAL WINS",
+    ledgerWinsValue: (wins: number, wr: number, rr: number) => `${wins} Wins (${wr}% · +${rr}R)`,
+    ledgerWinsSub: (gross: string) => `Patient gross profit: +${gross}`,
+    ledgerLossesLabel: "TOTAL LOSSES",
+    ledgerLossesValue: (losses: number, normal: number, rev: number) =>
+      rev > 0 ? `${losses} Losses (${normal}× −1R · ${rev}× −5R)` : `${losses} Losses (${normal}× −1R)`,
+    ledgerLossesSub: (pLoss: string, rLoss: string) => `Gross loss: −${pLoss} (revenge: −${rLoss})`,
+    ledgerPatientNetLabel: "PATIENT NET RESULT",
+    ledgerPatientNetSub: (start: string, pct: number) =>
+      `Start ${start} · ${pct >= 0 ? "+" : ""}${pct}%`,
+    ledgerRevengeNetLabel: "REVENGE NET RESULT",
+    ledgerRevengeNetSub: (gap: string) => `Impatience gap: ${gap}`,
     colTrade: "Trade #",
+    colCase: "Case / R",
+    colRecord: "W–L Record",
+    colPatientPnl: "Patient P&L",
     colPatient: "Patient equity",
+    colRevengePnl: "Revenge P&L",
     colRevenge: "With revenge days",
     colFlat: "Flat $ risk",
+    caseStart: "START",
+    caseWin: (rr: number) => `WIN +${rr}R`,
+    caseLoss: "LOSS −1R",
+    caseRevenge: "REVENGE −5R",
+    totalRowLabel: (n: number) => `TOTAL (${n} trades)`,
+    totalCasesSummary: (wins: number, normal: number, rev: number) =>
+      rev > 0 ? `${wins}W · ${normal}L (−1R) · ${rev}L (−5R)` : `${wins}W · ${normal}L (−1R)`,
+    emptyFilterRows: "No simulated trades match this filter (0 revenge blowups configured).",
     simDisclaimer: "Hypothetical illustration using proportional equity sizing—not a forecast or promise. Real trading involves spreads, slippage, taxes, and changing conditions, and never rises in a straight daily line.",
     ddEyebrow: "ASYMMETRY OF LOSS",
     ddTitle: "The math of drawdown recovery",
@@ -288,10 +320,42 @@ const copy = {
     legendPatient: "Compounding % sabar",
     legendRevenge: "Dengan hari emosi −5R",
     simTableSummary: "Lihat tabel ringkasan simulasi",
+    simTableBadge: (n: number) => `${n} trade · Win & Loss lengkap`,
+    ledgerFilterLabel: "Filter kasus trade simulasi",
+    filterAll: (n: number) => `Semua (${n})`,
+    filterWin: (n: number) => `Win (${n})`,
+    filterLoss: (n: number) => `Loss (${n})`,
+    filterRevenge: (n: number) => `Emosi −5R (${n})`,
+    expandAllRows: (n: number) => `Tampilkan penuh (${n} baris)`,
+    compactRows: "Mode ringkas",
+    ledgerWinsLabel: "TOTAL MENANG (WIN)",
+    ledgerWinsValue: (wins: number, wr: number, rr: number) => `${wins} Win (${wr}% · +${rr}R)`,
+    ledgerWinsSub: (gross: string) => `Gross profit sabar: +${gross}`,
+    ledgerLossesLabel: "TOTAL KALAH (LOSS)",
+    ledgerLossesValue: (losses: number, normal: number, rev: number) =>
+      rev > 0 ? `${losses} Loss (${normal}× −1R · ${rev}× −5R)` : `${losses} Loss (${normal}× −1R)`,
+    ledgerLossesSub: (pLoss: string, rLoss: string) => `Gross loss sabar: −${pLoss} (emosi: −${rLoss})`,
+    ledgerPatientNetLabel: "HASIL AKHIR SABAR",
+    ledgerPatientNetSub: (start: string, pct: number) =>
+      `Modal awal ${start} · ${pct >= 0 ? "+" : ""}${pct}%`,
+    ledgerRevengeNetLabel: "HASIL + HARI EMOSI",
+    ledgerRevengeNetSub: (gap: string) => `Selisih ketidaksabaran: ${gap}`,
     colTrade: "Trade ke-",
+    colCase: "Kasus / R",
+    colRecord: "Rekor W–L",
+    colPatientPnl: "P&L Sabar",
     colPatient: "Ekuitas sabar",
+    colRevengePnl: "P&L Emosi",
     colRevenge: "Dengan hari emosi",
     colFlat: "Risiko $ tetap",
+    caseStart: "MODAL AWAL",
+    caseWin: (rr: number) => `WIN +${rr}R`,
+    caseLoss: "LOSS −1R",
+    caseRevenge: "EMOSI −5R",
+    totalRowLabel: (n: number) => `TOTAL (${n} trade)`,
+    totalCasesSummary: (wins: number, normal: number, rev: number) =>
+      rev > 0 ? `${wins}W · ${normal}L (−1R) · ${rev}L (−5R)` : `${wins}W · ${normal}L (−1R)`,
+    emptyFilterRows: "Tidak ada trade pada filter ini (hari balas dendam disetel 0).",
     simDisclaimer: "Ilustrasi edukasi menggunakan ukuran risiko proporsional (% ekuitas)—bukan janji atau prediksi hasil. Trading nyata memiliki spread, slippage, biaya, serta kurva naik-turun alami.",
     ddEyebrow: "ASIMETRI KERUGIAN",
     ddTitle: "Matematika pemulihan drawdown",
@@ -462,10 +526,15 @@ export function PatienceView({
     [sim.input.riskPercent, sim.input.rewardRisk],
   );
 
-  const milestoneRows = useMemo(() => {
-    const step = Math.max(10, Math.round(sim.input.totalTrades / 5));
-    return sim.points.filter((point) => point.trade === 0 || point.trade === sim.input.totalTrades || point.trade % step === 0);
-  }, [sim]);
+  const [ledgerFilter, setLedgerFilter] = useState<"all" | "win" | "loss" | "revenge">("all");
+  const [ledgerExpanded, setLedgerExpanded] = useState(false);
+
+  const filteredLedgerRows = useMemo(() => {
+    if (ledgerFilter === "win") return sim.points.filter((point) => point.outcome === "win");
+    if (ledgerFilter === "loss") return sim.points.filter((point) => point.outcome === "loss" || point.outcome === "revenge_loss");
+    if (ledgerFilter === "revenge") return sim.points.filter((point) => point.outcome === "revenge_loss");
+    return sim.points;
+  }, [sim.points, ledgerFilter]);
 
   function changeLocale(next: PatienceLocale) {
     setLocaleOverride(next);
@@ -1041,12 +1110,28 @@ export function PatienceView({
               <Tooltip
                 content={({ active, payload }) => {
                   if (!active || !payload?.length) return null;
-                  const point = payload[0].payload as { trade: number; patient: number; revenge: number; revengeEvent: boolean };
+                  const point = payload[0].payload as CompoundingPoint;
+                  const caseText =
+                    point.outcome === "start"
+                      ? t.caseStart
+                      : point.outcome === "win"
+                        ? t.caseWin(sim.input.rewardRisk)
+                        : point.outcome === "revenge_loss"
+                          ? t.caseRevenge
+                          : t.caseLoss;
                   return (
                     <div className="chart-tooltip">
-                      <strong>{t.colTrade}{point.trade}</strong>
-                      <span>{t.legendPatient}: {currency(point.patient)}</span>
-                      <small>{t.legendRevenge}: {currency(point.revenge)}{point.revengeEvent ? " · −5R" : ""}</small>
+                      <strong>
+                        {t.colTrade}{point.trade} · {caseText}
+                      </strong>
+                      <span>
+                        {t.legendPatient}: {currency(point.patient)}
+                        {point.outcome !== "start" ? ` (${currency(point.patientDelta, true)})` : ""}
+                      </span>
+                      <small>
+                        {t.legendRevenge}: {currency(point.revenge)}
+                        {point.outcome !== "start" ? ` (${currency(point.revengeDelta, true)})` : ""}
+                      </small>
                     </div>
                   );
                 }}
@@ -1074,29 +1159,201 @@ export function PatienceView({
           </ResponsiveContainer>
         </div>
 
-        <details className="chart-data">
-          <summary>{t.simTableSummary}</summary>
-          <div>
-            <table>
-              <thead>
-                <tr>
-                  <th>{t.colTrade}</th>
-                  <th>{t.colPatient}</th>
-                  <th>{t.colRevenge}</th>
-                  <th>{t.colFlat}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {milestoneRows.map((row) => (
-                  <tr key={row.trade}>
-                    <td>{row.trade}</td>
-                    <td>{currency(row.patient)}</td>
-                    <td>{currency(row.revenge)}</td>
-                    <td>{currency(row.flat)}</td>
+        <details className="chart-data patience-sim-ledger">
+          <summary>
+            <span>{t.simTableSummary}</span>
+            <em className="patience-ledger-summary-badge">
+              {t.simTableBadge(sim.input.totalTrades)}
+            </em>
+          </summary>
+
+          <div className="patience-ledger-body">
+            <div className="patience-ledger-totals">
+              <div className="patience-ledger-kpi is-win">
+                <small>{t.ledgerWinsLabel}</small>
+                <strong className="positive-text">
+                  {t.ledgerWinsValue(sim.wins, sim.input.winRate, sim.input.rewardRisk)}
+                </strong>
+                <span>{t.ledgerWinsSub(currency(sim.patientGrossProfit))}</span>
+              </div>
+              <div className="patience-ledger-kpi is-loss">
+                <small>{t.ledgerLossesLabel}</small>
+                <strong className="loss-text">
+                  {t.ledgerLossesValue(sim.losses, sim.normalLosses, sim.revengeEventsTriggered)}
+                </strong>
+                <span>{t.ledgerLossesSub(currency(sim.patientGrossLoss), currency(sim.revengeGrossLoss))}</span>
+              </div>
+              <div className="patience-ledger-kpi is-patient">
+                <small>{t.ledgerPatientNetLabel}</small>
+                <strong className={sim.patientNetProfit >= 0 ? "positive-text" : "loss-text"}>
+                  {currency(sim.patientFinal)} ({currency(sim.patientNetProfit, true)})
+                </strong>
+                <span>{t.ledgerPatientNetSub(currency(sim.input.startingBalance), sim.patientGainPct)}</span>
+              </div>
+              <div className="patience-ledger-kpi is-revenge">
+                <small>{t.ledgerRevengeNetLabel}</small>
+                <strong className={sim.revengeNetProfit < 0 ? "loss-text" : ""}>
+                  {currency(sim.revengeFinal)} ({currency(sim.revengeNetProfit, true)})
+                </strong>
+                <span>
+                  {t.ledgerRevengeNetSub(
+                    sim.impatienceCost > 0 ? currency(-sim.impatienceCost, true) : currency(0),
+                  )}
+                </span>
+              </div>
+            </div>
+
+            <div className="patience-ledger-toolbar">
+              <div className="patience-ledger-filters" role="group" aria-label={t.ledgerFilterLabel}>
+                <button
+                  type="button"
+                  className={ledgerFilter === "all" ? "selected" : ""}
+                  aria-pressed={ledgerFilter === "all"}
+                  onClick={() => setLedgerFilter("all")}
+                >
+                  {t.filterAll(sim.input.totalTrades)}
+                </button>
+                <button
+                  type="button"
+                  className={ledgerFilter === "win" ? "selected is-win" : ""}
+                  aria-pressed={ledgerFilter === "win"}
+                  onClick={() => setLedgerFilter("win")}
+                >
+                  {t.filterWin(sim.wins)}
+                </button>
+                <button
+                  type="button"
+                  className={ledgerFilter === "loss" ? "selected is-loss" : ""}
+                  aria-pressed={ledgerFilter === "loss"}
+                  onClick={() => setLedgerFilter("loss")}
+                >
+                  {t.filterLoss(sim.losses)}
+                </button>
+                <button
+                  type="button"
+                  className={ledgerFilter === "revenge" ? "selected is-revenge" : ""}
+                  aria-pressed={ledgerFilter === "revenge"}
+                  onClick={() => setLedgerFilter("revenge")}
+                >
+                  {t.filterRevenge(sim.revengeEventsTriggered)}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                className="patience-ledger-expand-btn"
+                aria-pressed={ledgerExpanded}
+                onClick={() => setLedgerExpanded((prev) => !prev)}
+              >
+                {ledgerExpanded ? t.compactRows : t.expandAllRows(filteredLedgerRows.length)}
+              </button>
+            </div>
+
+            <div className={`patience-ledger-scroll${ledgerExpanded ? " is-expanded" : ""}`}>
+              <table className="patience-ledger-table">
+                <thead>
+                  <tr>
+                    <th scope="col">{t.colTrade}</th>
+                    <th scope="col">{t.colCase}</th>
+                    <th scope="col">{t.colRecord}</th>
+                    <th scope="col" className="num-col">{t.colPatientPnl}</th>
+                    <th scope="col" className="num-col">{t.colPatient}</th>
+                    <th scope="col" className="num-col">{t.colRevengePnl}</th>
+                    <th scope="col" className="num-col">{t.colRevenge}</th>
+                    <th scope="col" className="num-col">{t.colFlat}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filteredLedgerRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="patience-ledger-empty">
+                        {t.emptyFilterRows}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredLedgerRows.map((row) => {
+                      const isStart = row.outcome === "start";
+                      const isWin = row.outcome === "win";
+                      const isRevenge = row.outcome === "revenge_loss";
+                      return (
+                        <tr
+                          key={row.trade}
+                          className={
+                            isStart
+                              ? "is-start-row"
+                              : isRevenge
+                                ? "is-revenge-row"
+                                : isWin
+                                  ? "is-win-row"
+                                  : "is-loss-row"
+                          }
+                        >
+                          <td className="trade-num-cell">#{row.trade}</td>
+                          <td>
+                            <span
+                              className={`patience-case-badge ${
+                                isStart ? "start" : isWin ? "win" : isRevenge ? "revenge" : "loss"
+                              }`}
+                            >
+                              {isStart
+                                ? t.caseStart
+                                : isWin
+                                  ? `✓ ${t.caseWin(sim.input.rewardRisk)}`
+                                  : isRevenge
+                                    ? `! ${t.caseRevenge}`
+                                    : t.caseLoss}
+                            </span>
+                          </td>
+                          <td className="record-cell">
+                            {row.winsSoFar}W – {row.lossesSoFar}L
+                            {row.revengeSoFar > 0 && isRevenge ? (
+                              <small className="revenge-seq-tag"> #{row.revengeSoFar}</small>
+                            ) : null}
+                          </td>
+                          <td className={`num-col ${isStart ? "muted-cell" : row.patientDelta >= 0 ? "positive-text" : "loss-text"}`}>
+                            {isStart ? "—" : currency(row.patientDelta, true)}
+                          </td>
+                          <td className="num-col balance-cell">
+                            {currency(row.patient)}
+                          </td>
+                          <td className={`num-col ${isStart ? "muted-cell" : row.revengeDelta >= 0 ? "positive-text" : "loss-text"}`}>
+                            {isStart ? "—" : currency(row.revengeDelta, true)}
+                          </td>
+                          <td className={`num-col balance-cell${isRevenge ? " loss-text" : ""}`}>
+                            {currency(row.revenge)}
+                          </td>
+                          <td className="num-col flat-cell">
+                            {currency(row.flat)}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr className="patience-ledger-tfoot">
+                    <td>{t.totalRowLabel(sim.input.totalTrades)}</td>
+                    <td>{t.totalCasesSummary(sim.wins, sim.normalLosses, sim.revengeEventsTriggered)}</td>
+                    <td>{sim.wins}W – {sim.losses}L</td>
+                    <td className={`num-col ${sim.patientNetProfit >= 0 ? "positive-text" : "loss-text"}`}>
+                      {currency(sim.patientNetProfit, true)}
+                    </td>
+                    <td className="num-col balance-cell">
+                      {currency(sim.patientFinal)}
+                    </td>
+                    <td className={`num-col ${sim.revengeNetProfit >= 0 ? "positive-text" : "loss-text"}`}>
+                      {currency(sim.revengeNetProfit, true)}
+                    </td>
+                    <td className={`num-col balance-cell ${sim.revengeNetProfit < 0 ? "loss-text" : ""}`}>
+                      {currency(sim.revengeFinal)}
+                    </td>
+                    <td className="num-col flat-cell">
+                      {currency(sim.flatFinal)} ({currency(sim.flatNetProfit, true)})
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           </div>
         </details>
       </section>
