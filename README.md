@@ -117,6 +117,9 @@ npm run build
 npm run build:pages
 CHROME_PATH=/path/to/chromium npm run test:pages
 CHROME_PATH=/path/to/chromium npm run test:features
+npm run quality:gate        # structural quality gate (add --fast for heuristics only)
 ```
+
+`npm run quality:gate` enforces the automatable gates from [`docs/quality-analysis/structural-workflow.md`](docs/quality-analysis/structural-workflow.md): forbidden-pattern and type-safety hygiene, the `process.env` documentation contract, route authorization and entitlement coverage, webhook signature verification, security headers, bundle budgets, and the accessibility floor (labels, alt text, focus traps, reduced motion, minimum type size, WCAG AA contrast on the design tokens). It exits non-zero on any regression and prints every finding with its measured value. The current results are recorded in the [quality-control](docs/quality-analysis/quality-control-scorecard.md) and [design](docs/quality-analysis/design-scorecard.md) scorecards.
 
 `npm run test:private`, `CHROME_PATH=/path/to/chromium npm run test:private:ui`, and `CHROME_PATH=/path/to/chromium npm run test:private:features` are additional API and browser smoke tests for a **disposable local** PostgreSQL database and local server with sign-up enabled. Set `BLOOM_TEST_URL=http://localhost:3001`; the scripts create test accounts and check isolation, conflicts, origin checks, image ownership, backups, and the disabled legacy API. Do not point tests at real user data.
