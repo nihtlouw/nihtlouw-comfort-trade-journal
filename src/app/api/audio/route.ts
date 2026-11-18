@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ALLOWED_AUDIO_MIMES, audioErrorMessage, cleanTrackTitle } from "@/lib/audio";
 import { PayloadTooLargeError, readLimitedBody } from "@/lib/request-body";
 import { AUDIO_CHUNK_BYTES, MAX_AUDIO_TOTAL_BYTES, MAX_AUDIO_TRACKS, type AudioMimeType, type AudioTrackMeta } from "@/lib/types";
+import { hasCloudSyncAccess } from "@/lib/server-billing";
 
 const createAudioSchema = z.object({
   title: z.string().max(80).optional(),
@@ -62,6 +63,9 @@ export async function POST(request: Request) {
   if (!isAllowedMutation(request)) return Response.json({ error: "Invalid request origin." }, { status: 403 });
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session) return Response.json({ error: "Please sign in again." }, { status: 401 });
+  if (!(await hasCloudSyncAccess(session.user.id))) {
+    return Response.json({ error: "Active Cloud Sync Pro subscription required." }, { status: 402 });
+  }
 
   try {
     const raw = await readLimitedBody(request, 16_384);

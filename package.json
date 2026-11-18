@@ -1,6 +1,9 @@
 {
   "name": "bloom-trading-journal",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -12,6 +15,8 @@
     "typecheck": "tsc --noEmit",
     "quality:gate": "node scripts/quality-gate.mjs",
     "quality:gate:fast": "node scripts/quality-gate.mjs --fast",
+    "quality:test:routes": "tsx --test tests/routes.test.ts",
+    "bundle:report": "node scripts/bundle-report.mjs",
     "export:legacy": "node scripts/export-legacy.mjs",
     "test": "tsx --test tests/*.test.ts",
     "test:private": "node scripts/test-private.mjs",
