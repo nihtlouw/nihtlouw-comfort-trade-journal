@@ -1,5 +1,5 @@
 "use client";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { createAuthClient } from "better-auth/react";
 import { ArrowRight, LockKeyhole, Sprout } from "lucide-react";
 import { readStoredLocale, UI_COPY, writeStoredLocale } from "@/lib/i18n";
@@ -26,6 +26,12 @@ export function AuthScreen({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const copy = UI_COPY[locale];
+
+  // The server renders <html lang="en">; keep it truthful for assistive tech and
+  // for the browser's own translation/spellcheck heuristics.
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
 
   function switchLocale(next: AppLocale) {
     setLocale(next);

@@ -1,5 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { AudioMimeType, AudioTrackMeta } from "@/lib/types";
+import { hasCloudSyncAccess } from "@/lib/server-billing";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!process.env.DATABASE_URL) return Response.json({ error: "Private account storage is not configured." }, { status: 503 });
@@ -7,6 +8,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!isAllowedMutation(request)) return Response.json({ error: "Invalid request origin." }, { status: 403 });
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session) return Response.json({ error: "Please sign in again." }, { status: 401 });
+  if (!(await hasCloudSyncAccess(session.user.id))) {
+    return Response.json({ error: "Active Cloud Sync Pro subscription required." }, { status: 402 });
+  }
 
   const { id } = await params;
   const { db } = await import("@/db");

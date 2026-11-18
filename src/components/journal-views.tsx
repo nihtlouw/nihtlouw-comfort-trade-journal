@@ -8,7 +8,15 @@ import { currency, filterTrades, formatRMultiple, getAccountBalanceSummary, getS
 import { translateAccountName, translateMarket, translateMood, translatePlaybookGroup, translateSide, UI_COPY } from "@/lib/i18n";
 import { DEFAULT_ACCOUNT, MARKETS, MOODS, type AppLocale, type DayJournalEntry, type Intention, type JournalSettings, type PlaybookRule, type SavedYoutubeVideo, type SetupBlueprint, type StrategyLibraryItem, type Trade, type WeeklyReflection } from "@/lib/types";
 import { RiskOverview } from "@/components/journal-review";
-import { AccountBalanceCard, CardTitle, GoalCard, MoodCard, PerformanceChart, StatsCards, TradeTable, TradingCalendar } from "@/components/journal-ui";
+import dynamic from "next/dynamic";
+import { AccountBalanceCard, CardTitle, GoalCard, MoodCard, StatsCards, TradeTable, TradingCalendar } from "@/components/journal-ui";
+
+// recharts is ~240 KB gzip and only the Overview/Analytics charts need it, so it
+// is loaded as its own chunk. The skeleton reserves the card's height to avoid layout shift.
+const PerformanceChart = dynamic(() => import("@/components/performance-chart").then((mod) => mod.PerformanceChart), {
+  ssr: false,
+  loading: () => <section className="card performance-card chart-skeleton" aria-busy="true" aria-label="Loading performance chart"><span /></section>,
+});
 import { ChartbookGallery, type ChartLightboxSlide, type StageFilterValue } from "@/components/chart-lightbox";
 import { StrategyShelf } from "@/components/strategy-shelf";
 import { YoutubeWatchPanel } from "@/components/youtube-watch-panel";
@@ -75,7 +83,7 @@ export function Overview(props: CommonProps) {
     {active && <PerformanceChart trades={periodTrades} period={props.period} onPeriodChange={props.onPeriod} hidden={props.hidden} locale={locale} onSelectDay={props.onDay}/>}
     <YoutubeWatchPanel videos={props.settings.youtubeLinks ?? []} locale={locale} active={active} onPlayerMountChange={props.onYoutubePlayerMountChange} onReturnToOverview={() => props.onView("Overview")} onChange={(links, message) => props.onUpdateYoutubeLinks?.(links, message)}/>
     {active && !welcomeDismissed && (
-      <section className="welcome-banner welcome-banner-compact" style={{ backgroundImage: `linear-gradient(90deg, var(--hero-fade) 0%, var(--hero-fade-soft) 37%, transparent 80%), url('${basePath}/images/bloom-landscape.png')` }}>
+      <section className="welcome-banner welcome-banner-compact" style={{ backgroundImage: `linear-gradient(90deg, var(--hero-fade) 0%, var(--hero-fade-soft) 37%, transparent 80%), image-set(url('${basePath}/images/bloom-landscape.webp') type('image/webp'), url('${basePath}/images/bloom-landscape.png') type('image/png'))` }}>
         <button type="button" className="icon-button welcome-dismiss-btn" onClick={dismissWelcome} aria-label={copy.dismissBannerAria}><X size={16}/></button>
         <div className="welcome-content"><h2>{copy.heroLine1} <em>{copy.heroLine2}</em></h2><button type="button" onClick={() => props.onView("Trade journal")}>{copy.openJournal} <ArrowRight size={15}/></button></div>
       </section>

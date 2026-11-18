@@ -6,7 +6,7 @@ const scopeUrl = new URL(self.registration.scope);
 const base = scopeUrl.pathname;
 const shellUrl = new URL("local/", scopeUrl).href;
 const localPath = `${base}local`;
-const publicImages = ["images/bloom-landscape.png", "icons/bloom-192.png", "icons/bloom-512.png", "icons/bloom-maskable-512.png"];
+const publicImages = ["images/bloom-landscape.webp", "images/bloom-landscape.png", "icons/bloom-192.png", "icons/bloom-512.png", "icons/bloom-maskable-512.png"];
 const publicImagePaths = new Set(publicImages.map((path) => new URL(path, scopeUrl).pathname));
 
 function isPublicAsset(url) {

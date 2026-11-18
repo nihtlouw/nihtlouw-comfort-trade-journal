@@ -12,31 +12,33 @@ Bloom is a **well-engineered, unusually disciplined single-product application**
 
 | Measure | Result | Reading |
 |---|---|---|
-| **Quality Control score** | **81.5 / 100** — Grade **B+** | Strong. Production-capable with a bounded, known gap list. |
-| **Design score** | **70.5 / 100** — Grade **C+** | Distinct and coherent, but accessibility and type scale hold it back. |
-| **Composite (QA 60% / Design 40%)** | **77.1 / 100** — Grade **B** | Ship-ready for a personal/private deployment; not yet for untrusted public SaaS. |
-| **Release recommendation** | **CONDITIONAL PASS** | Fix the 3 P1 defects in §7 before any public multi-tenant launch. |
+| **Quality Control score** | **90.8 / 100** — Grade **A−** | *(was 81.5 / B+)* — all P1 and P2 findings closed. |
+| **Design score** | **83.7 / 100** — Grade **B** | *(was 70.5 / C+)* — contrast and type scale corrected. |
+| **Composite (QA 60% / Design 40%)** | **88.0 / 100** — Grade **B+** | *(was 77.1 / B)* |
+| **Quality gate** | **34 / 34 checks pass** | *(was 24/33 with 8 blocking)* — now enforced in CI. |
+| **Release recommendation** | **PASS** | P1/P2 register closed. See [findings-closed.md](./findings-closed.md). |
 
 ### The 60-second version
 
 **What is genuinely good**
 
 - `strict` TypeScript with **zero** `any`, **zero** `@ts-ignore`, **zero** `console.log` in `src/`, **zero** `dangerouslySetInnerHTML`. That combination is rare and it is the single best predictor of low defect density in a JS codebase.
-- **38/38 tests pass**, and they test *hard* things: cent-exact XLSX round-trips, HMAC webhook lifecycles, AWS SigV4 signing, v1→v2 journal migration, corrupt-data non-destruction, CSV duplicate detection.
+- **53/53 tests pass** (38 unit + 15 route-boundary), and they test *hard* things: cent-exact XLSX round-trips, HMAC webhook lifecycles, AWS SigV4 signing, v1→v2 journal migration, corrupt-data non-destruction, CSV duplicate detection.
 - Every authenticated API route re-derives identity server-side, enforces `isAllowedMutation` origin checks, caps body size even without `content-length`, and validates magic bytes rather than trusting MIME strings.
 - Optimistic concurrency (`revision`) with a 409 instead of silent last-write-wins; corrupt local data is *never* silently overwritten.
 - Design tokens, light/dark themes, reduced-motion support, focus trapping with restore-on-close, `aria-pressed` state, real table semantics.
 
-**What will bite**
+**What was fixed** (full record: [findings-closed.md](./findings-closed.md))
 
-1. **No global security headers.** No CSP, HSTS, `X-Frame-Options`, `Referrer-Policy`, or `Permissions-Policy` anywhere — confirmed by live response inspection. An app that stores financial data and renders user-supplied captions is one SVG/preset leak away from a bad day.
-2. **Coverage stops exactly where risk starts.** 0% of the 18 API routes and 0% of the 17 components are tested. All 38 tests are pure-function tests.
-3. **The type scale is too small.** 381 of 528 `font-size` declarations (72%) are under 12px — 11px is the *most common* size (146 uses), 10px appears 109 times, and a 7px declaration exists. Body text is 13px. On a 6" Android phone — an explicitly supported target — this is a real usability defect.
-4. **Muted/soft text fails contrast.** `--soft: #94a398` on white computes to **2.64:1** and `--muted` to **3.98:1** (WCAG AA needs 4.5:1; even large text needs 3:1). The *dark* theme passes everything — the accessible theme is not the default one.
-5. **`globals.css` is 7,665 lines** with 318 duplicated selectors and 879 hard-coded hex values. Every visual change is a regression risk.
-6. **No error boundary.** No `error.tsx`, `global-error.tsx`, or `not-found.tsx`. One thrown render error white-screens the journal.
+1. **Security headers — closed.** CSP, HSTS, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` and `nosniff` are emitted for server deployments, verified live with `curl -I`. `'unsafe-eval'` is development-only.
+2. **Route coverage — closed.** 15 route-boundary tests added (401 / 402 / 403 / 409 / 413 / webhook signatures / legacy 410). Suite is now **53 tests**.
+3. **Type scale — closed.** Body 13→15px, smallest size **7px → 11px**, content selectors (tables, nav, inputs) promoted to 13px. Under-12px declarations fell from 72% to 38%, all labels and eyebrows.
+4. **Contrast — closed.** Light-theme tokens retuned: `--muted` **5.37:1**, `--soft` **5.32:1**, `--accent` **5.08:1**, `--loss` **4.94:1**, button white-on **5.03:1**. Every text/surface pair clears WCAG AA.
+5. **Error boundaries — closed.** `error.tsx`, `global-error.tsx` and `not-found.tsx` added, reusing the recovery-banner language with bilingual copy.
+6. **Entitlement gap — closed.** All three audio write routes now require Pro, matching the journal they sync into; regression-locked by test.
+7. **Payload — closed.** Hero image 1.9 MB → **33 KB WebP**; initial JS 496 KB → **371 KB gzip** with **160 KB deferred** via `next/dynamic`.
 
----
+**What remains** (P3/P4, deliberate): the 7.6k-line stylesheet split, the 13 `window.confirm()` dialogs, the `journal-app` controller refactor, and error telemetry. See §5 of [findings-closed.md](./findings-closed.md).
 
 ## 2. Evidence base
 
@@ -46,22 +48,24 @@ Everything in these documents is traceable to a command run against this checkou
 |---|---|---|
 | Type safety | `npx tsc --noEmit` | exit 0, no output |
 | Lint | `npx eslint .` | exit 0, zero warnings |
-| Unit tests | `npm test` | **38 pass / 0 fail**, ~1.9 s |
-| Production build | `npm run build` | compiled 13.0 s, TS 11.8 s, 13 static pages, 0 errors |
-| Client JS budget | `find .next/static -name '*.js' \| gzip -c` | **499 KB gzip** (largest chunk 312 KB gzip) |
-| CSS budget | same for `.css` | **41 KB gzip** (from 264 KB source) |
-| Live headers | `curl -sI http://127.0.0.1:3000/local` | **no** CSP / HSTS / XFO / Referrer-Policy |
+| Unit + route tests | `npm test` | **53 pass / 0 fail** |
+| Production build | `npm run build` | compiled 5.4 s, 0 errors, 13 prerendered documents |
+| Initial JS | chunks referenced by `/local` | **371 KB gzip** (496 KB before splitting) + 160 KB deferred |
+| CSS budget | same for `.css` | **42 KB gzip** |
+| Live headers | `curl -sI http://127.0.0.1:3000/local` | **CSP + HSTS + XFO + Referrer-Policy + Permissions-Policy present** |
 | Live route behaviour | `curl /api/health`, `POST /api/trades` | `{"ok":true,"mode":"browser"}`, legacy API `410` |
 | Dependency risk | `npm audit --omit=dev` | 1 moderate (`next` 16.2.0–16.4.4 cache-leak advisory) |
 | i18n parity | programmatic key diff of `UI_COPY` | **831 EN = 831 ID**, 0 missing, 0 empty |
 | Contrast | WCAG 2.1 relative-luminance formula | see §4 of the design scorecard |
-| Codebase size | `wc -l` | 34,112 lines across 66 TS/TSX/CSS/SQL files |
+| Codebase size | `wc -l` | ~34k lines; `journal-ui.tsx` −494 lines after the chart extraction |
 
 Reproduce all of it with the executable gate:
 
 ```sh
-node scripts/quality-gate.mjs          # full gate (lint + types + tests + build)
-node scripts/quality-gate.mjs --fast   # static heuristics only, ~2 s
+npm run quality:gate          # full gate (lint, types, route authz, build, budgets, a11y)
+npm run quality:gate:fast     # static heuristics only, ~2 s
+npm run quality:test:routes   # the 15 route-boundary tests
+npm run bundle:report         # gzipped weight per chunk + largest source modules
 ```
 
 ---
@@ -73,36 +77,37 @@ node scripts/quality-gate.mjs --fast   # static heuristics only, ~2 s
 | **[structural-workflow.md](./structural-workflow.md)** | The 6-gate quality workflow, entry/exit criteria, defect taxonomy, release gate, and operating cadence — the *process* | Engineering lead, QA, reviewers |
 | **[quality-control-scorecard.md](./quality-control-scorecard.md)** | 9 weighted quality dimensions with evidence, the defect register, and a sequenced remediation roadmap | Engineering, security |
 | **[design-scorecard.md](./design-scorecard.md)** | 7 weighted design dimensions, heuristic audit, contrast tables, and design-system recommendations | Design, frontend |
-| **[`scripts/quality-gate.mjs`](../../scripts/quality-gate.mjs)** | Machine-enforced subset of the workflow; fails CI on budget/a11y/hygiene regressions | CI |
+| **[findings-closed.md](./findings-closed.md)** | Remediation record: what was fixed, how it was re-measured, and what was deliberately deferred | Engineering, product |
+| **[`scripts/quality-gate.mjs`](../../scripts/quality-gate.mjs)** | Machine-enforced subset of the workflow; **34/34 passing** and enforced in CI | CI |
 
 ---
 
 ## 4. Score at a glance
 
-### Quality Control — 81.5 / 100
+### Quality Control — 90.8 / 100  *(was 81.5)*
 
 ```
-Static correctness & type safety   ███████████████████░  9.5   (10%)
-Test depth & coverage              ███████████████░░░░░  7.5   (20%)
-CI/CD reliability                  ██████████████░░░░░░  7.0   (10%)
-Security posture                   ████████████████░░░░  8.0   (20%)
-Data integrity & recovery          ██████████████████░░  9.0   (10%)
-Error handling & observability     ███████████░░░░░░░░░  5.5   (10%)
-Accessibility (technical)          █████████████░░░░░░░  6.5   (10%)
-Performance                        ████████████░░░░░░░░  6.0   (10%)
-Maintainability & hygiene          ██████████████░░░░░░  7.0   (10%)
+Static correctness & type safety   ███████████████████░  9.5 → 9.5   (9%)
+Test depth & coverage              ███████████████████░  7.5 → 9.5   (18%)
+CI/CD reliability                  ██████████████████░░  7.0 → 9.0   (9%)
+Security posture                   ███████████████████░  8.0 → 9.7   (18%)
+Data integrity & recovery          ██████████████████░░  9.0 → 9.0   (9%)
+Error handling & observability     █████████████████░░░  5.5 → 8.5   (9%)
+Accessibility (technical)          ██████████████████░░  6.5 → 9.2   (9%)
+Performance                        ██████████████████░░  6.0 → 9.0   (9%)
+Maintainability & hygiene          ███████████████░░░░░  7.0 → 7.5   (10%)
 ```
 
-### Design — 70.5 / 100
+### Design — 83.7 / 100  *(was 70.5)*
 
 ```
-Visual system & tokens             ██████████████░░░░░░  7.0   (20%)
-Layout & responsive behaviour      ███████████████░░░░░  7.5   (20%)
-Typography & readability           ███████████░░░░░░░░░  5.5   (15%)
-Design accessibility               ███████████░░░░░░░░░  5.5   (15%)
-Motion & interaction quality       ████████████████░░░░  8.0   (10%)
-Content design & i18n              ████████████████░░░░  8.0   (10%)
-Brand & differentiation            ██████████████████░░  9.0   (10%)
+Visual system & tokens             ██████████████░░░░░░  7.0 → 7.6   (20%)
+Layout & responsive behaviour      ███████████████░░░░░  7.5 → 8.0   (20%)
+Typography & readability           ███████████░░░░░░░░░  5.5 → 8.5   (15%)
+Design accessibility               ███████████░░░░░░░░░  5.5 → 9.0   (15%)
+Motion & interaction quality       ████████████████░░░░  8.0 → 8.2   (10%)
+Content design & i18n              ████████████████░░░░  8.0 → 9.0   (10%)
+Brand & differentiation            ██████████████████░░  9.0 → 9.0   (10%)
 ```
 
 ### Grade bands

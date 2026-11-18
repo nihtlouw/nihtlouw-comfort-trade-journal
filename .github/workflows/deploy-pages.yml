@@ -37,10 +37,9 @@ jobs:
           npm test
 
       # Structural quality gate — see docs/quality-analysis/structural-workflow.md.
-      # Advisory only for now (known findings are documented and triaged in the
-      # scorecard); drop `|| true` once the P1/P2 register is cleared.
+      # Runs the full gate (build-backed, so bundle/header/a11y checks are live).
       - name: Quality gate
-        run: node scripts/quality-gate.mjs --fast || true
+        run: node scripts/quality-gate.mjs
 
       - name: Build static site
         run: npm run build:pages

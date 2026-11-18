@@ -22,8 +22,19 @@ import { exportTradesXlsx } from "@/lib/xlsx-report";
 import { parseTradeInput } from "@/lib/trade-validation";
 import { isBackupReminderDue, loadBackupReminder, recordBackupDownload, snoozeBackupReminder, writeBackupReminder, type BackupReminderState } from "@/lib/backup-reminder";
 import { WeeklyReview } from "@/components/journal-review";
-import { PatienceView } from "@/components/journal-patience";
-import { ExitBoardView } from "@/components/journal-exit-board";
+import dynamic from "next/dynamic";
+import { JournalLoading } from "@/components/journal-loading";
+
+// Both views are large and are never part of the default screen. Deferring them
+// keeps recharts and the exit-board simulator out of the initial journal payload.
+const PatienceView = dynamic(() => import("@/components/journal-patience").then((mod) => mod.PatienceView), {
+  ssr: false,
+  loading: () => <JournalLoading locale="en" />,
+});
+const ExitBoardView = dynamic(() => import("@/components/journal-exit-board").then((mod) => mod.ExitBoardView), {
+  ssr: false,
+  loading: () => <JournalLoading locale="en" />,
+});
 import { LocalPwaStatus } from "@/components/local-pwa";
 import { AnalyticsView, CalendarView, GoalsView, JournalView, MindsetView, Overview, PlaybookView, type JournalFilterPreset, type View } from "@/components/journal-views";
 import { BreathingModal, ImportModal, SettingsModal, TradeModal, type PendingAttachmentFile, type SettingsTab, type TradeDraft } from "@/components/journal-dialogs";
